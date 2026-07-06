@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html xmlns:MadCap="http://www.madcapsoftware.com/Schemas/MadCap.xsd" lang="en-us" xml:lang="en-us" data-mc-search-type="Stem" data-mc-help-system-file-name="index.xml" data-mc-path-to-help-system="../../../../../../../" data-mc-target-type="WebHelp2" data-mc-runtime-file-type="Topic" data-mc-preload-images="false" data-mc-in-preview-mode="false" data-mc-toc-path="Developer Tools|Desktop Developer Tools|NVIDIA Nsight Visual Studio Edition|NVIDIA Nsight Visual Studio Edition 4.7|Analysis Tools|CUDA Experiments|Kernel-Level Experiments">
+    <!-- saved from url=(0016)http://localhost -->
+    <head>
+        <meta charset="utf-8" />
+        <meta name="googlebot" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><title>分支统计</title>
+        <link rel="shortcut icon" href="../../../../../../Resources/MasterPages/nvidia.ico" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/Slideshow.css" rel="stylesheet" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/TextEffects.css" rel="stylesheet" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/Topic.css" rel="stylesheet" />
+        <link href="../../../../../../resources/stylesheets/style.css" rel="stylesheet" />
+        <style>/*&lt;meta /&gt;*/
+
+.button.previous-topic-button
+{
+	-pie-background: url('../../../../../../../Skins/Default/Stylesheets/Images/navigate-previous.png') no-repeat center center, linear-gradient(#ffffff, #ececec);
+}
+
+.button.current-topic-index-button
+{
+	-pie-background: linear-gradient(#ffffff, #ececec);
+}
+
+.button.next-topic-button
+{
+	-pie-background: url('../../../../../../../Skins/Default/Stylesheets/Images/navigate-next.png') no-repeat center center, linear-gradient(#ffffff, #ececec);
+}
+
+.needs-pie
+{
+	behavior: url('../../../../../../../Resources/Scripts/PIE.htc');
+}
+
+</style>
+        <script src="../../../../../../../Resources/Scripts/custom.modernizr.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/jquery.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/foundation.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/plugins.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/require.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/require.config.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/MadCapAll.js">
+        </script>
+        <script src="../../../../../../../Skins/Default/Scripts/Toolbar.js">
+        </script>
+    </head>
+    <body>
+        <p class="MCWebHelpFramesetLink MCWebHelpFramesetLinkTop"><a href="../../../../../../../index.html#developertools/desktop/analysis/report/cudaexperiments/kernellevel/branchstatistics.htm">打开带导航的主题视图</a>
+        </p>
+        <div class="MCBreadcrumbsBox_site.css_0"><span class="MCBreadcrumbsPrefix">当前位置： </span><a class="MCBreadcrumbsLink" href="../../../../../developer_tools.htm">开发者工具</a><span class="MCBreadcrumbsDivider"> &gt; </span><a class="MCBreadcrumbsLink" href="../../../../../desktop_devtools.htm">桌面开发者工具</a><span class="MCBreadcrumbsDivider"> &gt; </span><a class="MCBreadcrumbsLink" href="../../../../nvidia_nsight.htm">NVIDIA Nsight Visual Studio Edition</a><span class="MCBreadcrumbsDivider"> &gt; </span><span class="MCBreadcrumbs">分支统计</span>
+        </div><a name="kanchor139"></a>
+        <div id="pageheader">
+            <h1><span class="SystemTitle">分支统计</span>
+            </h1>
+            <p style="font-size: 8pt;"><span style="color: #696969;">NVIDIA® Nsight™ Development Platform, Visual Studio Edition 4.7 用户指南</span>
+                <br /><span id="feedbacklink" style="font-size: 8pt; font-weight: normal;"><a href="mailto:devtools-support@nvidia.com?subject=Documentation Feedback: Nsight Visual Studio Edition User Guide">发送反馈</a></span>
+                <br />
+            </p>
+            <hr width="100%" size="0" align="center" />
+        </div>
+        <h3><a id="Overview"></a>概述</h3>
+        <p>
+          控制流可能对 kernel 的执行效率产生严重影响，尤其是当大量控制流判定都是分歧的，迫使一个 warp 中的线程在 kernel 代码中走上完全不同的控制路径时。分支统计实验有助于回答以下问题：控制流指令被执行了多少次、其中有多少是一致的、有多少是分歧的，以及控制流对整体 kernel 执行性能的影响有多大。
+        </p>
+        <h5><a id="Background"></a>背景</h5>
+        <p>
+          如果一条控制流指令迫使 warp 中的线程走上不同的执行路径，则该指令被视为分歧的。一旦发生这种情况，由于一个 warp 中的所有线程共享一个程序计数器，不同的执行路径必须被串行化执行；这会增加该 warp 所执行的指令总数。当所有不同的执行路径都完成后，线程才会重新汇合到同一条执行路径。如果条件表达式对一个 warp 中的所有线程评估出一致的判定结果，则只执行被选中的那一条代码路径——因此开销小得多。所执行的一致控制流判定数与全部条件判定执行数之比定义为<b>分支效率（Branch Efficiency）</b>。
+        </p>
+        <p>
+          分歧控制流造成的实际性能影响，与需要评估多少条不同代码路径以及被串行化的代码段有多昂贵的组合成正比。一种刻画方法是：跟踪所有已执行指令中，warp 内实际参与执行（即未被谓词执行屏蔽掉）的线程数。这通常被称为<b>控制流效率（Control Flow Efficiency）</b>。按定义，它与做出多少次控制流判定无关，而是给出了由于控制流而导致的可用计算资源利用率的上限。
+        </p>
+        <h3><a id="Charts"></a>图表</h3>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="Efficiency"></a>效率</h4>
+                    <img src="branchstatisticschartefficiency.png" style="float: right;mc-thumbnail: none;" alt="效率" />
+                    <p>
+          效率图显示了用于评估控制流影响的两个主要指标。重点关注控制流效率，以便在考虑分支的情况下估计预期的最大峰值性能。
+        </p>
+                    <p style="padding:10px;background-color:#eaefe0">
+          用 CUDA C 编写的条件表达式可以通过多种方式被翻译成最终的汇编代码。请注意，并非所有可能的条件操作变体都能被这里展示的指标涵盖。因此可以这样说：控制流效率低<u>一定</u>意味着存在性能问题；但反之不一定成立——即使一个 kernel 的控制流效率接近最优，它仍然可能受到控制流的限制。
+        </p>
+                    <h5>指标</h5>
+                    <p><b>分支效率</b>
+          表示所有已执行分支指令中一致控制流判定所占的比例。按 SM 分别显示（柱状图），并对所有 SM 取平均（Branch 折线）。数值越高越好，意味着 warp 更频繁地走在一致的代码路径上。低于 100% 的值是 kernel 执行性能受到负面影响的<u>必要</u>但不充分指标，因为该指标并不知道条件语句所包围的代码区域有多大。例如，十次执行的分支中有一次分歧判定，若它只包围寥寥几行代码，则可以忽略不计；但如果它迫使 warp 执行多条包含数千条指令的不同代码路径，影响就可能非常大。
+        </p>
+                    <p><b>控制流效率</b>
+          定义为：在每条已执行指令上，未被谓词执行屏蔽的活跃线程数与每个 warp 最大线程数之比。每条指令中每个 warp 内活跃的线程数越少，该指标就越低；因此它衡量的是对可用处理单元的利用效率。控制流效率较低可能由以下原因导致：启动 warp 时活跃线程数不足 32；warp 中部分线程比其他线程更早终止；或者只让一部分线程参与指令的执行。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <p>
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="BranchesPerWarp"></a>每 warp 分支数</h4>
+                    <img src="branchstatisticschartbranchesperwarp.png" style="float: right;mc-thumbnail: none;" alt="每 warp 分支数" />
+                    <p>
+          按条件语句的判定结果分组，显示每个 SM 上每个 warp 平均执行的分支指令数。可用于研究 kernel grid 中各 warp 所执行的控制流指令总量。将每 warp 执行的分支指令数与 <a href="instructionstatistics.htm#InstructionsPerWarp">指令统计</a> 实验中 IPW 指标所报告的每 warp 已执行指令总数进行对比，可以了解 kernel 代码中执行分支指令的频率。
+        </p>
+                    <p style="padding:10px;background-color:#eaefe0">
+          所报告的 taken / not taken 分支数指的是在设备上实际执行的条件语句。如果编译器在优化阶段选择了对条件取反，这并不一定与 CUDA C 或 PTX 代码中表达的定义一致。可查看 <a href="../../../../analysis_source_code_correlation.htm#SourceView">源码视图</a> 页面以研究高级代码与汇编代码之间的映射关系。
+        </p>
+                    <h5>指标</h5>
+                    <p><b>Not Taken / Taken</b>
+          每 warp 平均执行的、控制流判定一致的分支指令数；即一个 warp 中所有活跃线程要么全部走分支，要么全部不走。
+        </p>
+                    <p><b>Diverged</b>
+          每 warp 平均执行的、条件在 warp 内各线程间产生不同结果的分支指令数。所有至少有一个线程参与的代码路径都会被顺序执行。该数值越低越好；不过，要理解控制流对设备利用率的影响，请同时查看 <a href="#Efficiency">控制流效率</a>。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <p>
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="BranchCondition"></a>分支条件</h4>
+                    <img src="branchstatisticschartbranchcondition.png" style="float: right;mc-thumbnail: none;" alt="分支条件" />
+                    <p>
+          显示在 kernel grid 中所有 warp 上汇总后的已执行分支中一致分支与分歧分支的分布。如果分歧分支的比例较高，请考虑重新组织将负载划分到 block 和 warp 的方式；另一种负载分配方案可能能够减少分歧的控制流，同时也减少对控制流判定的总体需求。更多细节也可参阅 CUDA C Best Practices Guide 中 <a href="http://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#branching-and-divergence">分支与分歧</a> 一节。
+        </p>
+                    <p style="padding:10px;background-color:#eaefe0">
+          所报告的 taken / not taken 分支数指的是在设备上实际执行的条件语句。如果编译器在优化阶段选择了对条件取反，这并不一定与 CUDA C 或 PTX 代码中表达的定义一致。可查看 <a href="../../../../analysis_source_code_correlation.htm#SourceView">源码视图</a> 页面以研究高级代码与汇编代码之间的映射关系。
+        </p>
+                    <h5>指标</h5>
+                    <p><b>Not Taken / Taken</b>
+          控制流判定一致的已执行分支指令总数；即一个 warp 中所有活跃线程要么全部走分支，要么全部不走。
+        </p>
+                    <p><b>Diverged</b>
+          条件在 warp 内各线程间产生不同结果的已执行分支指令总数。所有至少有一个线程参与的代码路径都会被顺序执行。该数值越低越好；不过，要理解控制流对设备利用率的影响，请同时查看 <a href="#Efficiency">控制流效率</a>。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <h3><a id="Analysis"></a>分析</h3>
+        <p>
+        CUDA C Best Practices Guide 中重点强调了关于 <a href="http://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#control-flow">控制流</a> 的若干通用编码准则：
+        <ul style="list-style-type:none"><li value="1"><a href="http://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#branching-and-divergence">分支与分歧</a>：避免同一 warp 内出现不同的执行路径。
+          </li><li value="2"><a href="http://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#branch-predication">分支谓词执行</a>：让编译器更容易使用分支谓词执行来替代循环或控制语句。
+          </li><li value="3"><a href="http://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#loop-counters-signed-vs-unsigned">循环计数器：有符号 vs. 无符号</a>：循环计数器使用有符号整数而非无符号整数。
+          </li><li value="4"><a href="http://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#synchronizing-divergent-threads">在循环中同步分歧线程</a>：避免在分歧的代码内部使用 __syncthreads()。
+          </li></ul></p>
+        <p>
+          根据本实验的结果，检查以下哪些情况适用：
+        </p>
+        <ul style="list-style-type:none">
+            <li value="1">
+            如果 <a href="#Efficiency">控制流效率</a> 较低，并且……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……<a href="#Efficiency">分支效率</a> 较高，请检查 kernel 启动的 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#execution-configuration">执行配置</a>。如果每个 block 的线程数不是 warp 大小的整数倍，部分活跃的 warp 只使用了可用处理单元的一部分——从而降低整体控制流效率。
+              </li><li style="text-indent:-20px;" value="2">
+                ……<a href="#Efficiency">分支效率</a> 也较低，则 kernel 执行因控制流分歧而效率较低。请在可能的情况下重新安排负载，使一个 warp 中的线程都走同一条路径。使用 <a href="../sourcelevel/divergentbranch.htm">分歧分支</a> 实验识别哪些分支指令导致的分歧最严重、影响的代码区域最大，优先优化这些分支。
+              </li></ul></li>
+        </ul>
+        <div id="pagefooter">
+            <br />
+        </div>
+        <hr style="height: 1px;" width="100%" size="0" align="center" />
+        <script type="text/javascript" src="../../../../../../resources/stylesheets/run_prettify.js?lang=vb" autoload="true">
+        </script>
+        <p>
+        </p>
+        <div class="buttons inline-buttons clearfix topicToolbarProxy topicToolbarProxysite.css" style="mc-topic-toolbar-items: ;">
+            <div class="button-group-container-left">
+                <button class="button needs-pie previous-topic-button" type="button" title="导航到上一主题">
+                    <img src="../../../../../../../Skins/Default/Stylesheets/Images/transparent.gif" alt="上一主题" />
+                </button>
+                <div class="button current-topic-index-button disabled"><span class="sequence-index"></span> / <span class="sequence-total"></span></div>
+                <button class="button needs-pie next-topic-button" type="button" title="导航到下一主题">
+                    <img src="../../../../../../../Skins/Default/Stylesheets/Images/transparent.gif" alt="下一主题" />
+                </button>
+            </div>
+        </div>
+        <p> <![CDATA[ ]]></p>
+        <p><span style="color: #696969; font-size: 8pt;">NVIDIA GameWorks Documentation Rev. 1.0.150630 ©2015. NVIDIA Corporation. All Rights Reserved.</span>
+        </p>
+    </body>
+</html>

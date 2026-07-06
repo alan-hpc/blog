@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="840" viewBox="0 0 1000 840" role="img" aria-labelledby="title desc">
+  <title id="title">Seesaw 主循环：两个 KV blocks 与左右半个 O</title>
+  <desc id="desc">FlashMLA seesaw schedule showing local half-PV outside the cooperative box, and cooperative shared-P handoff with NamedBarrier synchronization before remote half-PV.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#57606a"/>
+    </marker>
+    <marker id="arrow-sync" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8250df"/>
+    </marker>
+    <style>
+      .title { font: 700 24px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #24292f; }
+      .subtitle { font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #57606a; }
+      .label { font: 700 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #24292f; }
+      .small { font: 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #57606a; }
+      .small-bold { font: 700 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .note { font: 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #24292f; }
+      .note-small { font: 11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #57606a; }
+      .line { stroke: #d0d7de; stroke-width: 1.3; }
+      .flow { stroke: #57606a; stroke-width: 1.4; fill: none; marker-end: url(#arrow); }
+      .sync-line { stroke: #8250df; stroke-width: 1.3; fill: none; marker-end: url(#arrow-sync); }
+      .blue { fill: #eef7ff; stroke: #4a6fd3; }
+      .green { fill: #f4faf4; stroke: #5fa55f; }
+      .purple { fill: #fbf0fb; stroke: #a33ea1; }
+      .yellow { fill: #fff8e7; stroke: #e0b300; }
+      .gray { fill: #f6f8fa; stroke: #d0d7de; }
+      .sync-pill { fill: #fff; stroke: #8250df; stroke-width: 1; }
+    </style>
+  </defs>
+
+  <rect width="1000" height="840" fill="#fff"/>
+  <text x="500" y="45" text-anchor="middle" class="title">Seesaw 主循环：两个 KV blocks 与左右半个 O</text>
+  <text x="500" y="73" text-anchor="middle" class="subtitle">Cooperative: save sP → barrier → remote half-PV · Ping-Pong-like: next K/V copy overlaps current compute.</text>
+
+  <text x="260" y="98" text-anchor="middle" class="subtitle" font-weight="700">warp group 0</text>
+  <text x="565" y="98" text-anchor="middle" class="subtitle" font-weight="700">warp group 1</text>
+  <line x1="410" y1="118" x2="410" y2="720" class="line"/>
+
+  <text x="72" y="151" class="label">TMA 预装</text>
+  <rect x="455" y="125" width="185" height="32" rx="3" class="blue" stroke-width="1.2"/>
+  <text x="548" y="145" text-anchor="middle" class="small-bold" fill="#4a6fd3">Q: TMA to sQ</text>
+  <rect x="455" y="165" width="185" height="32" rx="3" class="green" stroke-width="1.2"/>
+  <text x="548" y="185" text-anchor="middle" class="small-bold" fill="#5fa55f">K0: TMA to sK0</text>
+
+  <line x1="110" y1="230" x2="900" y2="230" class="line"/>
+  <text x="912" y="233" class="small-bold" fill="#57606a">barrier_Q/K</text>
+
+  <text x="72" y="260" class="label">计算 GEMM1</text>
+  <rect x="150" y="250" width="220" height="30" rx="3" class="green" stroke-width="1.2"/>
+  <text x="260" y="269" text-anchor="middle" class="small-bold" fill="#5fa55f">P0 = QK0ᵀ</text>
+  <rect x="150" y="288" width="220" height="30" rx="3" class="green" stroke-width="1.2"/>
+  <text x="260" y="307" text-anchor="middle" class="small-bold" fill="#5fa55f">softmax P0; update sM</text>
+  <rect x="150" y="326" width="220" height="30" rx="3" class="green" stroke-width="1.2"/>
+  <text x="260" y="345" text-anchor="middle" class="small-bold" fill="#5fa55f">sScale0 → shared memory</text>
+
+  <rect x="455" y="250" width="185" height="32" rx="3" class="blue" stroke-width="1.2"/>
+  <text x="548" y="270" text-anchor="middle" class="small-bold" fill="#4a6fd3">K1: split TMA to sK1</text>
+
+  <rect x="705" y="250" width="175" height="132" rx="3" class="gray" stroke-width="1.2"/>
+  <text x="792" y="276" text-anchor="middle" class="label">shared memory</text>
+  <text x="792" y="303" text-anchor="middle" class="small">sQ, sK0/sK1</text>
+  <text x="792" y="320" text-anchor="middle" class="small">sM + sScale0/1</text>
+  <text x="792" y="337" text-anchor="middle" class="small">sP0 / sP1</text>
+  <text x="792" y="354" text-anchor="middle" class="small">NamedBarrier gates</text>
+  <path d="M 370 341 L 695 315" class="flow"/>
+
+  <line x1="110" y1="380" x2="900" y2="380" class="line"/>
+  <text x="902" y="383" class="small-bold" fill="#57606a">sScale0/1Ready</text>
+
+  <text x="72" y="424" class="label">local half-PV</text>
+  <rect x="150" y="410" width="220" height="32" rx="3" class="green" stroke-width="1.2"/>
+  <text x="260" y="430" text-anchor="middle" class="small-bold" fill="#5fa55f">local: O_L += P0V0L</text>
+
+  <rect x="455" y="410" width="220" height="32" rx="3" class="blue" stroke-width="1.2"/>
+  <text x="565" y="430" text-anchor="middle" class="small-bold" fill="#4a6fd3">softmax P1; save sP1</text>
+  <rect x="455" y="448" width="220" height="32" rx="3" class="green" stroke-width="1.2"/>
+  <text x="565" y="468" text-anchor="middle" class="small-bold" fill="#5fa55f">local: O_R += P1V1R</text>
+
+  <rect x="130" y="498" width="780" height="142" rx="6" fill="none" stroke="#8250df" stroke-width="1.6" stroke-dasharray="7 5"/>
+  <rect x="276" y="486" width="448" height="24" rx="3" fill="#fff" stroke="#8250df" stroke-width="1"/>
+  <text x="500" y="502" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="12" font-weight="700" fill="#8250df">Cooperative: save sP → sync → remote half-PV</text>
+
+  <text x="72" y="548" class="label">sP handoff</text>
+  <rect x="150" y="526" width="220" height="32" rx="3" class="blue" stroke-width="1.2"/>
+  <text x="260" y="546" text-anchor="middle" class="small-bold" fill="#4a6fd3">scale P0; save sP0</text>
+  <rect x="715" y="520" width="165" height="74" rx="3" fill="#f6f8fa" stroke="#8250df" stroke-width="1.2"/>
+  <text x="798" y="546" text-anchor="middle" class="small-bold" fill="#8250df">sP0 / sP1 exchange</text>
+  <text x="798" y="568" text-anchor="middle" class="small">producer fence</text>
+  <text x="798" y="584" text-anchor="middle" class="small">before barrier</text>
+
+  <path d="M 370 540 H 420 V 518 H 705" class="sync-line"/>
+  <path d="M 675 426 C 700 460 708 493 715 528" class="sync-line"/>
+
+  <rect x="610" y="514" width="82" height="20" rx="3" class="sync-pill"/>
+  <text x="651" y="528" text-anchor="middle" class="small-bold" fill="#8250df">sP0Ready</text>
+  <path d="M 715 558 H 690" class="sync-line"/>
+  <rect x="455" y="542" width="220" height="32" rx="3" class="green" stroke-width="1.2"/>
+  <text x="565" y="562" text-anchor="middle" class="small-bold" fill="#5fa55f">wait sP0Ready; O_R += sP0V0R</text>
+
+  <rect x="380" y="585" width="112" height="20" rx="3" class="sync-pill"/>
+  <text x="436" y="599" text-anchor="middle" class="small-bold" fill="#8250df">issued barrier</text>
+  <path d="M 455 572 C 438 575 430 579 430 584" class="sync-line"/>
+  <path d="M 715 580 C 610 602 500 610 382 610" class="sync-line"/>
+  <rect x="150" y="594" width="220" height="32" rx="3" class="green" stroke-width="1.2"/>
+  <text x="260" y="614" text-anchor="middle" class="small-bold" fill="#5fa55f">wait issued; O_L += sP1V1L</text>
+
+  <line x1="110" y1="660" x2="900" y2="660" class="line"/>
+  <text x="72" y="690" class="label">下一轮</text>
+  <rect x="150" y="676" width="220" height="32" rx="3" class="yellow" stroke-width="1.2"/>
+  <text x="260" y="696" text-anchor="middle" class="small-bold" fill="#b38600">next P0 = QK0ᵀ</text>
+  <rect x="455" y="676" width="220" height="32" rx="3" class="yellow" stroke-width="1.2"/>
+  <text x="565" y="696" text-anchor="middle" class="small-bold" fill="#b38600">next K/V TMA to sK</text>
+
+  <rect x="118" y="755" width="764" height="54" rx="3" class="gray" stroke-width="1.4"/>
+  <text x="500" y="779" text-anchor="middle" class="note" font-weight="700">Ping-Pong-like: next K/V TMA overlaps current PV/QK work.</text>
+  <text x="500" y="800" text-anchor="middle" class="note-small">先同步，再读对方的 P；local half-PV 不跨 WG，cooperative 框只标出 shared-P 交接和 remote half-PV。</text>
+</svg>

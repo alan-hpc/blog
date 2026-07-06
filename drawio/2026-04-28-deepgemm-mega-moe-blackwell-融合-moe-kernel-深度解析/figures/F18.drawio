@@ -1,0 +1,58 @@
+<mxfile host="app.diagrams.net" modified="2026-05-05T00:00:00.000Z" agent="Codex" version="24.7.17" type="device">
+  <diagram id="F18" name="F18">
+    <mxGraphModel dx="1000" dy="310" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1000" pageHeight="310" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="c2" value="Programmatic Dependent Launch" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=24;fontColor=#24292f;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="275.24" y="14" width="449.52" height="32.4" />
+        </mxCell>
+        <mxCell id="c3" value="without PDL" style="text;html=1;strokeColor=none;fillColor=none;align=right;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#b85450;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="-16.66" y="99" width="106.66" height="18" />
+        </mxCell>
+        <mxCell id="c4" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff5f0;strokeColor=#b85450;strokeWidth=2;fontFamily=Helvetica;fontColor=#24292f" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="130" y="94" width="260" height="40" />
+        </mxCell>
+        <mxCell id="c5" value="kernel A" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#b85450;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="218.76" y="107" width="82.48" height="18" />
+        </mxCell>
+        <mxCell id="c6" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#b85450;strokeWidth=2;fontFamily=Helvetica;fontColor=#24292f;dashed=1;dashPattern=8 6" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="430" y="94" width="90" height="40" />
+        </mxCell>
+        <mxCell id="c7" value="gap" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#b85450;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="453.91" y="107" width="42.18" height="18" />
+        </mxCell>
+        <mxCell id="c8" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff5f0;strokeColor=#b85450;strokeWidth=2;fontFamily=Helvetica;fontColor=#24292f" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="560" y="94" width="260" height="40" />
+        </mxCell>
+        <mxCell id="c9" value="kernel B" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#b85450;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="648.76" y="107" width="82.48" height="18" />
+        </mxCell>
+        <mxCell id="c10" value="with PDL" style="text;html=1;strokeColor=none;fillColor=none;align=right;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#5fa55f;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="7.52" y="185" width="82.48" height="18" />
+        </mxCell>
+        <mxCell id="c11" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f4faf4;strokeColor=#5fa55f;strokeWidth=2;fontFamily=Helvetica;fontColor=#24292f" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="130" y="180" width="330" height="40" />
+        </mxCell>
+        <mxCell id="c12" value="kernel A tail" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#5fa55f;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="233.61" y="193" width="122.78" height="18" />
+        </mxCell>
+        <mxCell id="c13" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef7ff;strokeColor=#4a6fd3;strokeWidth=2;fontFamily=Helvetica;fontColor=#24292f" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="390" y="180" width="330" height="40" />
+        </mxCell>
+        <mxCell id="c14" value="kernel B setup" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#4a6fd3;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="489.58" y="193" width="130.84" height="18" />
+        </mxCell>
+        <mxCell id="c15" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f4faf4;strokeColor=#5fa55f;strokeWidth=2;fontFamily=Helvetica;fontColor=#24292f" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="720" y="180" width="160" height="40" />
+        </mxCell>
+        <mxCell id="c16" value="B body" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#5fa55f;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="766.82" y="193" width="66.36" height="18" />
+        </mxCell>
+        <mxCell id="c17" value="PDL is an outer-runtime optimization; it does not explain the five-stage fusion inside Mega MoE." style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#57606a;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="104.12" y="265" width="791.76" height="18" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html xmlns:MadCap="http://www.madcapsoftware.com/Schemas/MadCap.xsd" lang="en-us" xml:lang="en-us" data-mc-search-type="Stem" data-mc-help-system-file-name="index.xml" data-mc-path-to-help-system="../../../../../../../" data-mc-target-type="WebHelp2" data-mc-runtime-file-type="Topic" data-mc-preload-images="false" data-mc-in-preview-mode="false" data-mc-toc-path="Developer Tools|Desktop Developer Tools|NVIDIA Nsight Visual Studio Edition|NVIDIA Nsight Visual Studio Edition 4.7|Analysis Tools|CUDA Experiments|Kernel-Level Experiments">
+    <!-- saved from url=(0016)http://localhost -->
+    <head>
+        <meta charset="utf-8" />
+        <meta name="googlebot" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><title>性能计数器</title>
+        <link rel="shortcut icon" href="../../../../../../Resources/MasterPages/nvidia.ico" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/Slideshow.css" rel="stylesheet" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/TextEffects.css" rel="stylesheet" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/Topic.css" rel="stylesheet" />
+        <link href="../../../../../../resources/stylesheets/style.css" rel="stylesheet" />
+        <style>/*&lt;meta /&gt;*/
+
+.button.previous-topic-button
+{
+	-pie-background: url('../../../../../../../Skins/Default/Stylesheets/Images/navigate-previous.png') no-repeat center center, linear-gradient(#ffffff, #ececec);
+}
+
+.button.current-topic-index-button
+{
+	-pie-background: linear-gradient(#ffffff, #ececec);
+}
+
+.button.next-topic-button
+{
+	-pie-background: url('../../../../../../../Skins/Default/Stylesheets/Images/navigate-next.png') no-repeat center center, linear-gradient(#ffffff, #ececec);
+}
+
+.needs-pie
+{
+	behavior: url('../../../../../../../Resources/Scripts/PIE.htc');
+}
+
+</style>
+        <script src="../../../../../../../Resources/Scripts/custom.modernizr.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/jquery.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/foundation.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/plugins.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/require.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/require.config.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/MadCapAll.js">
+        </script>
+        <script src="../../../../../../../Skins/Default/Scripts/Toolbar.js">
+        </script>
+    </head>
+    <body>
+        <p class="MCWebHelpFramesetLink MCWebHelpFramesetLinkTop"><a href="../../../../../../../index.html#developertools/desktop/analysis/report/cudaexperiments/kernellevel/performancecounters.htm">打开带导航的主题视图</a>
+        </p>
+        <div class="MCBreadcrumbsBox_site.css_0"><span class="MCBreadcrumbsPrefix">当前位置： </span><a class="MCBreadcrumbsLink" href="../../../../../developer_tools.htm">开发者工具</a><span class="MCBreadcrumbsDivider"> &gt; </span><a class="MCBreadcrumbsLink" href="../../../../../desktop_devtools.htm">桌面开发者工具</a><span class="MCBreadcrumbsDivider"> &gt; </span><a class="MCBreadcrumbsLink" href="../../../../nvidia_nsight.htm">NVIDIA Nsight Visual Studio Edition</a><span class="MCBreadcrumbsDivider"> &gt; </span><span class="MCBreadcrumbs">性能计数器</span>
+        </div>
+        <div id="pageheader">
+            <h1><span class="SystemTitle">性能计数器</span>
+            </h1><a name="kanchor149"></a>
+            <p style="font-size: 8pt;"><span style="color: #696969;">NVIDIA® Nsight™ Development Platform, Visual Studio Edition 4.7 用户指南</span>
+                <br /><span id="feedbacklink" style="font-size: 8pt; font-weight: normal;"><a href="mailto:devtools-support@nvidia.com?subject=Documentation Feedback: Nsight Visual Studio Edition User Guide">发送反馈</a></span>
+                <br />
+            </p>
+            <hr width="100%" size="0" align="center" />
+        </div>
+        <h3><a id="Overview"></a>概述</h3>
+        <p>
+          提供在 kernel 执行期间从目标设备上收集性能计数器值的能力。
+          大多数其他实验都会使用 Performance Counters 实验所暴露的部分计数器。本实验有助于收集其他实验未涵盖的数据、计算额外的派生指标，或获取实际的原始计数器值以便用外部工具做进一步处理或比较。在同一个 Profile 会话中，可以为不同的目标架构或计数器配置多次实例化该实验。
+        </p>
+        <h5><a id="Background"></a>背景</h5>
+        <p>
+          CUDA 设备的各个硬件单元能够在 kernel 执行期间跟踪一组计数器。这些计数器在运行时更新，可在执行完成后被查询。所观测到的数值代表了硬件单元所看到的实际负载，因此通常被称为原始计数器值。许多性能指标都是直接由一个或多个原始计数器值推导得出的。
+        </p>
+        <p>
+          能够同时收集的计数器总数受硬件和数据收集机制的限制。每种收集机制都各有优缺点：<b>HWPM</b> provider 可以从 CUDA 设备上任意类型的硬件单元收集数据；但对于许多单元，它一次只能对芯片中现有硬件单元的一个子集进行采样。要完整覆盖某种单元类型的所有实例，需要多次重放（replay）通道；这会减慢数据收集速度，并存在跨多次通道错误计入工作量的风险。相比之下，<b>SMPC</b> provider 仅能从流多处理器（SM）收集数据，但它能够同时从所有现有 SM 上收集。如果上述两种机制都无法提供所关注的数据，<b>SW</b> provider 会对实际的 kernel 代码进行插桩，将信息收集作为 kernel 执行的一部分。代码插桩可以一次性从所有活跃 SM 上收集任意数量的计数器，但整体性能开销最高。而且，由于实际的 kernel 代码被修改了，收集 SW 计数器时无法在同一通道中收集其他 provider 的数据。
+        </p>
+        <p>
+          无论是比较来自不同通道的性能计数器值，还是计算带有多输入值的派生指标，考虑调度和 kernel 重放对所获计数器结果的影响都至关重要。虽然每次重放通道都使用完全相同的输入并执行相同的计算，但每次运行在芯片上的执行可能略有不同。差异可能包括：小 kernel 网格使用的硬件单元的差异、实际取得的负载分布的差异，或 warp 调度器执行指令的顺序的差异。尽管这些差异都不会影响 kernel 结果的正确性，但可能会导致所收集的性能计数器值发生变化，特别是当某一硬件单元的所有实例无法被同时观测时。出于这一原因，只有当所有相关计数器结果都来自同一次重放通道时，比较或组合性能计数器值的正确性才能得到保证。如果做不到这一点而必须从多次通道中取数据，建议只组合那些在各自通道中完整覆盖了所有现有单元的性能计数器结果。
+        </p>
+        <h3><a id="Configuration"></a>配置</h3>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <img src="rawcountersconfiguration.png" style="float: right;mc-thumbnail: none;" />
+                    <p>
+          列出所选目标硬件架构上可用的计数器。默认情况下，本实验允许选择尽可能多、可在一次通道中一起收集的计数器。无法再加入当前选择的计数器会变为不可用状态，显示为灰色。
+        </p>
+                    <p style="margin:5px;padding:10px;background-color:#eaefe0">
+          只有当所配置的架构与启动 kernel 网格的 CUDA 设备相匹配时，Performance Counters 实验的实例才会被执行；否则该实验实例会被忽略。如果报告输出中没有显示任何性能计数器信息，请仔细检查架构的配置。
+        </p>
+                    <h5>选项</h5>
+                    <p><b>Architecture</b>
+          实验实例的目标架构。当需要在一次 Profile 捕获中记录来自多个不同 CUDA 设备的 kernel 启动时，可使用不同的目标架构实例化多个 Performance Counters 实验。不同架构上可用的计数器列表各不相同。
+        </p>
+                    <p><b>Collect from all Units</b>
+          通过 HWPM provider 提供的计数器可能无法在一次通道中从所有现有硬件单元上收集。如果禁用该选项，所配置的 HWPM 计数器会在一次通道中从尽可能多的硬件单元上采样，优先考虑收集速度而非整体单元覆盖率。如果启用该选项，会执行多次 kernel 重放通道以确保该计数器从所有现有单元上都被收集到。虽然这会增加额外开销，但可以提供更准确的结果。报告输出中的 <a href="#OutputColumnCoverage">Coverage</a> 列显示数据收集期间被观测到的单元百分比。本选项不会影响来自其他 provider 的计数器。
+        </p>
+                    <p><b>Auto Scheduling</b>
+          可在一次通道中收集的计数器数量受硬件限制；因此，计数器可能变为不可选（变灰）。启用 Auto Scheduling 后，会使用多次通道来收集所请求的数据，从而解除这一限制。所使用的通道数以及计数器到重放通道的实际映射未做进一步规定。如果需要特定的调度方式，请添加多个 Performance Counters 实验实例，每个仅执行一次重放通道。
+</p>
+                    <p>注意，收集所有计数器需要进行多次 kernel 重放通道，可能比较慢。</p>
+                </td>
+            </tr>
+        </table>
+        <p>
+        </p>
+        <h3><a id="Output"></a>输出</h3>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <img src="rawcountersoutput.png" style="float: right;mc-thumbnail: none;" />
+                    <p>
+          在一个表格中报告该 kernel 启动所有适用的 Performance Counters 实验所收集到的信息。每个配置的计数器在表中显示为单独的一行。对于每次执行的重放通道，也会一并报告 kernel 的整体执行时间。
+        </p>
+                    <p style="margin:5px;padding:10px;background-color:#eaefe0">
+          从 SW 计数器 provider 收集计数器可能会显著影响 kernel 的整体性能。这可能导致不同重放通道之间所报告的 kernel 持续时间出现较大波动。但实际的计数器结果并不会受此影响。
+        </p>
+                    <h5>列</h5>
+                    <p><a id="OutputColumnPass"></a><b>Pass</b>
+          该计数器是在哪一次 kernel 重放迭代中被收集到的。便于理解计数器调度，并按本文 <a href="#Background">背景</a> 章节所述确保派生指标的正确性。所有需要多次通道才能从全部硬件单元收集到的 HWPM 计数器都会被报告在 'Pass 0' 上。
+        </p>
+                    <p><a id="OutputColumnGpuValue"></a><b>GPU Value</b>
+          按比例放大到始终覆盖目标设备所有现有单元后的计数器结果值。仅在两种情况下该值是一个估计值：第一，计数器值是跨多个通道的聚合（适用于在 'Pass 0' 中报告的所有计数器）；第二，该计数器未覆盖所有现有硬件单元（适用于覆盖率小于 100% 的所有计数器）。在这两种情况下，估计都假设负载在硬件单元间均匀分布。
+        </p>
+                    <p><a id="OutputColumnCoverage"></a><b>Coverage</b>
+          该计数器观测到的现有硬件单元的百分比。覆盖率越低，对整体 GPU Value 的估计不确定性就越高。
+        </p>
+                    <p><a id="OutputColumnMin"></a><b>Min</b>
+          所观测到的所有硬件单元中报告的最小计数器值。
+        </p>
+                    <p><a id="OutputColumnMax"></a><b>Max</b>
+          所观测到的所有硬件单元中报告的最大计数器值。
+        </p>
+                    <p><a id="OutputColumnAvg"></a><b>Avg</b>
+          所观测到的硬件单元上报告的平均计数器值。
+        </p>
+                    <p><a id="OutputColumnStdDev"></a><b>StdDev</b>
+          所观测到的所有硬件单元中所报告值的标准差。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <div id="pagefooter">
+            <br />
+        </div>
+        <hr style="height: 1px;" width="100%" size="0" align="center" />
+        <script type="text/javascript" src="../../../../../../resources/stylesheets/run_prettify.js?lang=vb" autoload="true">
+        </script>
+        <p>
+        </p>
+        <div class="buttons inline-buttons clearfix topicToolbarProxy topicToolbarProxysite.css" style="mc-topic-toolbar-items: ;">
+            <div class="button-group-container-left">
+                <button class="button needs-pie previous-topic-button" type="button" title="导航到上一篇">
+                    <img src="../../../../../../../Skins/Default/Stylesheets/Images/transparent.gif" alt="上一主题" />
+                </button>
+                <div class="button current-topic-index-button disabled"><span class="sequence-index"></span> / <span class="sequence-total"></span></div>
+                <button class="button needs-pie next-topic-button" type="button" title="导航到下一篇">
+                    <img src="../../../../../../../Skins/Default/Stylesheets/Images/transparent.gif" alt="下一主题" />
+                </button>
+            </div>
+        </div>
+        <p> <![CDATA[ ]]></p>
+        <p><span style="color: #696969; font-size: 8pt;">NVIDIA GameWorks Documentation Rev. 1.0.150630 ©2015. NVIDIA Corporation. All Rights Reserved.</span>
+        </p>
+    </body>
+</html>

@@ -1,0 +1,52 @@
+<svg viewBox='0 0 1020 380' xmlns='http://www.w3.org/2000/svg' font-family='sans-serif'>
+<defs>
+<marker id='ar' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='8' markerHeight='8' orient='auto'>
+<path d='M0,0 L10,5 L0,10 z' fill='#333'/></marker>
+<marker id='arR' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='8' markerHeight='8' orient='auto'>
+<path d='M0,0 L10,5 L0,10 z' fill='#b85450'/></marker>
+<marker id='arG' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='8' markerHeight='8' orient='auto'>
+<path d='M0,0 L10,5 L0,10 z' fill='#5fa55f'/></marker>
+<marker id='arB' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='8' markerHeight='8' orient='auto'>
+<path d='M0,0 L10,5 L0,10 z' fill='#4a6fd3'/></marker>
+</defs>
+<text x='510' y='28' font-size='15' font-weight='700' text-anchor='middle' fill='#1f2328'>FA4 角色分工 + TMEM 跨流水复用</text>
+<text x='510' y='52' font-size='11.5' text-anchor='middle' fill='#666'>一个 SM 上同时跑 ~17 个 warp，靠 mbarrier 串联；TMEM 让累加器跨阶段免拷贝切换</text>
+<rect x='30' y='75' width='225' height='75' rx='6' fill='#ddd' opacity='0.20' stroke='#ddd' stroke-width='1.5'/>
+<text x='142' y='97' font-size='12' text-anchor='middle' font-weight='700' fill='#222'>Sched warp</text>
+<text x='142' y='115' font-size='10.5' text-anchor='middle' fill='#666'>1 warp</text>
+<text x='142' y='133' font-size='10.5' text-anchor='middle' fill='#444' font-style='italic'>tile 调度</text>
+<rect x='280' y='75' width='225' height='75' rx='6' fill='#5fa55f' opacity='0.20' stroke='#5fa55f' stroke-width='1.5'/>
+<text x='392' y='97' font-size='12' text-anchor='middle' font-weight='700' fill='#222'>MMA dispatcher</text>
+<text x='392' y='115' font-size='10.5' text-anchor='middle' fill='#666'>1 thread</text>
+<text x='392' y='133' font-size='10.5' text-anchor='middle' fill='#444' font-style='italic'>tcgen05.mma</text>
+<rect x='530' y='75' width='225' height='75' rx='6' fill='#4a6fd3' opacity='0.20' stroke='#4a6fd3' stroke-width='1.5'/>
+<text x='642' y='97' font-size='12' text-anchor='middle' font-weight='700' fill='#222'>TMA warp(s)</text>
+<text x='642' y='115' font-size='10.5' text-anchor='middle' fill='#666'>2 warps</text>
+<text x='642' y='133' font-size='10.5' text-anchor='middle' fill='#444' font-style='italic'>Q/K/V load</text>
+<rect x='780' y='75' width='225' height='75' rx='6' fill='#a33ea1' opacity='0.20' stroke='#a33ea1' stroke-width='1.5'/>
+<text x='892' y='97' font-size='12' text-anchor='middle' font-weight='700' fill='#222'>Softmax WG-A</text>
+<text x='892' y='115' font-size='10.5' text-anchor='middle' fill='#666'>4 warps</text>
+<text x='892' y='133' font-size='10.5' text-anchor='middle' fill='#444' font-style='italic'>Q-tile A 的 exp + max</text>
+<rect x='30' y='165' width='225' height='75' rx='6' fill='#e0b300' opacity='0.20' stroke='#e0b300' stroke-width='1.5'/>
+<text x='142' y='187' font-size='12' text-anchor='middle' font-weight='700' fill='#222'>Softmax WG-B</text>
+<text x='142' y='205' font-size='10.5' text-anchor='middle' fill='#666'>4 warps</text>
+<text x='142' y='223' font-size='10.5' text-anchor='middle' fill='#444' font-style='italic'>Q-tile B 的 exp + max</text>
+<rect x='280' y='165' width='225' height='75' rx='6' fill='#a8d' opacity='0.20' stroke='#a8d' stroke-width='1.5'/>
+<text x='392' y='187' font-size='12' text-anchor='middle' font-weight='700' fill='#222'>Correction WG</text>
+<text x='392' y='205' font-size='10.5' text-anchor='middle' fill='#666'>4 warps</text>
+<text x='392' y='223' font-size='10.5' text-anchor='middle' fill='#444' font-style='italic'>conditional rescale</text>
+<rect x='530' y='165' width='225' height='75' rx='6' fill='#b85450' opacity='0.20' stroke='#b85450' stroke-width='1.5'/>
+<text x='642' y='187' font-size='12' text-anchor='middle' font-weight='700' fill='#222'>Store warp</text>
+<text x='642' y='205' font-size='10.5' text-anchor='middle' fill='#666'>1 warp</text>
+<text x='642' y='223' font-size='10.5' text-anchor='middle' fill='#444' font-style='italic'>O tile → GMEM</text>
+<text x='510' y='280' font-size='13' font-weight='700' text-anchor='middle' fill='#a33ea1'>同一块 TMEM 区域在不同流水阶段承担不同累加器角色</text>
+<rect x='100' y='300' width='200' height='40' fill='#a33ea1' opacity='0.18' stroke='#a33ea1'/>
+<text x='200' y='325' font-size='11' text-anchor='middle' fill='#4a1a48' font-weight='700'>Phase 1: S = QKᵀ</text>
+<rect x='320' y='300' width='200' height='40' fill='#a33ea1' opacity='0.18' stroke='#a33ea1'/>
+<text x='420' y='325' font-size='11' text-anchor='middle' fill='#4a1a48' font-weight='700'>Phase 2: P = softmax(S)</text>
+<rect x='540' y='300' width='200' height='40' fill='#a33ea1' opacity='0.18' stroke='#a33ea1'/>
+<text x='640' y='325' font-size='11' text-anchor='middle' fill='#4a1a48' font-weight='700'>Phase 3: O = PV</text>
+<line x1='300' y1='320' x2='320' y2='320' stroke='#999' marker-end='url(#ar)'/>
+<line x1='520' y1='320' x2='540' y2='320' stroke='#999' marker-end='url(#ar)'/>
+<text x='830' y='325' font-size='11' fill='#666' font-style='italic'>RF 切换需 spill，TMEM 不需要</text>
+</svg>

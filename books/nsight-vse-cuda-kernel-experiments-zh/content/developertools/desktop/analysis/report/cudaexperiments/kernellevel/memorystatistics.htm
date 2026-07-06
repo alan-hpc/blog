@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html xmlns:MadCap="http://www.madcapsoftware.com/Schemas/MadCap.xsd" lang="en-us" xml:lang="en-us" data-mc-search-type="Stem" data-mc-help-system-file-name="index.xml" data-mc-path-to-help-system="../../../../../../../" data-mc-target-type="WebHelp2" data-mc-runtime-file-type="Topic" data-mc-preload-images="false" data-mc-in-preview-mode="false" data-mc-toc-path="Developer Tools|Desktop Developer Tools|NVIDIA Nsight Visual Studio Edition|NVIDIA Nsight Visual Studio Edition 4.7|Analysis Tools|CUDA Experiments|Kernel-Level Experiments">
+    <!-- saved from url=(0016)http://localhost -->
+    <head>
+        <meta charset="utf-8" />
+        <meta name="googlebot" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><title>内存统计</title>
+        <link rel="shortcut icon" href="../../../../../../Resources/MasterPages/nvidia.ico" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/Slideshow.css" rel="stylesheet" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/TextEffects.css" rel="stylesheet" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/Topic.css" rel="stylesheet" />
+        <link href="../../../../../../resources/stylesheets/style.css" rel="stylesheet" />
+        <style>/*&lt;meta /&gt;*/
+
+.button.previous-topic-button
+{
+	-pie-background: url('../../../../../../../Skins/Default/Stylesheets/Images/navigate-previous.png') no-repeat center center, linear-gradient(#ffffff, #ececec);
+}
+
+.button.current-topic-index-button
+{
+	-pie-background: linear-gradient(#ffffff, #ececec);
+}
+
+.button.next-topic-button
+{
+	-pie-background: url('../../../../../../../Skins/Default/Stylesheets/Images/navigate-next.png') no-repeat center center, linear-gradient(#ffffff, #ececec);
+}
+
+.needs-pie
+{
+	behavior: url('../../../../../../../Resources/Scripts/PIE.htc');
+}
+
+</style>
+        <script src="../../../../../../../Resources/Scripts/custom.modernizr.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/jquery.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/foundation.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/plugins.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/require.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/require.config.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/MadCapAll.js">
+        </script>
+        <script src="../../../../../../../Skins/Default/Scripts/Toolbar.js">
+        </script>
+    </head>
+    <body>
+        <p class="MCWebHelpFramesetLink MCWebHelpFramesetLinkTop"><a href="../../../../../../../index.html#developertools/desktop/analysis/report/cudaexperiments/kernellevel/memorystatistics.htm">打开带导航的主题视图</a>
+        </p>
+        <div class="MCBreadcrumbsBox_site.css_0"><span class="MCBreadcrumbsPrefix">当前位置： </span><a class="MCBreadcrumbsLink" href="../../../../../developer_tools.htm">开发者工具</a><span class="MCBreadcrumbsDivider"> &gt; </span><a class="MCBreadcrumbsLink" href="../../../../../desktop_devtools.htm">桌面开发者工具</a><span class="MCBreadcrumbsDivider"> &gt; </span><a class="MCBreadcrumbsLink" href="../../../../nvidia_nsight.htm">NVIDIA Nsight Visual Studio Edition</a><span class="MCBreadcrumbsDivider"> &gt; </span><span class="MCBreadcrumbs">内存统计</span>
+        </div><a name="kanchor140"></a>
+        <div id="pageheader">
+            <h1><span class="SystemTitle">内存统计</span>
+            </h1>
+            <p style="font-size: 8pt; color: #a9a9a9;"><span style="font-weight: normal; color: #808080;" class="MyVariablesNsightVSEMainHeader"></span>
+                <br /><span id="feedbacklink" style="font-size: 8pt; font-weight: normal;"><a href="mailto:devtools-support@nvidia.com?subject=Documentation Feedback: Parallel Nsight User Guide">发送反馈</a></span>
+                <br />
+            </p>
+            <hr width="100%" size="0" align="center" />
+        </div>
+        <h3><a id="Overview"></a>概述</h3>
+        <p>
+          Nsight 提供了一系列实验，聚焦于 kernel 执行期间内存子系统的使用情况。每个独立实验覆盖 CUDA 编程模型所定义的<a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#memory-hierarchy">内存层次结构</a>中的某一特定区域：
+        </p>
+        <ul>
+            <li value="1"><a href="memorystatisticsglobal.htm">内存统计 — 全局内存</a>
+            收集针对全局内存空间的内存操作信息。关注流多处理器（SM）与该内存操作所涉及的第一级内存缓存之间的通信；它可能是 L1 缓存、L2 缓存或纹理缓存。
+          </li>
+            <li value="2"><a href="memorystatisticslocal.htm">内存统计 — 本地内存</a>
+            收集针对本地内存空间的内存操作信息。关注 SM 与 L1 缓存之间的通信。
+          </li>
+            <li value="3"><a href="memorystatisticsatomics.htm">内存统计 — 原子操作</a>
+            收集原子操作的信息。关注 SM 与 L1 缓存之间的通信。
+          </li>
+            <li value="4"><a href="memorystatisticsshared.htm">内存统计 — 共享内存</a>
+            收集针对共享内存空间的内存操作信息。关注 SM 与片上共享内存之间的通信。
+          </li>
+            <li value="5"><a href="memorystatisticstexture.htm">内存统计 — 纹理内存</a>
+            收集纹理操作的信息。关注 SM 与纹理缓存之间的通信。
+          </li>
+            <li value="6"><a href="memorystatisticscaches.htm">内存统计 — 缓存</a>
+            收集所有已执行内存操作中，L1 缓存和纹理缓存与 L2 缓存之间的通信信息。
+          </li>
+            <li value="7"><a href="memorystatisticsbuffers.htm">内存统计 — 缓冲区</a>
+            收集 L2 缓存与设备内存、系统内存之间的通信信息。
+          </li>
+        </ul>
+        <p>
+          这些内存实验可以彼此独立地采集；为避免不必要的 Profile 开销，应跳过那些覆盖 kernel 未使用的内存层次区域的实验。对于每个已执行的实验，都会在报告页面上生成一个单独的输出标签页；此外，内存实验的结果还会作为输入提供给概述（Overview）标签页。该概述以高层次的性能指标提供完整内存层次结构的汇总。本文档其余部分将更详细地描述概述标签页；如需了解某个具体内存实验的更多信息，请按上方链接进入。
+        </p>
+        <h3><a id="OverviewTab"></a>概述标签页</h3>
+        <p>
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="Chart"></a>图表</h4>
+                    <img src="memorystatisticschart.png" style="float: right;mc-thumbnail: none;" alt="内存统计图表" />
+                    <p>
+          展示 CUDA 编程模型内存层次结构的汇总视图。对于数据采集期间被内存实验覆盖的区域，会报告关键指标；若某区域未被覆盖，或目标设备不支持某条内存数据通路，则图表中对应的区域会显示为灰色。该视图有助于快速概览内存子系统的利用率，并指导使用其他内存标签页进行进一步分析。
+        </p>
+                    <p>
+          图中的节点要么表示某个逻辑内存空间（全局、本地、共享 ……），要么表示芯片上的实际硬件单元（各级缓存、共享内存、设备内存）。对于各类缓存，所报告的百分比为缓存命中率；即在所有请求中，可由该缓存本地数据直接服务的请求占比。命中缓存的请求服务速度远快于未命中的请求；未命中的数据需要从内存层次的另一层获取。
+        </p>
+                    <p>
+          图中节点之间的连线表示从 SM 到内存系统中各内存空间的数据通路。根据配置不同，每条数据通路上会显示不同的指标，包括传输的内存量或实际达到的内存吞吐量。
+        </p>
+                    <h5>选项</h5>
+                    <p><b>View By（查看方式）</b>
+          允许切换每条数据通路上所报告的指标。可用选项包括：
+          <ul><li value="1"><b>Size（大小）</b>：
+              所报告的指标同时覆盖读操作和写操作。从 SM 到各内存空间的数据通路上报告所发起的内存请求总数；这等于触发了相应内存空间传输的、已执行的内存指令数。所有其他数据通路则报告以字节计的内存传输总量。请注意，部分缓存可能只覆盖读操作；因此，将缓存前后的读/写合计流量相除并不一定等于实际的缓存命中率。
+            </li><li value="2"><b>Bandwidth（带宽）</b>：
+              所报告的指标同时覆盖读操作和写操作。将前一节描述的指标与 kernel 执行时间相关联。所报告的吞吐量数值便于与架构峰值进行比较。
+            </li><li value="3"><b>Load Size（加载大小）</b>：
+              报告与第一个选项相同的指标，但仅针对加载（load）操作。按定义不允许加载流量的数据通路不会报告数值。
+            </li><li value="4"><b>Store Size（存储大小）</b>：
+              报告与第一个选项相同的指标，但仅针对存储（store）操作。按定义不允许存储流量的数据通路不会报告数值。
+            </li></ul></p>
+                </td>
+            </tr>
+        </table>
+        <p>
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="Table"></a>表格</h4>
+                    <img src="memorystatisticstable.png" style="float: right;mc-thumbnail: none;" alt="内存统计表格" />
+                    <p>
+          列出每个被覆盖的内存空间的关键性能指标。以原始数值形式重复展示<a href="#Chart">图表</a>中显示的所有信息；此外还提供一些额外指标，例如每个内存空间的重放开销。重放开销的定义为：
+        </p><pre>(Transactions - Requests) / Instruction_Issued</pre>
+                    <p>
+          请求数等于已执行的内存指令数。根据内存访问模式以及所访问的内存空间，单个请求可能需要多个事务才能完成对一个 warp 中所有活跃线程的请求。每多一次内存事务，都会迫使该内存指令重新发射。所需事务越多，指令需要重放的次数也越多；最终阻碍快速向前推进。详情参见<a href="instructionstatistics.htm">指令统计</a>实验。
+        </p>
+                    <h5>列</h5>
+                    <p><b>Total（总计）</b>
+          以整个 kernel 执行过程的总聚合值形式报告各项数值。
+        </p>
+                    <p><b>Per Warp（每 warp）</b>
+          以每个 warp 为单位报告适用的指标。便于快速与 kernel 开发期间得出的估算值进行比较。
+        </p>
+                    <p><b>Per Second（每秒）</b>
+          以与 kernel 执行时长相关的方式报告适用的指标。对于表示传输字节数的行，该列数值即为实际达到的内存吞吐量。目标设备到设备内存的架构峰值内存带宽可在 <a href="../../reportpages/system/systemgpudevices.htm">GPU 设备</a>报告页查看。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <div id="pagefooter">
+            <br />
+        </div>
+        <hr style="height: 1px;" width="100%" size="0" align="center" />
+        <script type="text/javascript" src="../../../../../../resources/stylesheets/run_prettify.js?lang=vb" autoload="true">
+        </script>
+        <p>
+        </p>
+        <div class="buttons inline-buttons clearfix topicToolbarProxy topicToolbarProxysite.css" style="mc-topic-toolbar-items: ;">
+            <div class="button-group-container-left">
+                <button class="button needs-pie previous-topic-button" type="button" title="上一主题">
+                    <img src="../../../../../../../Skins/Default/Stylesheets/Images/transparent.gif" alt="上一主题" />
+                </button>
+                <div class="button current-topic-index-button disabled"><span class="sequence-index"></span> / <span class="sequence-total"></span></div>
+                <button class="button needs-pie next-topic-button" type="button" title="下一主题">
+                    <img src="../../../../../../../Skins/Default/Stylesheets/Images/transparent.gif" alt="下一主题" />
+                </button>
+            </div>
+        </div>
+        <p> <![CDATA[ ]]></p>
+        <p><span style="color: #696969; font-size: 8pt;">NVIDIA GameWorks Documentation Rev. 1.0.150630 ©2015. NVIDIA Corporation. All Rights Reserved.</span>
+        </p>
+    </body>
+</html>

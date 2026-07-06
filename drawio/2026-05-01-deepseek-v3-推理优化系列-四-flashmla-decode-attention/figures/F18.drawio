@@ -1,0 +1,70 @@
+<mxfile host="app.diagrams.net" modified="2026-05-07T00:00:00.000Z" agent="Codex svg-to-drawio" version="24.7.17" type="device">
+  <diagram id="F18" name="F18">
+    <mxGraphModel dx="1000" dy="410" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1000" pageHeight="410" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="c2" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=none;strokeWidth=1;" parent="1" vertex="1">
+          <mxGeometry x="0" y="0" width="1000" height="410" as="geometry" />
+        </mxCell>
+        <mxCell id="c3" value="Dense / Sparse FlashMLA 的接口边界" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=sans-serif;fontSize=24;fontColor=#24292f;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="285.72" y="12.08" width="428.56" height="34.8" as="geometry" />
+        </mxCell>
+        <mxCell id="c4" value="The modern repo supports both V3/R1 dense decode and V3.2-style sparse decode." style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=sans-serif;fontSize=13;fontColor=#57606a;fontStyle=0;" parent="1" vertex="1">
+          <mxGeometry x="235.91" y="49.96" width="528.18" height="18.85" as="geometry" />
+        </mxCell>
+        <mxCell id="c5" value="" style="rounded=1;whiteSpace=wrap;html=1;absoluteArcSize=1;arcSize=8;fillColor=#eef7ff;strokeColor=#4a6fd3;strokeWidth=2;" parent="1" vertex="1">
+          <mxGeometry x="70" y="95" width="390" height="95" as="geometry" />
+        </mxCell>
+        <mxCell id="c6" value="Dense decoding" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=sans-serif;fontSize=15;fontColor=#24292f;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="204.35" y="106.8" width="121.3" height="21.75" as="geometry" />
+        </mxCell>
+        <mxCell id="c7" value="SM90 · MQA · BF16 KV" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=sans-serif;fontSize=13;fontColor=#57606a;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="190.19" y="133.96" width="149.62" height="18.85" as="geometry" />
+        </mxCell>
+        <mxCell id="c8" value="indices = None" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=sans-serif;fontSize=12;fontColor=#24292f;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="217.52" y="157.04" width="94.96" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="c9" value="" style="rounded=1;whiteSpace=wrap;html=1;absoluteArcSize=1;arcSize=8;fillColor=#f4faf4;strokeColor=#5fa55f;strokeWidth=2;" parent="1" vertex="1">
+          <mxGeometry x="540" y="95" width="390" height="95" as="geometry" />
+        </mxCell>
+        <mxCell id="c10" value="Sparse decoding" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=sans-serif;fontSize=15;fontColor=#24292f;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="670.3" y="106.8" width="129.4" height="21.75" as="geometry" />
+        </mxCell>
+        <mxCell id="c11" value="SM90 / SM100 · MQA · FP8 KV" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=sans-serif;fontSize=13;fontColor=#57606a;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="637.18" y="133.96" width="195.64" height="18.85" as="geometry" />
+        </mxCell>
+        <mxCell id="c12" value="indices: (B, S_q, topk)" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=sans-serif;fontSize=12;fontColor=#24292f;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="661.36" y="157.04" width="147.28" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="c13" value="" style="rounded=1;whiteSpace=wrap;html=1;absoluteArcSize=1;arcSize=8;fillColor=#f6f8fa;strokeColor=#d0d7de;strokeWidth=2;" parent="1" vertex="1">
+          <mxGeometry x="120" y="240" width="320" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="c14" value="FP8 KV = 512B NoPE + 16B scale + 128B RoPE" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=sans-serif;fontSize=11;fontColor=#24292f;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="154.66" y="253.12" width="250.68" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="c15" value="" style="rounded=1;whiteSpace=wrap;html=1;absoluteArcSize=1;arcSize=8;fillColor=#fff8e7;strokeColor=#e0b300;strokeWidth=2;" parent="1" vertex="1">
+          <mxGeometry x="560" y="235" width="330" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="c16" value="idx = page(t) · B_page + offset(t)" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=serif;fontSize=15;fontColor=#e0b300;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="597.9" y="245.8" width="254.2" height="21.75" as="geometry" />
+        </mxCell>
+        <mxCell id="c17" value="invalid entries = -1" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=sans-serif;fontSize=12;fontColor=#57606a;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="660.12" y="273.04" width="129.76" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="c18" value="" style="edgeStyle=none;html=1;rounded=0;strokeColor=#57606a;strokeWidth=2;endArrow=block;endFill=1;startArrow=none;startFill=0;" parent="1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="460" y="142" as="sourcePoint" />
+            <mxPoint x="540" y="142" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c19" value="" style="rounded=1;whiteSpace=wrap;html=1;absoluteArcSize=1;arcSize=8;fillColor=#fbf0fb;strokeColor=#a33ea1;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="210" y="345" width="580" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="c20" value="共同目标：让 attention 少读 KV，或者以更适合 kernel 的方式读 KV。" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=sans-serif;fontSize=13;fontColor=#a33ea1;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="295.06" y="356.96" width="409.88" height="18.85" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

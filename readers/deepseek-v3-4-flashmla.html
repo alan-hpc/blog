@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DeepSeek V3 推理系统深度解析（四）：MLA Prefill/Decode 分流，FlashMLA 与 Latent KV Kernel</title>
+
+<!-- table-css-injected -->
+  <!-- Fonts: JetBrains Mono for code -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+  <!-- Highlight.js: Monokai Sublime theme -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/monokai-sublime.min.css">
+  <!-- KaTeX -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <!-- Shared reader styles -->
+  <link rel="stylesheet" href="/blog/readers/reader.css">
+</head>
+<body>
+
+<div id="lb" onclick="lbClose(event)">
+  <span id="lb-close" onclick="lbHide()">&#x2715;</span>
+  <img id="lb-img" src="" alt="">
+</div>
+
+<nav id="sb">
+  <div id="sb-title">
+    <p class="zh"><a href="https://alan-hpc.github.io/blog/" target="_blank">Yang Min · 技术博客</a></p>
+    <h2 class="section-h lv1" id="DeepSeek-V3-推理系统深度解析四MLA-PrefillDecode-分流FlashMLA">DeepSeek V3 推理系统深度解析（四）：MLA Prefill/Decode 分流，FlashMLA…</h2>
+  </div>
+  <div class="ti tl1"><a href="#0--本篇问题">0 · 本篇问题</a></div>
+  <div class="ti tl1"><a href="#1--mla-与-absorb">1 · MLA 与 Absorb</a></div>
+  <div class="ti tl2"><a href="#11-完整-kvmhagqamqa">1.1 完整 K/V：MHA/GQA/MQA</a></div>
+  <div class="ti tl2"><a href="#12-latent-cachemla-存什么">1.2 Latent cache：MLA 存什么</a></div>
+  <div class="ti tl2"><a href="#13-absorb-前后公式与图中位置">1.3 Absorb 前后：公式与图中位置</a></div>
+  <div class="ti tl1"><a href="#2--prefill--decode-分流">2 · Prefill / Decode 分流</a></div>
+  <div class="ti tl2"><a href="#21-prefill-路径">2.1 Prefill 路径</a></div>
+  <div class="ti tl2"><a href="#22-decode-路径">2.2 Decode 路径</a></div>
+  <div class="ti tl1"><a href="#3--flashmla-kernel">3 · FlashMLA Kernel</a></div>
+  <div class="ti tl2"><a href="#31-任务划分">3.1 任务划分</a></div>
+  <div class="ti tl2"><a href="#32-kernel-主循环">3.2 Kernel 主循环</a></div>
+  <div class="ti tl2"><a href="#33-seesaw-调度">3.3 Seesaw 调度</a></div>
+  <div class="ti tl2"><a href="#34-hopper-数据通路">3.4 Hopper 数据通路</a></div>
+  <div class="ti tl1"><a href="#4--资源与边界">4 · 资源与边界</a></div>
+  <div class="ti tl2"><a href="#41-资源账本">4.1 资源账本</a></div>
+  <div class="ti tl2"><a href="#42-register-账本">4.2 Register 账本</a></div>
+  <div class="ti tl2"><a href="#43-吸收边界">4.3 吸收边界</a></div>
+  <div class="ti tl1"><a href="#5--优化点查漏">5 · 优化点查漏</a></div>
+</nav>
+
+<div id="reader">
+  <div id="reader-inner">
+
+    <header class="book-header">
+      <p class="kicker"><a href="https://alan-hpc.github.io/blog/" target="_blank">Yang Min · 技术博客</a> · 离线阅读版</p>
+      <h1>DeepSeek V3 推理系统深度解析（四）：MLA Prefill/Decode 分流，FlashMLA 与 Latent KV Kernel</h1>
+      <p class="sub">2026-05-04</p>
+      <div style="margin-top:16px;padding:12px 16px;border:1px solid var(--rule);
+                  border-radius:4px;background:var(--paper);font-family:-apple-system,sans-serif;
+                  font-size:12.5px;line-height:2.0;color:var(--muted);">
+        <span style="font-size:10px;letter-spacing:.9px;text-transform:uppercase;
+                     color:#888;display:block;margin-bottom:6px;">原文来源</span>
+        <a href="https://alan-hpc.github.io/blog/posts/2026-05-01-deepseek-v3-推理优化系列-四-flashmla-decode-attention/" style="color:var(--accent);text-decoration:none;" target="_blank">DeepSeek V3 推理系统深度解析（四）：MLA Prefill/Decode 分流，FlashMLA 与 Latent KV Kernel</a>
+        · Yang Min · 2026
+      </div>
+    </header>
+
+    <p class="zh">FlashMLA 解决的问题是：MLA 的 latent KV 压缩节省了 KV cache 存储，但<b>把 decode 时的 attention 计算推向了一个标准 FlashAttention 无法高效处理的形状</b>。标准 MHA decode 的 Q 形状是 [B, 1, H, d]，逐 head 计算；MLA decode 的 Q 需要先把 latent 解压还原，再按压缩后的 KV 做 attention，tile 形状和 warp 分配策略都和 MHA 不同。FlashMLA 针对这个形状重写了 tile scheduler，让 decode 阶段的内存带宽利用率不因 latent 解压而下降。</p><div class="callout"><p class="zh"><b>系列目录</b> ：1. DeepSeekV3 开篇、PD 分离与 Cross-node EP / 2. DeepEP HT/LL Dispatch 与 Buffer 协议 / 3. DeepGEMM Expert Compute 与 FP8 Layout / 4. MLA Prefill/Decode 分流与 FlashMLA Latent KV / 5. DBO 与五段 Decode 流水 / 6. MTP 投机采样 / 7. DSA 稀疏注意力 / 8. vLLM 源码全链路与 MoE Backend</p></div><section id="0--本篇问题"><h2 id="0--本篇问题" class="section-h lv1">0 · 本篇问题</h2><p class="zh">这一篇先把 attention family 的变化讲顺：MHA/GQA/MQA 都是在“完整 K/V 空间”里改变
+KV head 共享方式，而 MLA 进一步把历史 cache 压到 latent 空间；真正让 decode 热路径
+变轻的是后面的 K/V absorb，把历史侧恢复 K/V 的线性层搬到当前 query 与 output
+两侧。弄清这条线以后，再看 vLLM 里的 prefill/decoding 分流，以及 FlashMLA 的
+MQA transpose、persistent task division、warp-group seesaw、资源占用与吸收边界。</p><p class="zh">MLA 最早在 DeepSeek-V2 论文里作为模块契约提出，V3/R1 继续沿用这条 cache
+思路。先看论文原图：它把输入 $h_t$ 分成 query latent $c_t^Q$、KV latent
+$c_t^{KV}$ 和 RoPE 分支；斜线阴影标出的不是完整 K/V，而是推理阶段真正需要缓存的
+latent KV。这个图回答“MLA 在模型层想减少什么”。</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F1.drawio</div>
+  </div>
+  <figcaption>P1  DeepSeek-V2 论文 Figure 2 的 MLA 子图：缓存 latent KV 与 RoPE 分支，是后续 FlashMLA 实现图的模型契约</figcaption>
+</figure>
+<p class="zh">再看 MLA Module 的全局图：一条 hidden state 进入 MLA 后，会分成
+query latent、KV latent 与 RoPE 分支；prefill 可以把这些分支恢复成 per-head
+Q/K/V，而 decode 会尽量让历史 KV 留在 latent cache 里。这张图先建立“MLA 是一个
+模块契约，不只是 FlashMLA kernel”的全局概念。</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F2.drawio</div>
+  </div>
+  <figcaption>MLA Module  全局图：hidden state 分成 query latent、KV latent 与 RoPE 分支，后续 prefill/decode 只是在这个契约上选择不同计算路径</figcaption>
+</figure>
+<section id="1--mla-与-absorb"><h2 id="1--mla-与-absorb" class="section-h lv1">1 · MLA 与 Absorb</h2><p class="zh">把视角从 kernel 拉回到 cache：decode 每生成一个新 token，都要用当前 token 的
+query 去扫描所有历史 token 的 K/V。于是优化可以问两个很具体的问题：</p><ol class="zh-list"><li>每个历史 token 在 cache 里到底存几条 K/V stream？</li><li>这些历史状态在每一步 decode 时，是否还要恢复成完整 K/V？</li></ol><p class="zh">MHA、GQA、MQA 回答的是第一个问题：减少或共享完整 K/V stream。MLA 回答的是更深一层：
+不要在 cache 里存完整 K/V，而是存一个能恢复 K/V 的 latent 状态。Absorb 再往前一步：
+让图中 <code class="ic">kv_b_proj</code> 的 K/V 上投影不再对每个历史 token 执行，decode 热路径上连
+“恢复历史完整 K/V”这件事也不要做。</p><h3 id="11-完整-kvmhagqamqa" class="section-h lv2">1.1 完整 K/V：MHA/GQA/MQA</h3><p class="zh">普通 attention 的语义很朴素：hidden state $h$ 经过三组投影得到 $Q,K,V$，再算
+score、softmax 和输出。MHA/GQA/MQA 都没有改变这个语义，它们只是在 K/V head 的数量上
+做共享。</p><div class="table-scroll"><table class="data-table"><thead><tr><th>形态</th><th>历史 cache 里的一条 token</th><th>它解决什么</th><th>它没有解决什么</th></tr></thead><tbody><tr><td>MHA</td><td>$H_Q$ 组完整 K/V</td><td>每个 Q head 都有独立 K/V，表达最直接</td><td>KV cache 最大</td></tr><tr><td>GQA</td><td>$H_{KV}$ 组完整 K/V，且 $1<h_{kv}<h_q$</td><td>多个 Q heads 共享一组 K/V，cache 变小</td><td>存的仍是完整 K/V</td></tr><tr><td>MQA</td><td>1 组完整 K/V</td><td>所有 Q heads 共享同一条 K/V stream</td><td>存的仍是完整 K/V，只是 stream 数最少</td></tr></tbody></table></div><p class="zh">所以从 MHA 到 GQA/MQA，本质是把 cache 里的“完整 K/V stream 数量”降下来：</p><div class="callout"><p class="zh no-indent"><b>MHA/GQA/MQA：cache 缩小来自 K/V head 数</b></p>$$
+\mathrm{KVCacheBytes}
+\propto
+T\cdot H_{KV}\cdot(d_k+d_v).
+$$</div><p class="zh">这里 $T$ 是历史长度，$H_{KV}$ 是需要保存的 K/V head 数。MHA 里 $H_{KV}=H_Q$；
+GQA 让 $H_{KV}$ 变小；MQA 让 $H_{KV}=1$。但是无论怎么共享，cache 里存的对象仍然是
+已经展开好的 $K,V$。</p><p class="zh">这一点很重要，因为 MLA 不是继续减少 $H_{KV}$，而是换了 cache 里的对象。</p><div class="callout"><p class="zh no-indent"><b>普通 attention 的 baseline 账本</b></p>$$
+Q=hW_q,\qquad K=hW_k,\qquad V=hW_v,
+$$$$
+QK^T=(hW_q)(hW_k)^T=hW_qW_k^Th^T,
+$$$$
+P=\operatorname{softmax}(QK^T),\qquad
+O=PV=P(hW_v),\qquad
+Y=OW_o=PhW_vW_o.
+$$</div><p class="zh">这张账本后面还会用到：score 侧有 $K^T$，output 侧有 $VW_o$。只有线性层能被移动，
+softmax 语义不能动。</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F3.drawio</div>
+  </div>
+  <figcaption>普通 Attention 公式推导：把 score 与 output projection 的矩阵链展开，找出后续可以吸收的位置</figcaption>
+</figure>
+<h3 id="12-latent-cachemla-存什么" class="section-h lv2">1.2 Latent cache：MLA 存什么</h3><p class="zh">MLA 把问题换了一个层次。历史 token 不再直接写入完整 $K,V$，而是先投到低维
+$c_{KV}$；需要参与 attention 时，再用两个上投影矩阵恢复出 $K,V$。</p><p class="zh">可以把它理解成一个“cache 合约”：</p><div class="table-scroll"><table class="data-table"><thead><tr><th>cache 写入时</th><th>cache 里留下什么</th><th>如果需要完整 K/V</th></tr></thead><tbody><tr><td>hidden state $h$ 进 MLA</td><td>$c_{KV}=hW_{d,KV}$，以及 RoPE 分支 $k^R$</td><td>$K=c_{KV}W_{u,k}$，$V=c_{KV}W_{u,v}$</td></tr></tbody></table></div><p class="zh">这一步的意义是容量：cache 不再跟完整 K/V 的维度绑定，而是跟 latent 维度绑定。对长上下文
+推理来说，历史 cache 是反复被读的最大状态之一，先把它压小是 MLA 的第一层收益。</p><p class="zh">但 naive MLA 还有一个问题：decode 时历史 token 很多，当前 token 很少。如果每一步都
+先把所有历史 $c_{KV}$ 恢复成完整 $K,V$，就会把“cache 变小”的收益又花在恢复计算和
+中间张量物化上。</p><div class="callout"><p class="zh no-indent"><b>MLA naive 形态：cache 小了，但 compute 还没省</b></p>$$
+c_{KV}=hW_{d,KV},\qquad
+Q=hW_q,
+$$$$
+K=c_{KV}W_{u,k},\qquad
+V=c_{KV}W_{u,v},\qquad
+Y=\operatorname{softmax}(QK^T)VW_o.
+$$</div><p class="zh">所以到这里要分清两件事：</p><ul class="zh-list"><li>MLA latent cache 解决“历史状态存得太宽”。</li><li>Absorb 解决“decode 每步都恢复历史 K/V”。</li></ul><h3 id="13-absorb-前后公式与图中位置" class="section-h lv2">1.3 Absorb 前后：公式与图中位置</h3><p class="zh">Prefill 和 decode 的边界在这里出现。Prefill 里 prompt 长度为 $T$，query 和 key 都是长序列；
+恢复 per-head K/V 后交给 MHA/FlashAttention，工程路径很成熟。Decode 则完全不同：当前
+query 往往只有 1 个 token，但历史 cache 有 $T$ 个 token。Absorb 的全部收益都来自这个
+不对称性：把原来发生在历史侧、会乘上 $T$ 的上投影，搬到当前 query 或 output projection
+这一侧。</p><p class="zh">先写不吸收的 decode 路径。这里 $C_{KV}$ 是所有历史 token 的 latent cache，$K^R_{\mathrm{hist}}$
+是 RoPE 分支；<code class="ic">kv_b_proj</code> 的两个上投影会先把历史侧恢复成完整 noPE $K/V$：</p><div class="callout"><p class="zh no-indent"><b>吸收前：历史侧恢复完整 K/V</b></p>$$
+\begin{array}{lll}
+K^C_{\mathrm{hist}} &=& C_{KV}W_{UK},\\[0.35em]
+V^C_{\mathrm{hist}} &=& C_{KV}W_{UV},\\[0.35em]
+S &=& Q^C(K^C_{\mathrm{hist}})^T + Q^R(K^R_{\mathrm{hist}})^T,\\[0.35em]
+Y &=& \operatorname{softmax}(S)V^C_{\mathrm{hist}}W_O .
+\end{array}
+$$</div><p class="zh">吸收后，<code class="ic">kv_b_proj</code> 不再对每个历史 token 物化完整 $K/V$。K-side 把 $W_{UK}^T$
+搬到 query noPE 路径；V-side 把 $W_{UV}$ 合进 output projection。RoPE 分支不动：</p><div class="callout"><p class="zh no-indent"><b>吸收后：score / PV 都直接读 latent cache</b></p>$$
+\begin{array}{lll}
+\widetilde Q^C &=& Q^C W_{UK}^T,\\[0.35em]
+S &=& \widetilde Q^C C_{KV}^T + Q^R(K^R_{\mathrm{hist}})^T,\\[0.35em]
+O_{\mathrm{latent}} &=& \operatorname{softmax}(S)C_{KV},\\[0.35em]
+Y &=& O_{\mathrm{latent}}(W_{UV}W_O).
+\end{array}
+$$</div><p class="zh">F2 比抽象定位图更适合作为 absorb 解释图。左边是 MLA decode 源流程，右边是
+TRTLLM-MLA / FlashMLA 视角：它直接把“从哪吸收、吸收到哪、cache 里到底还剩什么”
+摆在同一张图里。</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F4.drawio</div>
+  </div>
+  <figcaption>MLA decode / FlashMLA 对照：左侧是源 decode 流程，右侧显示 W_UK_T 改写 query、FlashMLA 直接消费 latent KV cache，以及 W_UV 在 attention 外侧恢复输出维度</figcaption>
+</figure>
+<div class="table-scroll"><table class="data-table"><thead><tr><th>图中位置</th><th>具体含义</th><th>对应公式</th></tr></thead><tbody><tr><td>右侧 <code class="ic">kv_cache</code></td><td>cache 里拼的是 <code class="ic">KV_C_Normed</code> 与 <code class="ic">K_PE</code>，也就是 $[C_{KV};K^R]$，不是完整 per-head $K/V$</td><td>FlashMLA 直接读 $C_{KV}$ 和 $K^R_{\mathrm{hist}}$</td></tr><tr><td>右侧 <code class="ic">W_UK_T</code></td><td>K-side absorb 的目标位置：当前 token 的 noPE query 先乘 $W_{UK}^T$，再与 RoPE query 拼成 FlashMLA 的 Q</td><td>$\widetilde Q^C=Q^CW_{UK}^T$</td></tr><tr><td>左侧顶端 <code class="ic">W_UV / W_UV Out Transpose</code></td><td>V-side absorb 的目标位置：FlashMLA 先输出 latent 维度，attention 外侧再恢复到模型输出维度</td><td>$Y=O_{\mathrm{latent}}(W_{UV}W_O)$</td></tr><tr><td><code class="ic">K_PE</code> / <code class="ic">q_pe</code> RoPE 分支</td><td>位置编码不是共享线性上投影，不能同样吸收；它仍然拼回 score 输入</td><td>$Q^R(K^R_{\mathrm{hist}})^T$ 保留在 score 中</td></tr></tbody></table></div><p class="zh">两个矩阵都吸收后，decode 阶段不需要把 cache 恢复成完整 K/V。换句话说，latent cache
+可以直接作为 FlashMLA 看到的 K/V 载体，只是 query 和 output 两侧已经提前接住了
+原本属于 $W_{UK}$ 与 $W_{UV}$ 的线性变换。</p><p class="zh">第 1 节的结论可以压成三句话：</p><ul class="zh-list"><li>MHA/GQA/MQA：还是完整 K/V，只是 K/V stream 数不同。</li><li>MLA：cache 改存 latent，但 naive 路径仍可能恢复完整 K/V。</li><li>MLA + absorb：decode 热路径直接读 latent cache，完整历史 K/V 不再物化。</li></ul><p class="zh">只有最后一步成立，FlashMLA 才能把 decode attention 写成一个直接读 latent KV cache
+的 kernel。RoPE 分支没有被吸收，它仍然作为额外维度拼回 score；被 FlashMLA 直接消费的
+latent cache 主要对应 noPE 的 K/V 主体。</p><section id="2--prefill--decode-分流"><h2 id="2--prefill--decode-分流" class="section-h lv1">2 · Prefill / Decode 分流</h2><h3 id="21-prefill-路径" class="section-h lv2">2.1 Prefill 路径</h3><p class="zh">MLA prefill 源图里的关键不是某个算子名字，而是阶段选择：prefill 的
+prompt 长度大，full attention 的 $T\times T$ 结构明显，恢复 per-head $K,V$ 后交给
+已有 MHA/FlashAttention 路径更自然。cache 写入时仍然只留下 latent 状态，为后续
+decode 服务。</p><div class="callout"><p class="zh no-indent"><b>Prefill 阶段的 MLA 张量展开</b></p>$$
+c_Q,c_{KV},k^R = hW_{qkv,a},\qquad
+Q=[q^C;q^R]\in\mathbb{R}^{B\times T\times128\times192},
+$$$$
+K=[k^C;k^R]\in\mathbb{R}^{B\times T\times128\times192},
+\qquad
+V=v^C\in\mathbb{R}^{B\times T\times128\times128}.
+$$</div>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F5.drawio</div>
+  </div>
+  <figcaption>MLA prefill 源流程：长序列阶段恢复 per-head K/V，用 MHA/FlashAttention 吃吞吐</figcaption>
+</figure>
+<p class="zh">调研文档里的实现 trace 以 V2-Lite 为例，$\mathrm{head\_num}=16$、$\mathrm{seq\_len}=68$；
+换到 V3/R1 主模型时，head 数扩大到 128，但路径语义不变：prefill 面向长 prompt
+吞吐，恢复 per-head Q/K/V 后交给 full attention；cache 写入仍保留 $c_{KV}+k^R$。</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F6.drawio</div>
+  </div>
+  <figcaption>Prefill trace：长 T 阶段恢复 per-head Q/K/V 并走 full attention</figcaption>
+</figure>
+<h3 id="22-decode-路径" class="section-h lv2">2.2 Decode 路径</h3><p class="zh">Decode 的输入只有当前 token，历史全在 cache 里。MLA decode 源图
+把当前 query 先经过 <code class="ic">q_b_proj</code> 得到 $q^C,q^R$，再用 $W_{UK}^T$ 把 noPE query
+投到 latent KV 的维度；cache 侧直接读取 $[c_{KV};k^R]$，形成 MQA 视角下的
+FlashMLA 输入。实现 trace 里的 decoding 例子假设 batch=1、历史 cache sequence
+length=68；F2 右侧虚线框中的部分就是后续 FlashMLA kernel 要做的工作。</p><p class="zh">这段需要先抓住两个边界。第一，矩阵吸收之后，cache 已经可以直接作为 attention 的
+K/V 操作数，decode 不再先恢复完整的 per-head $K,V$。第二，每个历史 token 的
+$c_{KV}$ 会被 128 个 query heads 共享，所以 KV 侧 head 数是 1。换句话说，
+FlashMLA 不是普通 MHA，而是一个 KV 共享的 MQA：多条 query head rows 同时看同一条
+latent KV stream。</p><div class="callout"><p class="zh no-indent"><b>Decode 阶段的 MQA 视角</b></p>$$
+Q_{MQA}=[q^C W_{UK}^T;q^R]\in\mathbb{R}^{B\times128\times576},
+\qquad
+KV_{cache}=[c_{KV};k^R]\in\mathbb{R}^{T\times1\times576}.
+$$</div><p class="zh">到这里，FlashMLA 的输入形状就可以写成三条张量契约：</p><div class="table-scroll"><table class="data-table"><thead><tr><th>张量</th><th>形状语义</th><th>例子</th></tr></thead><tbody><tr><td><code class="ic">q</code></td><td>$[B,1,H,D_{qk}]$</td><td>$[2,1,128,576]$</td></tr><tr><td><code class="ic">k</code></td><td>$[B,T,1,D_{qk}]$</td><td>$[2,2048,1,576]$</td></tr><tr><td><code class="ic">v</code></td><td>$[B,T,1,D_v]$</td><td>$[2,2048,1,512]$</td></tr></tbody></table></div><p class="zh">这里最容易忽略的是 <code class="ic">q</code> 的 transpose。常规 MHA 是一个 Q head 对应一个 K/V head；
+MQA 则是多个 Q heads 对应一个 K/V head。FlashMLA 会把 $q$ 从
+$[B,1,H,D_{qk}]$ 转成 $[B,H,1,D_{qk}]$。在例子里就是：</p><div class="callout"><p class="zh no-indent"><b>MQA transpose：把 head 轴改写成 query-row 轴</b></p>$$
+q_{raw}\in\mathbb{R}^{2\times1\times128\times576}
+\quad\Longrightarrow\quad
+q_{mqa}\in\mathbb{R}^{2\times128\times1\times576}.
+$$</div><p class="zh">这个转换不改变 score 的数学含义，只改变 kernel 看到的并行形状：128 个 query heads
+被解释成 $S_q=128$ 行 query，而 $k,v$ 仍然保持 $H_{KV}=1$。因此它很像
+<code class="ic">seq_len=128</code> 的 extend attention，只是这 128 行不是 128 个不同 token，而是同一个
+decode token 的 128 个 heads。后面的 <code class="ic">block_m=64</code>、两个 Q tiles、persistent task
+division，都是从这个形状改写自然推出来的。</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F7.drawio</div>
+  </div>
+  <figcaption>FlashMLA 输入：MQA transpose 把 128 个 Q heads 改写成 KV-shared MQA 的 query rows</figcaption>
+</figure>
+<section id="3--flashmla-kernel"><h2 id="3--flashmla-kernel" class="section-h lv1">3 · FlashMLA Kernel</h2><h3 id="31-任务划分" class="section-h lv2">3.1 任务划分</h3><p class="zh">源文这里分三步讲：persistent kernel、Q 的划分、K/V 的划分。H100/H800 有 132 个
+SM，所以 FlashMLA 直接启动 132 个 resident CTAs，让一个 block 基本接管一个 SM
+上的 shared memory、register 与 warp resources。示例 grid 写成 $[2,1,66]$，乘起来
+正好是 132：第一维对应 Q 侧两个 $block_m=64$ 的 query tiles，第三维把这些常驻 CTA
+摊到所有 SM 上。</p><p class="zh">Q 侧的来源就是前面的 MQA transpose。一个 batch 的当前 decode token 现在看起来是
+$[128,576]$，因为 128 个 heads 已经被改写成 query-row 维度。<code class="ic">block_m=64</code> 意味着
+一个 CTA 一次加载 $[64,576]$ 的 Q tile，所以同一个 decode token 的 Q 会被两个 CTA
+覆盖。</p><p class="zh">K/V 侧按 sequence 维度切，<code class="ic">block_n=64</code>。K 和 V 实际来自同一段 latent cache buffer，
+这里只要看 K 的切法即可：每个 batch 的历史序列被切成若干 64-token tiles，然后所有
+batch 的 tile 数累加成全局 work units。metadata 记录每个 CTA 要处理的 batch idx
+范围与 token range。来到某个 sequence 尾部时，如果剩余 tile 不足以填满一个 SM，
+scheduler 会把下一个 batch 的 tile 也塞进同一个 CTA。结果就是：一个 CTA 可能处理
+多个 batch，同一个 batch 也可能被多个 CTA 计算出 partial outputs。</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F8.drawio</div>
+  </div>
+  <figcaption>任务划分：grid=[2,1,66]、block_m=64 与 block_n=64 共同把 ragged KV 摊给 132 个常驻 CTA</figcaption>
+</figure>
+<h3 id="32-kernel-主循环" class="section-h lv2">3.2 Kernel 主循环</h3><p class="zh">进入 kernel 后，每个 CTA 一次处理某个 batch 的一段 partial result。它先加载一次
+$Q\in\mathbb{R}^{64\times576}$，然后沿着 metadata 给出的 K/V tiles 循环：
+每轮加载 $K,V$ 的一个 tile，计算 $QK^T$，更新 online softmax 的 scale，再对已有
+$O$ 做 rescale 并累加新的 $PV$。循环结束时，这个 CTA 得到的不是全局最终输出，而是
+当前 split 的 partial $O$、row max 与 row sum。</p><p class="zh">把这个过程拆开看，计算图里其实有三个状态在循环里穿针引线。第一，$Q$ tile
+只加载一次并留在 shared memory；第二，K/V tile 按 <code class="ic">iter 0, iter 1, iter 2, ...</code>
+不断流过同一个 CTA；第三，online softmax 不只产出 $P$，还维护 row max 与 row sum，
+让新一轮 score 进来时可以先把旧的 $O$ rescale 到同一归一化尺度，再累加新的 $PV$。
+所以 block 内的主循环不是“GEMM1 -> softmax -> GEMM2”三步这么简单，而是：</p><div class="callout"><p class="zh no-indent"><b>Block 内 online attention loop</b></p>$$
+S_i=QK_i^T,\qquad
+(P_i,m_i,\ell_i)=\mathrm{online\_softmax}(S_i,m_{i-1},\ell_{i-1}),
+$$$$
+O_i=\alpha_i O_{i-1}+P_iV_i .
+$$</div><p class="zh">这也解释了源文里“最后需要一个额外 kernel”的原因。任务划分阶段为了负载均衡，可能
+把同一个 batch 的 KV 范围分给多个 CTA；这些 CTA 分别写回 partial result。后处理
+kernel 再用同一套 online-softmax 合并规则，把多个 split 的 $O$、max、sum 规约成
+最终 decode 输出。</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F9.drawio</div>
+  </div>
+  <figcaption>Block 内计算流程：Q 只加载一次，K/V tile 循环驱动 score、online softmax、rescale 与 O 累加</figcaption>
+</figure>
+<p class="zh">因此 FlashMLA 的速度不是“单个 block 算完一切”，而是两个层次配合：block 内用
+online softmax 保证分块 attention 数学等价；block 间用 split-reduce 把负载均衡造成的
+partial outputs 合并回来。</p><h3 id="33-seesaw-调度" class="section-h lv2">3.3 Seesaw 调度</h3><p class="zh">对照 FlashMLA main 的 <code class="ic">splitkv_mla.cuh</code>，这里不能理解成“WG1 负责加载，WG0 负责
+计算”。一个 CTA 仍是 256 threads，也就是 8 个 warps / 2 个 warp groups；TMA copy
+由特定 thread/lane 发起，Q 先被搬到 <code class="ic">sQ</code>，K/V 用 <code class="ic">sK0/sK1</code> 两个 shared buffers
+承接。真正的 seesaw 是以两个 KV blocks 为一组：WG0 维护左半输出 $O_L$，WG1
+维护右半输出 $O_R$，同时通过 shared memory 交换 softmax 后的 $P$ 与 rescale 系数。</p><p class="zh">更贴近实现的主循环可以写成：</p><ol class="zh-list"><li>CTA 预装当前 batch 的 $Q$，并预装 $K_0/K_1$ 到 <code class="ic">sK0/sK1</code>；每个
+$64\times576$ K block 又拆成 9 个 $64\times64$ TMA tiles，GEMM 会边等边算。</li><li>WG0 计算 $P_0=QK_0^T$，WG1 计算 $P_1=QK_1^T$。这是两个 KV blocks 的并行入口，
+不是单纯一个 WG 算、另一个 WG 只搬运。</li><li>WG0 对 $P_0$ 做 online softmax，更新 shared <code class="ic">sM</code>，写出 <code class="ic">sScale0</code>，rescale
+$O_L$ 并计算 $O_L \mathrel{+}= P_0V_{0L}$。</li><li>WG1 等 <code class="ic">sScale0</code>，再把 $P_1$ 合进同一个 running max，写出 <code class="ic">sScale1</code>，rescale
+$O_R$ 并计算 $O_R \mathrel{+}= P_1V_{1R}$。</li><li>WG0 等 <code class="ic">sScale1</code> 后，把 $P_0$ 乘上新的 scale 并写入 <code class="ic">sP0</code>；WG1 读取 <code class="ic">sP0</code>，
+补上 $O_R \mathrel{+}= P_0V_{0R}$。</li><li>WG1 把 $P_1$ 写入 <code class="ic">sP1</code>；WG0 读取 <code class="ic">sP1</code>，补上
+$O_L \mathrel{+}= P_1V_{1L}$。</li><li>当 <code class="ic">K0/K1</code> 不再被当前 GEMM 使用时，对应 warp group 立刻发起下一轮 K/V TMA
+copy，把内存延迟藏在当前 PV/QK 计算后面。</li></ol><p class="zh">这样一轮结束后，$O_L$ 与 $O_R$ 合起来等价于对 $K_0,K_1$ 两个 KV blocks 做了一次
+标准 online attention update。需要注意的是，每轮在 shared memory 里同步的是
+running max <code class="ic">sM</code>、rescale 系数 <code class="ic">sScale0/sScale1</code> 和 softmax 后的 <code class="ic">sP0/sP1</code>；row
+sum <code class="ic">rL</code> 主要留在各自 warp group 的 register 里，直到 tile loop 结束才用
+<code class="ic">sL_reduction_wksp</code> 与 <code class="ic">__syncthreads</code> 做跨 WG 归约。因此“每轮同步 row max 与
+row sum”这个说法不够准确。</p><p class="zh">流程会以两个 KV blocks 为步长重复，直到当前 batch 的 tile range 完成并写回
+global；如果 metadata 让这个 CTA 接着处理下一个 batch，kernel 会提前发起下一批 Q
+的 TMA copy，再进入同样流程。NamedBarrier 负责 <code class="ic">sScale/sP</code> 的生产者-消费者
+handoff，<code class="ic">__syncthreads</code> 主要出现在 barrier 初始化、最终 row-sum 归约、
+store/batch 边界这些 CTA-wide 阶段。</p><p class="zh"><b>Ping-Pong / Cooperative 的边界。</b> 这里容易和 CUTLASS Hopper 的两个 persistent
+schedule 名词混起来。Cooperative kernel 的核心是两个 consumer warp groups 协作同一个
+output tile，通常把 tile 切成几部分来降低单个 WG 的 register pressure；Ping-Pong
+kernel 则让两个 consumer WGs 处理不同 output tiles，一个 WG 做 epilogue 时，另一个 WG
+继续跑 MMA，用 ordered barrier 维持 mainloop / epilogue 的顺序。</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F10.drawio</div>
+  </div>
+  <figcaption>P2  CUTLASS Hopper Cooperative schedule：两个 consumer WGs 协作同一个 output tile，目标是降低 register pressure 并提高 Tensor Core 利用率</figcaption>
+</figure>
+
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F11.drawio</div>
+  </div>
+  <figcaption>P3  CUTLASS Hopper Ping-Pong schedule：两个 consumer WGs 处理不同 output tiles，用 ordered barrier 让 mainloop 与 epilogue 交错</figcaption>
+</figure>
+<p class="zh">FlashMLA 的 seesaw 不是把其中一个名字直接照搬过来。它像 Cooperative：两个 WGs
+分摊同一个逻辑输出 $O=[O_L\mid O_R]$，解决 $64\times512$ accumulator 带来的
+register 硬约束；它也像 Ping-Pong：TMA copy、$QK^T$、softmax、$PV$ 和下一块 K/V
+copy 被穿插起来，尽量不让 Tensor Core 等数据。但它又不能像普通 GEMM Ping-Pong
+那样把两个 WGs 完全交给不同 output tiles，因为 attention 的 online-softmax
+状态 <code class="ic">sM/rL</code> 与同一个 $O$ accumulator 必须保持同一条 row 语义。</p><p class="zh">源码里的 <code class="ic">warpgroup_cooperative_qkt_gemm</code>、<code class="ic">warpgroup_cooperative_pv_gemm_localP</code>
+和 <code class="ic">warpgroup_cooperative_pv_gemm_remoteP</code> 也要这样读：这里的 cooperative 是
+128-thread warp group 内一起发 WGMMA、一起维护 tile fragment，不等同于 CUTLASS
+Cooperative schedule 这个整核调度名称。FlashMLA 真正的整核调度名称仍然是 seesaw：
+用 <code class="ic">sScale0Ready/sScale1Ready/sP0Ready/rO1sP0sV0RIssued</code> 这些 handoff 点，把同一个
+online attention update 拆成左右半输出和两个 KV blocks 的交错执行。</p><p class="zh">再细一点说，cooperative 不是指每一个 $PV$ half-GEMM 都由两个 WGs 一起发射。
+<code class="ic">P0V0L</code> 与 <code class="ic">P1V1R</code> 是各自 WG 的 local-P half GEMM，不需要等对方的 $P$；<code class="ic">P0V0R</code>
+与 <code class="ic">P1V1L</code> 才是把 softmax 后的 $P$ 写入 shared memory，再由另一个 WG 消费的
+remote-P half GEMM。</p><p class="zh">这里确实要先同步，但不是在 GEMM2 开头做一次粗粒度的 CTA-wide 同步，而是在
+producer-consumer 边界用 NamedBarrier 卡住读写顺序：WG1 读 <code class="ic">sP0</code> 前必须等
+WG0 <code class="ic">save_rPb_to_sP(sP0)</code>、<code class="ic">fence_view_async_shared()</code> 之后发出的 <code class="ic">sP0Ready</code>；
+WG0 读 <code class="ic">sP1</code> 前没有单独的 <code class="ic">sP1Ready</code>，而是等 WG1 完成 <code class="ic">sP0</code> remote half-PV 发射后
+发出的 <code class="ic">rO1sP0sV0RIssued</code>。这个点发生在 WG1 保存并 fence <code class="ic">sP1</code> 之后，因此也保证
+WG0 看到的 <code class="ic">sP1</code> 已经可被 async proxy 消费。所以图里的 cooperative 框只应该罩住
+<b>save sP → barrier → remote half-PV</b> 这段 shared-P handoff；local half-PV 仍然留在
+各自 warp group 内。</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F12.drawio</div>
+  </div>
+  <figcaption>Kernel seesaw 主循环：Cooperative 框只覆盖 save sP → barrier → remote half-PV，Ping-Pong-like 表现在下一块 K/V copy 与当前计算重叠</figcaption>
+</figure>
+<h3 id="34-hopper-数据通路" class="section-h lv2">3.4 Hopper 数据通路</h3><p class="zh">这里还要保留源文的 Hopper 约束。Hopper WGMMA 通过 4 个 warps 操作 SM 上的
+Tensor Cores；WGMMA 要求操作数 B 必须在 shared memory，操作数 A 可以在 shared
+memory 或 register，输出 accumulator 总是在 register。在 FlashMLA 的 GEMM1 中，
+Q/K 都从 shared memory 进入 WGMMA；在 GEMM2 中，$P$ 在 register，$V$ 在 shared
+memory，$O$ 仍在 register。</p><p class="zh">两组 warp group 不是固定的“一个搬运、一个计算”，而是围绕两个 KV blocks 分摊
+GEMM1、softmax 和 GEMM2：WG0 维护 $K_0/V_0$ 相关的 $P_0$ 与 $O_L$，WG1 维护
+$K_1/V_1$ 相关的 $P_1$ 与 $O_R$，再用 shared memory 做交叉补项。double buffer、
+数据加载和计算 overlap、以及写回策略都服务于同一个目标：不要让 WGMMA/Tensor Core
+因等待 K/V 或搬运 O 而空转。</p><p class="zh">因此，内核即便 compute-bound，也不能忽略 memory latency。FlashMLA 对
+$64\times576$ 的 K block 不做一次大搬运，而是拆成 9 个 $64\times64$ TMA copy。
+第一个 copy 完成后，第一段 GEMM 就能启动；后面的 copy 与 GEMM 继续流水推进。</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F13.drawio</div>
+  </div>
+  <figcaption>细粒度 TMA：64×576 的 K block 被切成 9 个 64×64 copy</figcaption>
+</figure>
+<section id="4--资源与边界"><h2 id="4--资源与边界" class="section-h lv1">4 · 资源与边界</h2><h3 id="41-资源账本" class="section-h lv2">4.1 资源账本</h3><p class="zh">shared memory 表很关键：<code class="ic">sQ</code> 约 72KB，双份 <code class="ic">sK</code> 约 144KB，<code class="ic">sP</code> 约 8KB，
+<code class="ic">sScale_o</code> 约 1KB，总计约 225KB；而 H100 单个 block 最大可用 shared memory 约
+227KB。也就是说，这个 block 设计几乎贴着硬件上限跑。</p><div class="table-scroll"><table class="data-table"><thead><tr><th>buffer</th><th>layout shape</th><th style=text-align:right>dtype</th><th style=text-align:right>size</th></tr></thead><tbody><tr><td><code class="ic">sQ</code></td><td><code class="ic">((_8,_8),(_64,_9))</code></td><td style=text-align:right>FP16</td><td style=text-align:right>72KB</td></tr><tr><td><code class="ic">sK</code> double buffer</td><td><code class="ic">2 × ((_8,_8),(_64,_9))</code></td><td style=text-align:right>FP16</td><td style=text-align:right>144KB</td></tr><tr><td><code class="ic">sP</code></td><td><code class="ic">((_2,_2),_128,_1,_8)</code></td><td style=text-align:right>FP16</td><td style=text-align:right>8KB</td></tr><tr><td><code class="ic">sScale_o</code></td><td><code class="ic">(_2,_128)</code></td><td style=text-align:right>FP32</td><td style=text-align:right>1KB</td></tr><tr><td>total</td><td></td><td style=text-align:right></td><td style=text-align:right>225KB</td></tr></tbody></table></div>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F14.drawio</div>
+  </div>
+  <figcaption>Shared memory 预算：sQ、双份 sK、sP 与 scale 加起来约 225KB，几乎顶到 H100 block 上限</figcaption>
+</figure>
+<h3 id="42-register-账本" class="section-h lv2">4.2 Register 账本</h3><p class="zh">register 侧要分 GEMM1 和 GEMM2 两笔账看。GEMM1 计算的是 $QK^T\rightarrow P$，
+使用的 MMA tile 可以写成 $m\times n\times k=64\times64\times16$。因为
+$D_{qk}=576$，所以 K 维会被拆成 $576/16=36$ 个循环；在每个循环里，$Q$ tile 和
+$K$ tile 都从 shared memory 进入 WGMMA，真正占 register 的主要是输出 accumulator
+$P$。</p><div class="table-scroll"><table class="data-table"><thead><tr><th>GEMM1 item</th><th style=text-align:right>shape</th><th>dtype</th><th>location</th><th style=text-align:right>register count</th></tr></thead><tbody><tr><td>$Q$ tile</td><td style=text-align:right>$64\times576$</td><td>FP16</td><td>SHM</td><td style=text-align:right>0</td></tr><tr><td>$K$ tile</td><td style=text-align:right>$64\times576$</td><td>FP16</td><td>SHM</td><td style=text-align:right>0</td></tr><tr><td>$P$ tile</td><td style=text-align:right>$64\times64$</td><td>FP32</td><td>register</td><td style=text-align:right>4096</td></tr></tbody></table></div><p class="zh">因此每个 GEMM1 的 $P$ tile 需要 $64\times64=4096$ 个 FP32 accumulator。当前实现里
+WG0/WG1 分别为 <code class="ic">K0/K1</code> 维护自己的 <code class="ic">P0/P1</code>，每个 tile 落在一个 warp group 的 128
+个线程上，平均就是 $4096/128=32$ registers/thread，这个压力并不夸张。</p><p class="zh">GEMM2 才是问题的核心。它计算的是 $PV\rightarrow O$，其中 $P$ 是 $64\times64$，
+$V$ 是 $64\times512$，输出 $O$ 是 $64\times512$。$V$ 仍然从 shared memory 进入
+WGMMA，但 $O$ accumulator 必须留在 register。</p><div class="table-scroll"><table class="data-table"><thead><tr><th>GEMM2 item</th><th style=text-align:right>shape</th><th>dtype</th><th>location</th><th style=text-align:right>register count</th></tr></thead><tbody><tr><td>$P$</td><td style=text-align:right>$64\times64$</td><td>FP16</td><td>register</td><td style=text-align:right>2048</td></tr><tr><td>$V$ tile</td><td style=text-align:right>$64\times512$</td><td>FP16</td><td>SHM</td><td style=text-align:right>0</td></tr><tr><td>$O$ tile</td><td style=text-align:right>$64\times512$</td><td>FP32</td><td>register</td><td style=text-align:right>32768</td></tr></tbody></table></div><p class="zh">如果只用一个 warp group 来算 GEMM2，$O$ 必须分配在 128 个线程上，平均是
+$64\times512/128=256$ registers/thread，已经超过单线程寄存器数量限制 255。一个
+自然想法是让同一个 warp group 分两次算 half-shape GEMM，但这样每算完半边都要把
+输出搬到 shared memory 腾出 registers，再继续下一半，Tensor Core 会因为等待搬运
+留下 bubble。所以 FlashMLA 选择让两个 warp groups 同时分摊
+$O=[O_L\mid O_R]$，把 register 压力和执行流水一起解决。</p><div class="table-scroll"><table class="data-table"><thead><tr><th>stage</th><th>tensor</th><th style=text-align:right>shape</th><th>location</th><th style=text-align:right>register pressure</th></tr></thead><tbody><tr><td>GEMM1</td><td>$Q$ tile</td><td style=text-align:right>$64\times576$</td><td>shared memory</td><td style=text-align:right>0</td></tr><tr><td>GEMM1</td><td>$K$ tile</td><td style=text-align:right>$64\times576$</td><td>shared memory</td><td style=text-align:right>0</td></tr><tr><td>GEMM1</td><td>$P$ accumulator</td><td style=text-align:right>$64\times64$</td><td>register</td><td style=text-align:right>4096 total, about 32/thread on one WG</td></tr><tr><td>GEMM2</td><td>$P$</td><td style=text-align:right>$64\times64$</td><td>register</td><td style=text-align:right>2048 FP16 values</td></tr><tr><td>GEMM2</td><td>$V$ tile</td><td style=text-align:right>$64\times512$</td><td>shared memory</td><td style=text-align:right>0</td></tr><tr><td>GEMM2</td><td>$O$ accumulator</td><td style=text-align:right>$64\times512$</td><td>register</td><td style=text-align:right>32768 total; one WG would need 256/thread</td></tr></tbody></table></div>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F15.drawio</div>
+  </div>
+  <figcaption>寄存器约束：64×512 的输出矩阵迫使 O 被拆成左右两半</figcaption>
+</figure>
+<h3 id="43-吸收边界" class="section-h lv2">4.3 吸收边界</h3><p class="zh">到这里容易产生一个误解：既然 K/V absorb 能把历史 cache 保持在 latent，为什么不在所有
+阶段都吸收？边界其实来自 decode 的非对称性。decode 时当前 query 很少，历史 KV 很长；
+把上投影从“每个历史 token”搬到“当前 query / output 外侧”，收益非常直接。prefill
+时 query token 也很长，完整 $T\times T$ attention 本身就是主计算，恢复 per-head
+K/V 后交给成熟的 MHA/FlashAttention 路径反而更自然。</p><p class="zh">先看不吸收的 decode 热路径。cache 虽然存的是 $c_{KV}$，但每一步仍然会把所有历史 token
+恢复成完整 K/V：</p><div class="callout"><p class="zh no-indent"><b>不吸收：每步都恢复历史 K/V</b></p>$$
+K_{\mathrm{hist}}=C_{KV}W_{u,k},\qquad
+V_{\mathrm{hist}}=C_{KV}W_{u,v},
+$$$$
+Y=\operatorname{softmax}(QK_{\mathrm{hist}}^T)V_{\mathrm{hist}}W_o.
+$$</div><p class="zh">这里的浪费不是数学错，而是位置错：$C_{KV}$ 有 $s_k$ 行，decode 每一步都围着历史
+cache 做上投影；当前 token 只有 $s_q$ 行，通常 $s_q\ll s_k$。吸收以后，K 侧把
+$W_{u,k}^T$ 合进当前 query，V 侧把 $W_{u,v}$ 合进 output projection：</p><div class="callout"><p class="zh no-indent"><b>吸收：历史 cache 不再恢复完整 K/V</b></p>$$
+Q' = QW_{u,k}^T,\qquad
+O_{\mathrm{latent}}=\operatorname{softmax}(Q'C_{KV}^T)C_{KV},
+$$$$
+Y=O_{\mathrm{latent}}(W_{u,v}W_o).
+$$</div><p class="zh">这个改写给出一条实用边界：</p><div class="table-scroll"><table class="data-table"><thead><tr><th>场景</th><th>是否吸收</th><th>原因</th></tr></thead><tbody><tr><td>Prefill / long prompt</td><td>通常不吸收，恢复 per-head K/V</td><td>$s_q\approx s_k=T$，full attention 吞吐由成熟 MHA/FlashAttention 路径吃掉；cache 写入仍保持 latent 即可</td></tr><tr><td>Decode / single token 或小 $s_q$</td><td>吸收</td><td>$s_q\ll s_k$，把历史侧上投影搬到当前 query/output 侧，避免反复恢复完整历史 K/V</td></tr><tr><td>RoPE 分支</td><td>不能简单吸收</td><td>位置编码不是纯粹的共享线性上投影，真实 MLA 仍要把 $q^R/k^R$ 拼回 score 输入</td></tr><tr><td>需要显式完整 K/V 的调试或通用 kernel</td><td>不吸收或只做部分吸收</td><td>数学上能移动线性层，不代表现有 kernel/layout 接受 latent KV operand</td></tr><tr><td>FlashMLA dense decode</td><td>吸收后进场</td><td>kernel 的契约就是 MQA 视角下的 latent K/V：$k=[B,T,1,D_{qk}]$，$v=[B,T,1,D_v]$</td></tr></tbody></table></div><p class="zh">因此，吸收不是“MLA 永远应该这样算”，而是 decode 热路径上的位置选择：当历史很长、当前
+query 很少，移动线性层能把重复工作从 $s_k$ 侧挪到 $s_q$ 侧；当 prefill 需要处理长
+prompt，全序列 full attention 的工程路径更重要。</p><p class="zh">最后用 roofline 直觉解释为什么吸收后的 FlashMLA 仍可能不是单纯 memory-bound。设 query
+head 数为 $h_q$，每个 request 的 query token 数为 $s_q$，KV 长度为 $s_k$，并且
+$s_k \gg h_qs_q$。MLA decode 的算术强度近似为：</p><div class="callout"><p class="zh no-indent"><b>FlashMLA decode 的算术强度</b></p>$$
+\frac{\mathrm{FLOPs}}{\mathrm{Bytes}}
+\approx
+h_qs_q\frac{d_k+d_v}{d_k}
+\approx 2h_qs_q .
+$$</div><p class="zh">H800 SXM5 的实际峰值按官方博客中的节流频率估算约为 865 TFLOPs，带宽约为
+3.35 TB/s；compute-bound 的阈值约为
+$\frac12\cdot\frac{865}{3.35}\approx128$。V3/R1 decode 不做 Tensor Parallel，
+$h_q=128$，即使 $s_q=1$ 也已经踩在 compute-bound 边界上。</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F16.drawio</div>
+  </div>
+  <figcaption>Roofline 读法：FlashMLA decode 在 DeepSeek 配置下是 compute-bound</figcaption>
+</figure>
+<section id="5--优化点查漏"><h2 id="5--优化点查漏" class="section-h lv1">5 · 优化点查漏</h2><div class="table-scroll"><table class="data-table"><thead><tr><th>优化点</th><th>baseline 瓶颈</th><th>机制</th><th>边界条件</th></tr></thead><tbody><tr><td>MLA prefill</td><td>长序列阶段直接套 decode MQA 会造成虚拟 K/V 膨胀</td><td>prefill 恢复 per-head Q/K/V，用 MHA/FlashAttention 吃 full-sequence 吞吐</td><td>cache 写入仍保持 c_KV + k_PE，服务后续 decode</td></tr><tr><td>MLA decode</td><td>decode 每步重新恢复历史 K/V</td><td>当前 query 转成 MQA 视角，FlashMLA 直接读 latent KV cache</td><td>只适合单 token 或小 s_q decode 热路径</td></tr><tr><td>K-side absorption</td><td>历史 token 每步做 $c_{KV}W_{u,k}$</td><td>$W_{u,k}^T$ 合进 query 侧，score 直接乘 latent cache</td><td>只移动线性投影，不改变 softmax 语义</td></tr><tr><td>V-side absorption</td><td>每步恢复完整 $V$ 并写高维 $PV$</td><td>$W_{u,v}$ 合进 output projection，kernel 输出 latent $O$</td><td>后续 output projection 必须接住 latent 维度</td></tr><tr><td>MQA transpose</td><td>128 个 Q heads 无法直接匹配单 KV head</td><td>$[B,1,H,D_{qk}]\to[B,H,1,D_{qk}]$，把 heads 改写成 $S_q=H$ 的 query rows</td><td>只改变视图/调度，不改变 attention 语义；K/V 仍是 $H_{KV}=1$ 的 latent stream</td></tr><tr><td>persistent task division</td><td>ragged KV 尾块让 SM 空转</td><td>$grid=[2,1,66]$ 启动 132 resident CTAs；$block_m=64$ 切 Q，$block_n=64$ 切 K/V，并用 metadata 拼接尾块</td><td>一个 CTA 可能处理多个 batch；同一 batch 可能产生多个 partial outputs，需要额外 kernel 合并</td></tr><tr><td>roofline 判断</td><td>误以为 decode attention 必然 memory-bound</td><td>$F/B\approx2h_qs_q$，V3/R1 decode 约等于 compute-bound 阈值</td><td>依赖 head 数、MTP 和硬件峰值</td></tr><tr><td>seesaw schedule</td><td>两份输出矩阵占满 register file</td><td>$O=[O_L\mid O_R]$，两个 WG 交错更新同一输出</td><td>调度复杂，online softmax rescale 必须正确</td></tr><tr><td>online softmax block loop</td><td>分块 attention 容易丢全局归一化语义</td><td>保存 $m/lse$ 并对旧 $O$ rescale</td><td>所有 tile 必须按同一 row 语义累积</td></tr><tr><td>fine-grained TMA</td><td>等完整 $64\times576$ K block 到齐</td><td>9 个 $64\times64$ copy 与 GEMM pipeline</td><td>copy 粒度与 tile shape 强相关</td></tr><tr><td>shared memory budget</td><td>block 内 Q/K/P/scale buffer 接近 H100 上限</td><td>$sQ+2sK+sP+sScale_o\approx225$KB</td><td>H100 block 上限约 227KB，几乎没有额外 buffer 空间</td></tr><tr><td>register budget</td><td>GEMM2 的 $64\times512$ 输出超过单 WG 寄存器上限</td><td>两个 WG 分摊 $O_L/O_R$，避免中间写 SHM</td><td>要求 seesaw 与同步正确</td></tr></tbody></table></div></div></div><!-- /reader-inner -->
+</div><!-- /reader -->
+
+
+</body>
+</html>

@@ -1,0 +1,25 @@
+<svg viewBox="0 0 1000 390" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M 0 0 L 10 5 L 0 10 z" fill="#24292f"/>
+  </marker>
+</defs>
+<rect x="0" y="0" width="1000" height="390" fill="#ffffff"/>
+<text x="500.0" y="40" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="24" font-weight="750" fill="#24292f">FlashMLA 的 Roofline 读法</text>
+<text x="500.0" y="66" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="13" font-weight="400" fill="#57606a">Decode can still be compute-bound when query heads provide enough reuse per loaded KV tile.</text>
+<rect x="90" y="108" width="820" height="78" rx="8" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.5"/>
+<text x="500" y="140" text-anchor="middle" font-family="&#x27;STIX Two Math&#x27;, &#x27;Cambria Math&#x27;, &#x27;Times New Roman&#x27;, serif" font-size="24" font-weight="600" fill="#24292f">FLOPs / byte ≈ 2 · H<tspan font-size="16.3" baseline-shift="sub">q</tspan> · S<tspan font-size="16.3" baseline-shift="sub">q</tspan></text>
+<text x="500" y="169" text-anchor="middle" font-family="&#x27;STIX Two Math&#x27;, &#x27;Cambria Math&#x27;, &#x27;Times New Roman&#x27;, serif" font-size="17" font-weight="500" fill="#57606a">V3/R1 decode: H<tspan font-size="11.6" baseline-shift="sub">q</tspan> = 128,  S<tspan font-size="11.6" baseline-shift="sub">q</tspan> = 1</text>
+<line x1="135" y1="278" x2="865" y2="278" stroke="#57606a" stroke-width="2"/>
+<line x1="500" y1="224" x2="500" y2="326" stroke="#e0b300" stroke-width="2" stroke-dasharray="7 6"/>
+<text x="500" y="351" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="13" font-weight="750" fill="#b08900">H800 practical threshold ≈ 128</text>
+<rect x="125" y="230" width="260" height="82" rx="8" fill="#eef7ff" stroke="#4a6fd3" stroke-width="2"/>
+<text x="255" y="260" text-anchor="middle" font-family="&#x27;STIX Two Math&#x27;, &#x27;Cambria Math&#x27;, &#x27;Times New Roman&#x27;, serif" font-size="18" font-weight="600" fill="#24292f">H<tspan font-size="12.2" baseline-shift="sub">q</tspan> · S<tspan font-size="12.2" baseline-shift="sub">q</tspan> &lt; 128</text>
+<text x="255" y="286" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="14" font-weight="700" fill="#57606a">memory-bound</text>
+<rect x="615" y="230" width="260" height="82" rx="8" fill="#f4faf4" stroke="#5fa55f" stroke-width="2"/>
+<text x="745" y="260" text-anchor="middle" font-family="&#x27;STIX Two Math&#x27;, &#x27;Cambria Math&#x27;, &#x27;Times New Roman&#x27;, serif" font-size="18" font-weight="600" fill="#24292f">H<tspan font-size="12.2" baseline-shift="sub">q</tspan> · S<tspan font-size="12.2" baseline-shift="sub">q</tspan> ≥ 128</text>
+<text x="745" y="286" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="14" font-weight="750" fill="#5fa55f">compute-bound</text>
+<rect x="395" y="190" width="210" height="58" rx="8" fill="#fff8e7" stroke="#e0b300" stroke-width="2"/>
+<text x="500" y="214" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="14" font-weight="750" fill="#24292f">V3/R1 decode</text>
+<text x="500" y="237" text-anchor="middle" font-family="&#x27;STIX Two Math&#x27;, &#x27;Cambria Math&#x27;, &#x27;Times New Roman&#x27;, serif" font-size="17" font-weight="600" fill="#24292f">128 × 1</text>
+</svg>

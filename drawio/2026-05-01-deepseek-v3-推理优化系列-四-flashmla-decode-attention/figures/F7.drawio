@@ -1,0 +1,58 @@
+<mxfile host="app.diagrams.net" modified="2026-05-07T00:00:00.000Z" agent="Codex svg-to-drawio" version="24.7.17" type="device">
+  <diagram id="F7" name="F7">
+    <mxGraphModel dx="1000" dy="430" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1000" pageHeight="430" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="c2" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=none;strokeWidth=1;" parent="1" vertex="1">
+          <mxGeometry x="0" y="0" width="1000" height="430" as="geometry" />
+        </mxCell>
+        <mxCell id="c3" value="Merge up_k：把 K 上投影从历史 cache 挪到当前 query" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=24;fontColor=#24292f;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="204.84" y="14.08" width="590.32" height="34.8" as="geometry" />
+        </mxCell>
+        <mxCell id="c4" value="The source equations become one reusable decode rule after K-side absorption." style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=13;fontColor=#57606a;fontStyle=0;" parent="1" vertex="1">
+          <mxGeometry x="239.55" y="51.96" width="520.9" height="18.85" as="geometry" />
+        </mxCell>
+        <mxCell id="c5" value="" style="rounded=1;whiteSpace=wrap;html=1;absoluteArcSize=1;arcSize=8;fillColor=#fff5f0;strokeColor=#b85450;strokeWidth=2;" parent="1" vertex="1">
+          <mxGeometry x="95" y="115" width="365" height="125" as="geometry" />
+        </mxCell>
+        <mxCell id="c6" value="before absorption" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=14;fontColor=#b85450;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="209.28" y="132.88" width="135.44" height="20.3" as="geometry" />
+        </mxCell>
+        <mxCell id="c7" value="QK⊤ = (hWq)(cKVWu,K)⊤" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily='STIX Two Math', 'Cambria Math', 'Times New Roman', serif;fontSize=17;fontColor=#b85450;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="179.69" y="162.64" width="194.62" height="24.65" as="geometry" />
+        </mxCell>
+        <mxCell id="c8" value="= hWqWu,K⊤(cKV)⊤" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily='STIX Two Math', 'Cambria Math', 'Times New Roman', serif;fontSize=17;fontColor=#b85450;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="200.09" y="195.64" width="153.82" height="24.65" as="geometry" />
+        </mxCell>
+        <mxCell id="c9" value="" style="rounded=1;whiteSpace=wrap;html=1;absoluteArcSize=1;arcSize=8;fillColor=#f4faf4;strokeColor=#5fa55f;strokeWidth=2;" parent="1" vertex="1">
+          <mxGeometry x="540" y="115" width="365" height="125" as="geometry" />
+        </mxCell>
+        <mxCell id="c10" value="after absorption" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=14;fontColor=#5fa55f;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="658.06" y="132.88" width="127.88" height="20.3" as="geometry" />
+        </mxCell>
+        <mxCell id="c11" value="W̃q = WqWu,K⊤" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily='STIX Two Math', 'Cambria Math', 'Times New Roman', serif;fontSize=17;fontColor=#5fa55f;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="659.37" y="162.64" width="125.26" height="24.65" as="geometry" />
+        </mxCell>
+        <mxCell id="c12" value="QK⊤ = (hW̃q)(cKV)⊤" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily='STIX Two Math', 'Cambria Math', 'Times New Roman', serif;fontSize=17;fontColor=#5fa55f;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="639.82" y="195.64" width="164.36" height="24.65" as="geometry" />
+        </mxCell>
+        <mxCell id="c13" value="" style="edgeStyle=none;html=1;rounded=0;strokeColor=#57606a;strokeWidth=1.8;endArrow=block;endFill=1;startArrow=none;startFill=0;" parent="1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="460" y="178" as="sourcePoint" />
+            <mxPoint x="540" y="178" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c14" value="" style="rounded=1;whiteSpace=wrap;html=1;absoluteArcSize=1;arcSize=8;fillColor=#fff8e7;strokeColor=#e0b300;strokeWidth=1.8;" parent="1" vertex="1">
+          <mxGeometry x="185" y="318" width="630" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="c15" value="为什么更快" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=14;fontColor=#b08900;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="460" y="333.88" width="80" height="20.3" as="geometry" />
+        </mxCell>
+        <mxCell id="c16" value="baseline 对每个历史 token 做 Wu,K；吸收后只变换当前 query。" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily='STIX Two Math', 'Cambria Math', 'Times New Roman', serif;fontSize=16;fontColor=#24292f;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="267.16" y="359.72" width="465.68" height="23.2" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

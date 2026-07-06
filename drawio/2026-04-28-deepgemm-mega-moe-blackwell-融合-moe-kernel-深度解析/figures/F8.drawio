@@ -1,0 +1,73 @@
+<mxfile host="app.diagrams.net" modified="2026-05-05T00:00:00.000Z" agent="Codex" version="24.7.17" type="device">
+  <diagram id="F8" name="F8">
+    <mxGraphModel dx="1000" dy="360" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1000" pageHeight="360" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="c2" value="Symmetric memory turns EP dispatch into remote loads" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=24;fontColor=#24292f;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="104.12" y="14" width="791.76" height="32.4" />
+        </mxCell>
+        <mxCell id="c3" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f4faf4;strokeColor=#5fa55f;strokeWidth=2;fontFamily=Helvetica;fontColor=#24292f" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="70" y="118" width="230" height="145" />
+        </mxCell>
+        <mxCell id="c4" value="target rank" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=18;fontColor=#5fa55f;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="114.62" y="132" width="140.76" height="24.3" />
+        </mxCell>
+        <mxCell id="c5" value="local experts" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=14;fontColor=#24292f;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="119.58" y="164" width="130.84" height="18.9" />
+        </mxCell>
+        <mxCell id="c6" value="reads count table" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#57606a;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="107.49" y="193" width="155.02" height="18" />
+        </mxCell>
+        <mxCell id="c7" value="pulls remote X" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#57606a;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="119.58" y="219" width="130.84" height="18" />
+        </mxCell>
+        <mxCell id="c8" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e7;strokeColor=#e0b300;strokeWidth=2;fontFamily=Helvetica;fontColor=#24292f" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="390" y="96" width="160" height="56" />
+        </mxCell>
+        <mxCell id="c9" value="count[e,r]" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Menlo;fontSize=14;fontColor=#e0b300;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="417.6" y="116" width="104.8" height="18.9" />
+        </mxCell>
+        <mxCell id="c10" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef7ff;strokeColor=#4a6fd3;strokeWidth=2;fontFamily=Helvetica;fontColor=#24292f" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="650" y="84" width="250" height="84" />
+        </mxCell>
+        <mxCell id="c11" value="rank r buffer" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=16;fontColor=#4a6fd3;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="701.52" y="100" width="146.96" height="21.6" />
+        </mxCell>
+        <mxCell id="c12" value="X, Xsf, topk" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#57606a;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="717.64" y="129" width="114.72" height="18" />
+        </mxCell>
+        <mxCell id="c13" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef7ff;strokeColor=#4a6fd3;strokeWidth=2;fontFamily=Helvetica;fontColor=#24292f" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="650" y="216" width="250" height="84" />
+        </mxCell>
+        <mxCell id="c14" value="rank q buffer" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=16;fontColor=#4a6fd3;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="701.52" y="232" width="146.96" height="21.6" />
+        </mxCell>
+        <mxCell id="c15" value="same offsets" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#57606a;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="717.64" y="261" width="114.72" height="18" />
+        </mxCell>
+        <mxCell id="c16" value="" style="endArrow=block;html=1;rounded=0;strokeColor=#5fa55f;strokeWidth=2;fontFamily=Helvetica" parent="1" edge="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint x="300" y="176" as="sourcePoint" />
+            <mxPoint x="390" y="124" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c17" value="" style="endArrow=block;html=1;rounded=0;strokeColor=#e0b300;strokeWidth=2;fontFamily=Helvetica" parent="1" edge="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint x="550" y="124" as="sourcePoint" />
+            <mxPoint x="650" y="126" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c18" value="" style="endArrow=block;html=1;rounded=0;strokeColor=#4a6fd3;strokeWidth=2;fontFamily=Helvetica" parent="1" edge="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint x="650" y="258" as="sourcePoint" />
+            <mxPoint x="300" y="222" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c19" value="symmetric address = base[rank] + offset; pull avoids fine-grained push notification." style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#57606a;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="152.48" y="323" width="695.04" height="18" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

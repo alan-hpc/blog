@@ -1,0 +1,59 @@
+<svg viewBox="0 0 1000 500" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#24292f"/></marker>
+    <style>
+      .title{font:700 24px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#24292f}
+      .label{font:700 15px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+      .h{font:700 14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#24292f}
+      .note{font:500 12px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#57606a}
+      .formula{font:500 13px Georgia,"Times New Roman",serif;fill:#24292f}
+      .formula2{font:600 14px Georgia,"Times New Roman",serif;fill:#24292f}
+      .red{fill:#b85450}.green{fill:#5fa55f}
+    </style>
+  </defs>
+  <text x="500" y="40" text-anchor="middle" class="title">Mega MoE FFN dataflow: keep Combine as an explicit boundary</text>
+  <text x="55" y="84" class="label red">Separated kernels</text>
+  <text x="945" y="84" text-anchor="end" class="note">same MoE math, exposed runtime boundaries</text>
+
+  <rect x="45" y="112" width="170" height="92" rx="8" fill="#fff5f0" stroke="#b85450" stroke-width="2"/>
+  <text x="130" y="137" text-anchor="middle" class="h">Dispatch</text>
+  <text x="130" y="164" text-anchor="middle" class="formula">X<tspan baseline-shift="sub" font-size="9.4">g</tspan>, s<tspan baseline-shift="sub" font-size="9.4">g</tspan></text>
+  <text x="130" y="184" text-anchor="middle" class="formula">← dispatch(X, π, s)</text>
+
+  <rect x="235" y="112" width="170" height="92" rx="8" fill="#fff5f0" stroke="#b85450" stroke-width="2"/>
+  <text x="320" y="137" text-anchor="middle" class="h">Linear1</text>
+  <text x="320" y="164" text-anchor="middle" class="formula">H<tspan baseline-shift="sub" font-size="9.4">g</tspan> = X<tspan baseline-shift="sub" font-size="9.4">g</tspan> W<tspan baseline-shift="sub" font-size="9.4">1,e</tspan><tspan baseline-shift="super" font-size="9.4">T</tspan></text>
+  <text x="320" y="184" text-anchor="middle" class="formula">H<tspan baseline-shift="sub" font-size="9.4">g</tspan> = [G<tspan baseline-shift="sub" font-size="9.4">g</tspan>, U<tspan baseline-shift="sub" font-size="9.4">g</tspan>]</text>
+
+  <rect x="425" y="112" width="170" height="92" rx="8" fill="#fff5f0" stroke="#b85450" stroke-width="2"/>
+  <text x="510" y="137" text-anchor="middle" class="h">SwiGLU + s</text>
+  <text x="510" y="164" text-anchor="middle" class="formula">A<tspan baseline-shift="sub" font-size="9.4">g</tspan> = SiLU(G<tspan baseline-shift="sub" font-size="9.4">g</tspan>) ⊙ U<tspan baseline-shift="sub" font-size="9.4">g</tspan></text>
+  <text x="510" y="184" text-anchor="middle" class="formula">A<tspan baseline-shift="sub" font-size="9.4">g</tspan> ← A<tspan baseline-shift="sub" font-size="9.4">g</tspan> · s<tspan baseline-shift="sub" font-size="9.4">g</tspan></text>
+
+  <rect x="615" y="112" width="170" height="92" rx="8" fill="#fff5f0" stroke="#b85450" stroke-width="2"/>
+  <text x="700" y="137" text-anchor="middle" class="h">Linear2</text>
+  <text x="700" y="164" text-anchor="middle" class="formula">Z<tspan baseline-shift="sub" font-size="9.4">t,k</tspan> = Â<tspan baseline-shift="sub" font-size="9.4">g</tspan> W<tspan baseline-shift="sub" font-size="9.4">2,e</tspan><tspan baseline-shift="super" font-size="9.4">T</tspan></text>
+  <text x="700" y="184" text-anchor="middle" class="formula">BF16 slot</text>
+
+  <rect x="805" y="112" width="170" height="92" rx="8" fill="#fff5f0" stroke="#b85450" stroke-width="2"/>
+  <text x="890" y="137" text-anchor="middle" class="h">Combine</text>
+  <text x="890" y="164" text-anchor="middle" class="formula">Y = Combine(Z, handle)</text>
+  <text x="890" y="184" text-anchor="middle" class="formula">Y<tspan baseline-shift="sub" font-size="9.4">t</tspan> = Σ<tspan baseline-shift="sub" font-size="9.4">k</tspan> Z<tspan baseline-shift="sub" font-size="9.4">t,k</tspan></text>
+
+  <line x1="215" y1="158" x2="235" y2="158" stroke="#24292f" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="405" y1="158" x2="425" y2="158" stroke="#24292f" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="595" y1="158" x2="615" y2="158" stroke="#24292f" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="785" y1="158" x2="805" y2="158" stroke="#24292f" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <line x1="500" y1="216" x2="500" y2="252" stroke="#b85450" stroke-width="2" marker-end="url(#arrow)"/>
+  <rect x="235" y="252" width="530" height="52" rx="8" fill="#fff5f0" stroke="#b85450" stroke-width="1.6"/>
+  <text x="500" y="273" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="13" font-weight="700" fill="#b85450">HBM / runtime materializes Xg, Hg, Ag, Zt,k and combine slots</text>
+  <text x="500" y="294" text-anchor="middle" class="note">top-k weight s is already folded before Linear2; Combine only gathers and sums slots</text>
+
+  <text x="55" y="342" class="label green">Mega MoE</text>
+  <rect x="155" y="358" width="690" height="76" rx="8" fill="#f4faf4" stroke="#5fa55f" stroke-width="2"/>
+  <text x="500" y="383" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="16" font-weight="700" fill="#5fa55f">persistent kernel over expert waves</text>
+  <text x="500" y="410" text-anchor="middle" class="formula2">D(X,π,s) ∥ L1(W<tspan baseline-shift="sub" font-size="10.1">1</tspan>) ∥ SiLU*s+Q ∥ L2(W<tspan baseline-shift="sub" font-size="10.1">2</tspan>) ∥ Combine(slot<tspan baseline-shift="sub" font-size="10.1">k</tspan>)</text>
+  <line x1="500" y1="306" x2="500" y2="354" stroke="#5fa55f" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="500" y="468" text-anchor="middle" class="note">Semantics stay fixed; lifetimes shrink from global tensors to SMEM / TMEM / registers.</text>
+</svg>

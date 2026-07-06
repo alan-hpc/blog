@@ -1,0 +1,52 @@
+<mxfile host="app.diagrams.net" modified="2026-05-05T00:00:00.000Z" agent="Codex" version="24.7.17" type="device">
+  <diagram id="F19" name="F19">
+    <mxGraphModel dx="1000" dy="340" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1000" pageHeight="340" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="c2" value="A/B swap is a layout contract" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=24;fontColor=#24292f;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="275.24" y="14" width="449.52" height="32.4" />
+        </mxCell>
+        <mxCell id="c3" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff5f0;strokeColor=#b85450;strokeWidth=2;fontFamily=Helvetica;fontColor=#24292f" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="95" y="104" width="330" height="120" />
+        </mxCell>
+        <mxCell id="c4" value="wrong mental model" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=16;fontColor=#b85450;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="161.72" y="120" width="196.56" height="21.6" />
+        </mxCell>
+        <mxCell id="c5" value="runtime flag swaps A/B" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#24292f;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="162.34" y="153" width="195.32" height="18" />
+        </mxCell>
+        <mxCell id="c6" value="everything else unchanged" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#24292f;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="150.25" y="175" width="219.5" height="18" />
+        </mxCell>
+        <mxCell id="c7" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f4faf4;strokeColor=#5fa55f;strokeWidth=2;fontFamily=Helvetica;fontColor=#24292f" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="575" y="104" width="330" height="120" />
+        </mxCell>
+        <mxCell id="c8" value="actual issue" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=16;fontColor=#5fa55f;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="671.48" y="120" width="137.04" height="21.6" />
+        </mxCell>
+        <mxCell id="c9" value="operand layout" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#24292f;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="674.58" y="153" width="130.84" height="18" />
+        </mxCell>
+        <mxCell id="c10" value="TMA descriptor" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#24292f;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="674.58" y="175" width="130.84" height="18" />
+        </mxCell>
+        <mxCell id="c11" value="multicast direction" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#24292f;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="654.43" y="197" width="171.14" height="18" />
+        </mxCell>
+        <mxCell id="c12" value="" style="endArrow=block;html=1;rounded=0;strokeColor=#57606a;strokeWidth=2;fontFamily=Helvetica" parent="1" edge="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint x="425" y="164" as="sourcePoint" />
+            <mxPoint x="575" y="164" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c13" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef7ff;strokeColor=#4a6fd3;strokeWidth=2;fontFamily=Helvetica;fontColor=#24292f" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="260" y="260" width="480" height="52" />
+        </mxCell>
+        <mxCell id="c14" value="design rule: choose layout so the reused operand is the multicast operand" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#4a6fd3;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="196.81" y="279" width="606.38" height="18" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

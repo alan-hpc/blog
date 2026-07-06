@@ -1,0 +1,37 @@
+<svg viewBox="0 0 1020 300" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif">
+<defs><marker id="f23-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="#57606a"/></marker></defs>
+<rect x="18" y="14" width="984" height="268" rx="8" fill="#ffffff"/>
+<text x="510" y="38" font-size="17" font-weight="800" text-anchor="middle" fill="#1f2328">Ampere multi-stage：用 cp.async 把访存藏到计算背后</text>
+<text x="510" y="60" font-size="12" text-anchor="middle" fill="#57606a">同一串 K-tile，优化前是 load 和 compute 串行；优化后是 copy pipeline 与 Tensor Core pipeline 重叠。</text>
+<line x1="160" y1="92" x2="820" y2="92" stroke="#d0d7de" stroke-width="2"/>
+<text x="72" y="97" font-size="13" font-weight="800" fill="#b85450">BEFORE</text>
+<text x="72" y="115" font-size="11" fill="#6a737d">串行</text>
+<rect x="175" y="76" width="120" height="32" rx="5" fill="#4a6fd3" opacity="0.72"/><text x="235" y="97" font-size="12" text-anchor="middle" fill="#ffffff">load k=0</text>
+<rect x="305" y="76" width="120" height="32" rx="5" fill="#5fa55f" opacity="0.78"/><text x="365" y="97" font-size="12" text-anchor="middle" fill="#ffffff">compute k=0</text>
+<rect x="435" y="76" width="120" height="32" rx="5" fill="#4a6fd3" opacity="0.72"/><text x="495" y="97" font-size="12" text-anchor="middle" fill="#ffffff">load k=1</text>
+<rect x="565" y="76" width="120" height="32" rx="5" fill="#5fa55f" opacity="0.78"/><text x="625" y="97" font-size="12" text-anchor="middle" fill="#ffffff">compute k=1</text>
+<rect x="705" y="77" width="92" height="30" rx="5" fill="#fff5f0" stroke="#b85450" stroke-dasharray="4 3"/><text x="751" y="96" font-size="11" text-anchor="middle" fill="#b85450">TC idle</text>
+<rect x="840" y="72" width="130" height="44" rx="6" fill="#fff5f0" stroke="#e3b5ad"/>
+<text x="905" y="91" font-size="12" font-weight="700" text-anchor="middle" fill="#b85450">T串行</text>
+<text x="905" y="108" font-size="11" text-anchor="middle" fill="#5a1a1a">≈ Σₖ (Lₖ + Mₖ)</text>
+<line x1="160" y1="178" x2="820" y2="178" stroke="#d0d7de" stroke-width="2"/>
+<text x="72" y="183" font-size="13" font-weight="800" fill="#2f7d32">AFTER</text>
+<text x="72" y="201" font-size="11" fill="#6a737d">multi-stage</text>
+<rect x="175" y="140" width="118" height="28" rx="5" fill="#4a6fd3" opacity="0.72"/><text x="234" y="158" font-size="11" text-anchor="middle" fill="#ffffff">cp.async k=0</text>
+<rect x="300" y="140" width="118" height="28" rx="5" fill="#4a6fd3" opacity="0.72"/><text x="359" y="158" font-size="11" text-anchor="middle" fill="#ffffff">cp.async k=1</text>
+<rect x="425" y="140" width="118" height="28" rx="5" fill="#4a6fd3" opacity="0.72"/><text x="484" y="158" font-size="11" text-anchor="middle" fill="#ffffff">cp.async k=2</text>
+<rect x="550" y="140" width="118" height="28" rx="5" fill="#4a6fd3" opacity="0.45"/><text x="609" y="158" font-size="11" text-anchor="middle" fill="#1f3f77">cp.async k=3</text>
+<rect x="300" y="182" width="118" height="32" rx="5" fill="#5fa55f" opacity="0.78"/><text x="359" y="203" font-size="12" text-anchor="middle" fill="#ffffff">compute k=0</text>
+<rect x="425" y="182" width="118" height="32" rx="5" fill="#5fa55f" opacity="0.78"/><text x="484" y="203" font-size="12" text-anchor="middle" fill="#ffffff">compute k=1</text>
+<rect x="550" y="182" width="118" height="32" rx="5" fill="#5fa55f" opacity="0.78"/><text x="609" y="203" font-size="12" text-anchor="middle" fill="#ffffff">compute k=2</text>
+<path d="M359 168 C359 174 359 176 359 182" stroke="#57606a" stroke-width="1.6" marker-end="url(#f23-arrow)" fill="none"/>
+<path d="M484 168 C484 174 484 176 484 182" stroke="#57606a" stroke-width="1.6" marker-end="url(#f23-arrow)" fill="none"/>
+<path d="M609 168 C609 174 609 176 609 182" stroke="#57606a" stroke-width="1.6" marker-end="url(#f23-arrow)" fill="none"/>
+<text x="485" y="232" font-size="11.5" font-weight="700" text-anchor="middle" fill="#2f7d32">load(k+1) 与 compute(k) 重叠，Tensor Core 等待时间被隐藏</text>
+<rect x="840" y="155" width="130" height="68" rx="6" fill="#f4faf4" stroke="#b7d7b7"/>
+<text x="905" y="176" font-size="12" font-weight="700" text-anchor="middle" fill="#2f7d32">T流水</text>
+<text x="905" y="193" font-size="11" text-anchor="middle" fill="#1a5a1a">≈ L₀ + Σₖ max</text>
+<text x="905" y="210" font-size="11" text-anchor="middle" fill="#1a5a1a">(Lₖ₊₁, Mₖ)</text>
+<rect x="110" y="248" width="800" height="34" rx="6" fill="#fffbe7" stroke="#e0b300"/>
+<text x="510" y="270" font-size="12" text-anchor="middle" fill="#7a4500">cp.async 是 Ampere 的异步 copy 原语；Hopper TMA 与 Blackwell tcgen05.cp 都沿着同一条思路继续扩展。</text>
+</svg>

@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 380" font-family="sans-serif">
+  <defs>
+    <marker id="arr4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#4a6fd3"/>
+    </marker>
+  </defs>
+
+  <text x="500" y="26" text-anchor="middle" font-size="15" font-weight="700" fill="#222">Masked layout · 固定外壳，动态 count</text>
+  <text x="500" y="46" text-anchor="middle" font-size="11" fill="#666">A_masked ∈ R^(E × max_m × K)；CUDA Graph replay 只更新 expert_num_tokens[e]</text>
+
+  <!-- Three expert "boxes" stacked horizontally, each shows valid prefix + padding -->
+  <!-- Each box represents (max_m × K) per expert -->
+
+  <g>
+    <!-- Expert 0 -->
+    <text x="170" y="80" text-anchor="middle" font-size="12" font-weight="700" fill="#333">expert 0</text>
+    <rect x="80" y="90" width="180" height="160" fill="#f8faff" stroke="#4a6fd3" stroke-width="1.5"/>
+    <!-- valid n_0 = 60 of max_m=160 → 60/160 ≈ 37.5% → 60px -->
+    <rect x="80" y="90" width="180" height="60" fill="#d8eed8" stroke="#5fa55f" stroke-width="1.2"/>
+    <text x="170" y="125" text-anchor="middle" font-size="11" font-weight="700" fill="#2a5a2a">valid · n_0 = 60</text>
+    <!-- padding -->
+    <text x="170" y="200" text-anchor="middle" font-size="11" fill="#999">unused (mask)</text>
+    <!-- max_m label -->
+    <line x1="265" y1="90" x2="270" y2="90" stroke="#888"/>
+    <line x1="270" y1="90" x2="270" y2="250" stroke="#888"/>
+    <line x1="265" y1="250" x2="270" y2="250" stroke="#888"/>
+    <text x="280" y="172" font-size="10" fill="#666">max_m</text>
+  </g>
+
+  <g>
+    <!-- Expert 1 -->
+    <text x="430" y="80" text-anchor="middle" font-size="12" font-weight="700" fill="#333">expert 1</text>
+    <rect x="340" y="90" width="180" height="160" fill="#f8faff" stroke="#4a6fd3" stroke-width="1.5"/>
+    <!-- n_1 = 130 -->
+    <rect x="340" y="90" width="180" height="130" fill="#d8eed8" stroke="#5fa55f" stroke-width="1.2"/>
+    <text x="430" y="160" text-anchor="middle" font-size="11" font-weight="700" fill="#2a5a2a">valid · n_1 = 130</text>
+    <text x="430" y="237" text-anchor="middle" font-size="11" fill="#999">unused</text>
+  </g>
+
+  <g>
+    <!-- Expert 2 -->
+    <text x="690" y="80" text-anchor="middle" font-size="12" font-weight="700" fill="#333">expert 2</text>
+    <rect x="600" y="90" width="180" height="160" fill="#f8faff" stroke="#4a6fd3" stroke-width="1.5"/>
+    <!-- n_2 = 20 -->
+    <rect x="600" y="90" width="180" height="20" fill="#d8eed8" stroke="#5fa55f" stroke-width="1.2"/>
+    <text x="690" y="106" text-anchor="middle" font-size="10" font-weight="700" fill="#2a5a2a">n_2=20</text>
+    <text x="690" y="180" text-anchor="middle" font-size="11" fill="#999">unused (mask)</text>
+  </g>
+
+  <!-- expert_num_tokens vector -->
+  <text x="80" y="280" font-size="12" font-weight="700" fill="#333">expert_num_tokens · 唯一会变的小张量</text>
+  <g font-family="monospace" font-size="12">
+    <rect x="80"  y="290" width="180" height="36" fill="#fff8e7" stroke="#e0b300"/>
+    <text x="170" y="314" text-anchor="middle" fill="#7a5a00">60</text>
+    <rect x="340" y="290" width="180" height="36" fill="#fff8e7" stroke="#e0b300"/>
+    <text x="430" y="314" text-anchor="middle" fill="#7a5a00">130</text>
+    <rect x="600" y="290" width="180" height="36" fill="#fff8e7" stroke="#e0b300"/>
+    <text x="690" y="314" text-anchor="middle" fill="#7a5a00">20</text>
+  </g>
+
+  <text x="80" y="354" font-size="11" fill="#444">scheduler · 用 ⌈expert_num_tokens[e] / B_M⌉ 决定 expert e 走多少个 M block</text>
+  <text x="80" y="370" font-size="11" fill="#666">tensor 形状不变 → buffer 地址不变 → CUDA Graph 可 replay；动态信息只剩这条 count 向量</text>
+</svg>

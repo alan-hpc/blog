@@ -1,0 +1,35 @@
+<svg viewBox='0 0 1020 360' xmlns='http://www.w3.org/2000/svg' font-family='sans-serif'>
+<defs>
+<marker id='ar' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='8' markerHeight='8' orient='auto'>
+<path d='M0,0 L10,5 L0,10 z' fill='#333'/></marker>
+<marker id='arR' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='8' markerHeight='8' orient='auto'>
+<path d='M0,0 L10,5 L0,10 z' fill='#b85450'/></marker>
+<marker id='arG' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='8' markerHeight='8' orient='auto'>
+<path d='M0,0 L10,5 L0,10 z' fill='#5fa55f'/></marker>
+<marker id='arB' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='8' markerHeight='8' orient='auto'>
+<path d='M0,0 L10,5 L0,10 z' fill='#4a6fd3'/></marker>
+</defs>
+<text x='510' y='28' font-size='15' font-weight='700' text-anchor='middle' fill='#1f2328'>CuTe MMA Atom：用类型系统封装 PTX，把"指令 + 数据布局"打包成一个原子</text>
+<!-- Layered: User code → CUTLASS atom → MMA Op + MMA Traits → PTX -->
+<rect x='40' y='65' width='930' height='60' fill='#5fa55f' opacity='0.18' stroke='#5fa55f' stroke-width='1.5' rx='6'/>
+<text x='505' y='90' font-size='13' text-anchor='middle' font-weight='700' fill='#1a5a1a'>用户层 · 写 GEMM kernel</text>
+<text x='505' y='112' font-size='11' text-anchor='middle' font-family='monospace' fill='#222'>using AtomMma = SM100_MMA_F16BF16_SS&lt;_128, _256, _16, float&gt;;</text>
+<line x1='505' y1='128' x2='505' y2='148' stroke='#666' marker-end='url(#ar)'/>
+<rect x='40' y='150' width='450' height='110' fill='#4a6fd3' opacity='0.18' stroke='#4a6fd3' stroke-width='1.5' rx='6'/>
+<text x='265' y='175' font-size='13' text-anchor='middle' font-weight='700' fill='#4a6fd3'>MMA Op</text>
+<text x='265' y='195' font-size='11' text-anchor='middle' fill='#1a3055'>PTX 指令的 wrapper</text>
+<text x='265' y='215' font-size='10.5' text-anchor='middle' font-family='monospace' fill='#222'>tcgen05.mma.kind::f16</text>
+<text x='265' y='232' font-size='10.5' text-anchor='middle' fill='#1a3055'>带 descriptor 编码</text>
+<text x='265' y='250' font-size='10' text-anchor='middle' fill='#666' font-style='italic'>“做什么”</text>
+<rect x='520' y='150' width='450' height='110' fill='#a33ea1' opacity='0.18' stroke='#a33ea1' stroke-width='1.5' rx='6'/>
+<text x='745' y='175' font-size='13' text-anchor='middle' font-weight='700' fill='#a33ea1'>MMA Traits (metadata)</text>
+<text x='745' y='195' font-size='11' text-anchor='middle' fill='#4a1a48'>FrgTypeA = UMMA::smem_desc</text>
+<text x='745' y='215' font-size='11' text-anchor='middle' fill='#4a1a48'>FrgTypeC = UMMA::tmem_frg_1sm</text>
+<text x='745' y='232' font-size='11' text-anchor='middle' fill='#4a1a48'>ThrID, Shape_MNK, LayoutA_TV...</text>
+<text x='745' y='250' font-size='10' text-anchor='middle' fill='#666' font-style='italic'>“数据怎么排”</text>
+<line x1='265' y1='265' x2='505' y2='295' stroke='#666' marker-end='url(#ar)'/>
+<line x1='745' y1='265' x2='505' y2='295' stroke='#666' marker-end='url(#ar)'/>
+<rect x='340' y='300' width='340' height='45' fill='#222' stroke='#000'/>
+<text x='510' y='320' font-size='12' text-anchor='middle' fill='#fff' font-weight='700'>SASS / PTX</text>
+<text x='510' y='338' font-size='10.5' text-anchor='middle' fill='#fff' font-family='monospace'>tcgen05.mma.cta_group::1.kind::f16 ...</text>
+</svg>

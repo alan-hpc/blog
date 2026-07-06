@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 430">
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#4d5562"/>
+    </marker>
+    <style>
+      text{font-family:Arial,Helvetica,sans-serif;fill:#1f2328}
+      .title{font-size:28px;font-weight:700}
+      .subtitle{font-size:13px;fill:#667085}
+      .lane{font-size:14px;font-weight:700;fill:#667085}
+      .head{font-size:15px;font-weight:700}
+      .small{font-size:12.5px;fill:#344054}
+      .formula{font-family:Georgia,"Times New Roman",serif;font-size:21px;font-style:italic}
+      .formulaSm{font-family:Georgia,"Times New Roman",serif;font-size:17px;font-style:italic}
+      .sub{font-size:12px;baseline-shift:sub}
+      .box{stroke-width:2}
+      .thin{stroke-width:1.4}
+      .edge{stroke:#4d5562;stroke-width:2.2;fill:none;marker-end:url(#arrow)}
+      .dash{stroke:#667085;stroke-width:2;fill:none;stroke-dasharray:7 6;marker-end:url(#arrow)}
+      .cache{fill:#fff5f0;stroke:#b85450;stroke-width:1.6}
+      .io{fill:#fff;stroke:#d0d7de;stroke-width:1.4}
+    </style>
+  </defs>
+
+  <rect width="1120" height="430" fill="#fff"/>
+  <text x="40" y="48" class="title">SonicMoE works because three layers agree on what to eliminate</text>
+  <rect x="70" y="90" width="980" height="72" rx="10" fill="#fff5f0" stroke="#b85450" class="box"/>
+  <text x="105" y="120" class="head">Algorithm</text>
+  <text x="360" y="120" text-anchor="middle" class="formula">¬cache {X<tspan class="sub">e</tspan>,Y,dY,dO<tspan class="sub">e</tspan>}</text>
+  <text x="760" y="120" text-anchor="middle" class="formula">dS<tspan class="sub">e,t</tspan>=⟨dA′<tspan class="sub">e,t</tspan>,A<tspan class="sub">e,t</tspan>⟩</text>
+  <rect x="70" y="190" width="980" height="72" rx="10" fill="#fff8e7" stroke="#e0b300" class="box"/>
+  <text x="105" y="220" class="head">QuACK software</text>
+  <text x="360" y="220" text-anchor="middle" class="formula">GEMM = base ⊕ epilogue</text>
+  <text x="760" y="220" text-anchor="middle" class="formula">epi_visit_subtile(dH,dS,A′)</text>
+  <rect x="70" y="290" width="980" height="72" rx="10" fill="#f4faf4" stroke="#5fa55f" class="box"/>
+  <text x="105" y="320" class="head">Blackwell/Hopper</text>
+  <text x="360" y="320" text-anchor="middle" class="formula">MMA ∥ TMA/TMEM IO</text>
+  <text x="760" y="320" text-anchor="middle" class="formula">CLC: tile → cluster</text>
+  <path d="M560 162 L560 190" class="edge"/>
+  <path d="M560 262 L560 290" class="edge"/>
+  <rect x="170" y="372" width="780" height="36" rx="8" fill="#f7f8fa" stroke="#d0d7de" class="thin"/>
+  <text x="560" y="395" text-anchor="middle" class="small">If any layer is missing, the saved HBM traffic reappears as padding, scatter, or stalled epilogue.</text>
+</svg>

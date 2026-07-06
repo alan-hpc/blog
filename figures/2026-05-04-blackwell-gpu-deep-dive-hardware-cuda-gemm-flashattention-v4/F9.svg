@@ -1,0 +1,55 @@
+<svg viewBox='0 0 1020 460' xmlns='http://www.w3.org/2000/svg' font-family='sans-serif'>
+<defs>
+<marker id='ar' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='8' markerHeight='8' orient='auto'>
+<path d='M0,0 L10,5 L0,10 z' fill='#333'/></marker>
+<marker id='arR' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='8' markerHeight='8' orient='auto'>
+<path d='M0,0 L10,5 L0,10 z' fill='#b85450'/></marker>
+<marker id='arG' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='8' markerHeight='8' orient='auto'>
+<path d='M0,0 L10,5 L0,10 z' fill='#5fa55f'/></marker>
+<marker id='arB' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='8' markerHeight='8' orient='auto'>
+<path d='M0,0 L10,5 L0,10 z' fill='#4a6fd3'/></marker>
+</defs>
+<text x='510' y='28' font-size='15' font-weight='700' text-anchor='middle' fill='#1f2328'>2-CTA UMMA：操作数沿 M 切，B 通过 TMA multicast 共享，累加器各占一半 TMEM</text>
+<!-- A matrix -->
+<text x='180' y='65' font-size='12' fill='#222' font-weight='700' text-anchor='middle'>A · 256×16</text>
+<rect x='100' y='75' width='160' height='80' fill='#4a6fd3' opacity='0.20' stroke='#4a6fd3' stroke-width='1.5'/>
+<text x='180' y='105' font-size='11.5' text-anchor='middle' fill='#1a3055'>CTA0 行 0–127</text>
+<text x='180' y='122' font-size='10.5' text-anchor='middle' fill='#1a3055'>(独立 TMA 加载)</text>
+<rect x='100' y='155' width='160' height='80' fill='#5fa55f' opacity='0.20' stroke='#5fa55f' stroke-width='1.5'/>
+<text x='180' y='185' font-size='11.5' text-anchor='middle' fill='#1a5a1a'>CTA1 行 128–255</text>
+<text x='180' y='202' font-size='10.5' text-anchor='middle' fill='#1a5a1a'>(独立 TMA 加载)</text>
+<!-- B matrix -->
+<text x='460' y='65' font-size='12' fill='#222' font-weight='700' text-anchor='middle'>B · 16×256</text>
+<rect x='340' y='75' width='240' height='100' fill='#e0b300' opacity='0.20' stroke='#e0b300' stroke-width='1.5'/>
+<text x='460' y='115' font-size='12' text-anchor='middle' fill='#7a4500' font-weight='700'>TMA Multicast</text>
+<text x='460' y='135' font-size='11' text-anchor='middle' fill='#7a4500'>同时复制到 CTA0 + CTA1 SMEM</text>
+<text x='460' y='155' font-size='10.5' text-anchor='middle' fill='#7a4500' font-style='italic'>带宽需求 = 1 份而非 2 份</text>
+<!-- Pair-UMMA -->
+<rect x='340' y='195' width='240' height='60' fill='#fee' stroke='#b85450' stroke-width='2' rx='6'/>
+<text x='460' y='220' font-size='13' text-anchor='middle' font-weight='700' fill='#5a1a1a'>tcgen05.mma.cta_group::2</text>
+<text x='460' y='240' font-size='11' text-anchor='middle' fill='#5a1a1a'>由 leader CTA (偶数 ID) 单线程发射</text>
+<!-- C matrix split -->
+<text x='820' y='65' font-size='12' fill='#222' font-weight='700' text-anchor='middle'>C 累加器 · 256×256（在 TMEM）</text>
+<rect x='680' y='75' width='280' height='80' fill='#4a6fd3' opacity='0.20' stroke='#4a6fd3' stroke-width='1.5'/>
+<text x='820' y='105' font-size='11.5' text-anchor='middle' fill='#1a3055'>128×256 in CTA0 TMEM</text>
+<text x='820' y='122' font-size='10.5' text-anchor='middle' fill='#1a3055'>(占其 256 列)</text>
+<rect x='680' y='155' width='280' height='80' fill='#5fa55f' opacity='0.20' stroke='#5fa55f' stroke-width='1.5'/>
+<text x='820' y='185' font-size='11.5' text-anchor='middle' fill='#1a5a1a'>128×256 in CTA1 TMEM</text>
+<text x='820' y='202' font-size='10.5' text-anchor='middle' fill='#1a5a1a'>(占其 256 列)</text>
+<line x1='260' y1='115' x2='340' y2='225' stroke='#4a6fd3' stroke-width='1.6' marker-end='url(#arB)'/>
+<line x1='260' y1='195' x2='340' y2='225' stroke='#5fa55f' stroke-width='1.6' marker-end='url(#arG)'/>
+<line x1='580' y1='225' x2='680' y2='115' stroke='#4a6fd3' stroke-width='1.6' marker-end='url(#arB)'/>
+<line x1='580' y1='225' x2='680' y2='195' stroke='#5fa55f' stroke-width='1.6' marker-end='url(#arG)'/>
+<!-- bottom: arithmetic intensity gain -->
+<rect x='100' y='290' width='860' height='150' fill='#fffbe7' stroke='#e0b300' stroke-width='1.5' rx='6'/>
+<text x='530' y='315' font-size='13' text-anchor='middle' font-weight='700' fill='#7a4500'>为什么这样设计？算术强度翻倍</text>
+<text x='530' y='340' font-size='11.5' text-anchor='middle' fill='#5a3500'>对比两个独立的 128×256 MMA：FLOPs 相同（2·256·256·16），但操作数搬运量减少</text>
+<rect x='160' y='355' width='340' height='70' fill='#fff' stroke='#b85450'/>
+<text x='330' y='378' font-size='12' text-anchor='middle' font-weight='700' fill='#5a1a1a'>BEFORE · 两个独立 1-CTA UMMA</text>
+<text x='330' y='398' font-size='11' text-anchor='middle' fill='#5a1a1a'>各自加载完整 16×256 的 B</text>
+<text x='330' y='415' font-size='11' text-anchor='middle' fill='#5a1a1a'>SMEM 流量 = 2 × |B|</text>
+<rect x='560' y='355' width='340' height='70' fill='#fff' stroke='#5fa55f'/>
+<text x='730' y='378' font-size='12' text-anchor='middle' font-weight='700' fill='#1a5a1a'>AFTER · 1 条 2-CTA UMMA</text>
+<text x='730' y='398' font-size='11' text-anchor='middle' fill='#1a5a1a'>B 通过 multicast 加载 1 份</text>
+<text x='730' y='415' font-size='11' text-anchor='middle' fill='#1a5a1a'>SMEM 流量 = 1 × |B| → 砍半</text>
+</svg>

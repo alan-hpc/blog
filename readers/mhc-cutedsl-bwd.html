@@ -1,0 +1,58 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>DeepSeek-V4 mHC pre-norm-fn 反向 kernel · CuteDSL 优化全解析</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+ onload="renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false});"></script>
+<style>
+ body{max-width:860px;margin:0 auto;padding:40px 24px 80px;font-family:-apple-system,"PingFang SC","Microsoft YaHei",Helvetica,Arial,sans-serif;color:#1a1a1a;line-height:1.75;font-size:16px}
+ h1{font-size:30px;line-height:1.3;margin:0 0 8px;border-bottom:3px solid #d6342c;padding-bottom:12px}
+ h2{font-size:23px;margin:40px 0 14px;color:#9673a6;border-left:5px solid #9673a6;padding-left:12px}
+ h3{font-size:18px;margin:28px 0 10px;color:#555}
+ p{margin:12px 0} code{background:#f3f3f3;padding:1px 5px;border-radius:4px;font-size:90%}
+ pre{background:#1f2329;color:#e6e6e6;padding:14px 16px;border-radius:8px;overflow:auto;font-size:13.5px}
+ pre code{background:none;color:inherit;padding:0}
+ blockquote{margin:14px 0;padding:10px 16px;background:#f6f8fa;border-left:4px solid #82b366;color:#444}
+ .callout{margin:14px 0;padding:12px 16px;background:#fff2cc;border:1px solid #d6b656;border-radius:8px}
+ figure{margin:22px 0;text-align:center} img{max-width:100%;border-radius:8px;box-shadow:0 1px 8px rgba(0,0,0,.12)}
+ hr{border:0;border-top:1px solid #e5e5e5;margin:28px 0} a{color:#d6342c}
+</style></head><body>
+<h1><b>DeepSeek-V4 mHC pre-norm-fn 反向 kernel · CuteDSL 优化全解析</b></h1>
+<p>H100 (sm90) · num_tokens=4096, n_hc=4, hidden=2048 → mhc_hidden=8192 · 最终 <b>168µs / 818 GB/s（1.93× TileLang）</b></p>
+<blockquote>一句话：pre-norm-fn = RMSNorm 后接一个 Linear。本文从 mHC 整体推出它的前后向，再从朴素实现逐步优化到超越 TileLang 的 Hopper bf16-wgmma 融合 kernel。</blockquote>
+<hr>
+<h2><b>Prologue · 背景与符号</b></h2>
+<p>mHC（流形约束超连接）把残差扩成 n_hc=4 路，混合矩阵约束在 Birkhoff 双随机流形（Sinkhorn 投影）。混合系数是动态的——由 RMSNorm(x) 经一个轻量线性层 φ 预测出 2n+n²=24 个 raw logits。pre-norm-fn 就是这一步。</p>
+<h3><b>前向：RMSNorm ∘ Linear（n_rms_group=1, G=8192）</b></h3>
+<p>$r=\Big(\tfrac1G\sum_j x_j^2+\varepsilon\Big)^{-1/2},\quad \bar x=x\cdot r,\quad \mathrm{mixes}=\bar x\,fn^{\top}\ (M=24)$</p>
+<blockquote>实现上 kernel 保存未归一化的 out_mul = x·fnᵀ 与 sqrsum = Σx²，则 mixes = out_mul·rms（代数等价）。</blockquote>
+<hr>
+<h2><b>Layer 1 · 从 mHC 整体到 pre-norm-fn 的前后向</b></h2>
+<p>mHC 单层（论文 Eq.3）：</p>
+<p>$x_{l+1}=H^{\mathrm{res}}_l x_l+(H^{\mathrm{post}}_l)^{\top}F(H^{\mathrm{pre}}_l x_l, W_l)$</p>
+<h3><b>反向 = Linear backward + RMSNorm backward</b></h3>
+<p><b>(a) Linear 反向：</b></p>
+<p>$\mathrm{fn\_grad}=g^{\top}\bar x\ (\text{GEMM1, 沿 token 归约}),\qquad \bar x_{\mathrm{grad}}=g\,fn$</p>
+<p><b>(b) RMSNorm 反向（</b>$c=\langle \bar x_{\mathrm{grad}},\bar x\rangle$<b>）：</b></p>
+<p>$x_{\mathrm{grad}}=r\Big(\bar x_{\mathrm{grad}}-\tfrac{c}{G}\,\bar x\Big)\ (+\ \text{初值}),\qquad \frac{\partial r}{\partial x_j}=-\frac{r^3}{G}x_j$</p>
+<blockquote>关键：∂r/∂x 只含一个 r 因子 → sqrsum_grad 含单个 rms（标准 RMSNorm 反向）。</blockquote>
+<p><b>⚠ 发现：仓库 ref 与两个 kernel 都用了 rms²（多一个 rms 因子）。autograd 核验：rms≠1 时 rms² 误差 0.15、rms¹ 误差 1e-16。residual≈单位方差(rms≈1)时被掩盖，故测试都过。</b></p>
+<hr>
+<h2><b>Layer 2-3 · 优化之路（724 → 168µs）</b></h2>
+<ul><li>v1 标量 smem GEMM：724µs / 189 GB/s</li><li>+ 128-bit 向量化 IO：457µs / 299 GB/s</li><li>+ bf16 wgmma 张量核：447µs（matmul 变快，但 swizzle staging 开销）</li><li>2D-grid 重写（预计算 + 二维 grid + atomicAdd）：282µs / 485 GB/s，首超 TileLang</li><li>ncu 砍 smem（占用率 6.25%→18.75%）：168µs / 818 GB/s</li></ul>
+<figure><img src='mhc-cutedsl-bwd_figs/img_K0JubaZabo.png' alt=''></figure>
+<h2><b>Layer 4 · 收敛分析</b></h2>
+<p>ncu：L1/TEX 指令吞吐 87%、DRAM/算力仅 21% → 指令受限；占用率被 reg(162)+smem(62KB) 双限在 3 block/SM。三轮再优化（token 分组/向量化填充/消除 x 转置）均无改进 → 架构地板。</p>
+<figure><img src='mhc-cutedsl-bwd_figs/img_BNgIbjyjko.png' alt=''></figure>
+<h2><b>Layer 5 · 真实收益</b></h2>
+<p>nsys 实跑：生产当前走拆分路径 bwd_mul(398µs)+bwd_norm(4µs)≈402µs；融合 cute kernel 吃同样张量、drop-in 替换 → 2.4×。形状一致(4096/8192/1)。</p>
+<blockquote>启用：环境变量 TILE_KERNELS_MHC_BWD_BACKEND=cute（auto 在 n_rms_group=1 且 cutedsl 可用时自动启用，否则回退 TileLang）。</blockquote>
+<pre><code>export TILE_KERNELS_MHC_BWD_BACKEND=cute
+pytest tests/mhc/test_norm_fn_bwd_fused.py</code></pre>
+<hr>
+<p>参考：Laurent Boué《Deep learning for pedestrians》系列（arXiv:1811.11987 / 2512.23329）；DeepSeek-V4 mHC。</p>
+<h2>反向全流程图 · draw.io 实时同步（点链接编辑，存完本图自动刷新）</h2>
+<p><a href="https://alan-hpc.github.io/blog/fig-edit/?id=mhc_bwd"><b>✏️ 点此在 draw.io 中编辑此图</b></a>   （编辑器里改完点 Save 💾，下方这张图几秒内自动替换为新版）</p>
+<figure><img src='mhc-cutedsl-bwd_figs/img_M7Qybgfj7o.png' alt=''></figure>
+<p style="margin-top:60px;color:#999;font-size:13px;text-align:center">飞书撰写 · 自动发布 · Method A 管道</p>
+</body></html>

@@ -1,0 +1,32 @@
+<svg viewBox="0 0 1000 320" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M 0 0 L 10 5 L 0 10 z" fill="#24292f"/>
+  </marker>
+  <style>
+    .title{font:700 24px sans-serif;fill:#24292f}
+    .sub{font:400 13px sans-serif;fill:#57606a}
+    .mono{font:500 13px ui-monospace,Menlo,monospace;fill:#24292f}
+  </style>
+</defs>
+<text x="500" y="38" text-anchor="middle" font-family="sans-serif" font-size="24" font-weight="700" fill="#24292f">Tensor Core evolution: where the accumulator lives</text>
+<rect x="95" y="96" width="220" height="150" rx="8" fill="#f6f8fa" stroke="#57606a" stroke-width="2"/>
+<text x="205" y="132" text-anchor="middle" font-family="sans-serif" font-size="22" font-weight="700" fill="#57606a">MMA</text>
+<text x="205" y="164" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="400" fill="#24292f">warp</text>
+<text x="205" y="184" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="400" fill="#24292f">acc: register</text>
+<text x="205" y="204" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="400" fill="#24292f">operand: register</text>
+<line x1="325" y1="170" x2="380" y2="170" stroke="#24292f" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="390" y="96" width="220" height="150" rx="8" fill="#eef7ff" stroke="#4a6fd3" stroke-width="2"/>
+<text x="500" y="132" text-anchor="middle" font-family="sans-serif" font-size="22" font-weight="700" fill="#4a6fd3">WGMMA</text>
+<text x="500" y="164" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="400" fill="#24292f">warpgroup</text>
+<text x="500" y="184" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="400" fill="#24292f">acc: register</text>
+<text x="500" y="204" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="400" fill="#24292f">operand: SMEM</text>
+<line x1="620" y1="170" x2="675" y2="170" stroke="#24292f" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="685" y="96" width="220" height="150" rx="8" fill="#f4faf4" stroke="#5fa55f" stroke-width="2"/>
+<text x="795" y="132" text-anchor="middle" font-family="sans-serif" font-size="22" font-weight="700" fill="#5fa55f">UMMA</text>
+<text x="795" y="164" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="400" fill="#24292f">warpgroup</text>
+<text x="795" y="184" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="400" fill="#24292f">acc: TMEM</text>
+<text x="795" y="204" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="400" fill="#24292f">operand: SMEM</text>
+<text x="795" y="224" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="400" fill="#24292f">2CTA multicast</text>
+<text x="500" y="285" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#57606a">The decisive change for Mega MoE is TMEM: epilogue gets register room for SwiGLU + quant.</text>
+</svg>

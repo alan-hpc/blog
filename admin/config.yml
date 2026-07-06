@@ -1,0 +1,68 @@
+# Decap CMS configuration
+# Phase A: test_repo backend (in-memory, NO persistence). For real edits, switch to github backend in Phase C.
+
+backend:
+  name: github
+  repo: alan-hpc/blog
+  branch: main
+
+local_backend: false
+publish_mode: simple
+media_folder: "static/uploads"           # 图片 / 文件 上传目录 (相对仓库根)
+public_folder: "/uploads"                # URL prefix
+site_url: "https://alan-hpc.github.io/blog/"
+display_url: "https://alan-hpc.github.io/blog/"
+
+collections:
+  - name: "posts"
+    label: "博客文章 · Posts"
+    folder: "content/posts"
+    create: true
+    slug: "{{year}}-{{month}}-{{day}}-{{slug}}"
+    path: "{{slug}}/index"               # produces content/posts/<slug>/index.md
+    media_folder: ""                     # per-post: assets next to index.md
+    public_folder: ""
+    extension: "md"
+    format: "frontmatter"                # YAML frontmatter
+    fields:
+      - {label: "标题 Title",        name: "title",   widget: "string"}
+      - {label: "发布日期 Date",     name: "date",    widget: "datetime"}
+      - {label: "摘要 Summary",     name: "summary", widget: "string", required: false}
+      - {label: "标签 Tags",        name: "tags",    widget: "list",   required: false}
+      - {label: "公式渲染 KaTeX",    name: "math",    widget: "boolean", default: true}
+      - {label: "drawio 图表",      name: "drawio",  widget: "boolean", default: false}
+      - {label: "正文 Body",        name: "body",    widget: "markdown"}
+
+  # 固定页面（关于、其它单页）—— 用 files 集合精确指向具体路径
+  - name: "pages"
+    label: "页面 · Pages"
+    files:
+      - name: "about"
+        label: "关于 · About"
+        file: "content/about/index.md"
+        media_folder: "/static/uploads"
+        public_folder: "/uploads"
+        fields:
+          - {label: "标题 Title",       name: "title",            widget: "string"}
+          - {label: "更新日期 Date",     name: "date",             widget: "datetime", required: false}
+          - {label: "草稿状态 Draft",    name: "draft",            widget: "boolean", default: false}
+          - {label: "隐藏 ToC",         name: "ShowToc",          widget: "boolean", default: false}
+          - {label: "隐藏面包屑",        name: "ShowBreadCrumbs",  widget: "boolean", default: false}
+          - {label: "隐藏 meta",        name: "hidemeta",         widget: "boolean", default: true}
+          - {label: "禁用分享按钮",      name: "disableShare",     widget: "boolean", default: true}
+          - {label: "关闭评论",          name: "comments",         widget: "boolean", default: false}
+          - {label: "正文 Body (Markdown)", name: "body",         widget: "markdown"}
+
+  - name: "drafts"
+    label: "草稿 · Drafts"
+    folder: "content/drafts"
+    create: true
+    slug: "{{slug}}"
+    path: "{{slug}}/index"
+    media_folder: ""
+    public_folder: ""
+    extension: "md"
+    format: "frontmatter"
+    fields:
+      - {label: "标题 Title",  name: "title", widget: "string"}
+      - {label: "正文 Body",   name: "body",  widget: "markdown"}

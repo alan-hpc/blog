@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html xmlns:MadCap="http://www.madcapsoftware.com/Schemas/MadCap.xsd" lang="en-us" xml:lang="en-us" data-mc-search-type="Stem" data-mc-help-system-file-name="index.xml" data-mc-path-to-help-system="../../../../../../../" data-mc-target-type="WebHelp2" data-mc-runtime-file-type="Topic" data-mc-preload-images="false" data-mc-in-preview-mode="false" data-mc-toc-path="Developer Tools|Desktop Developer Tools|NVIDIA Nsight Visual Studio Edition|NVIDIA Nsight Visual Studio Edition 4.7|Analysis Tools|CUDA Experiments|Kernel-Level Experiments">
+    <!-- saved from url=(0016)http://localhost -->
+    <head>
+        <meta charset="utf-8" />
+        <meta name="googlebot" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><title>指令统计</title>
+        <link rel="shortcut icon" href="../../../../../../Resources/MasterPages/nvidia.ico" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/Slideshow.css" rel="stylesheet" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/TextEffects.css" rel="stylesheet" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/Topic.css" rel="stylesheet" />
+        <link href="../../../../../../resources/stylesheets/style.css" rel="stylesheet" />
+        <style>/*&lt;meta /&gt;*/
+
+.button.previous-topic-button
+{
+	-pie-background: url('../../../../../../../Skins/Default/Stylesheets/Images/navigate-previous.png') no-repeat center center, linear-gradient(#ffffff, #ececec);
+}
+
+.button.current-topic-index-button
+{
+	-pie-background: linear-gradient(#ffffff, #ececec);
+}
+
+.button.next-topic-button
+{
+	-pie-background: url('../../../../../../../Skins/Default/Stylesheets/Images/navigate-next.png') no-repeat center center, linear-gradient(#ffffff, #ececec);
+}
+
+.needs-pie
+{
+	behavior: url('../../../../../../../Resources/Scripts/PIE.htc');
+}
+
+</style>
+        <script src="../../../../../../../Resources/Scripts/custom.modernizr.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/jquery.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/foundation.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/plugins.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/require.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/require.config.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/MadCapAll.js">
+        </script>
+        <script src="../../../../../../../Skins/Default/Scripts/Toolbar.js">
+        </script>
+    </head>
+    <body>
+        <p class="MCWebHelpFramesetLink MCWebHelpFramesetLinkTop"><a href="../../../../../../../index.html#developertools/desktop/analysis/report/cudaexperiments/kernellevel/instructionstatistics.htm">打开带导航的主题视图</a>
+        </p>
+        <div class="MCBreadcrumbsBox_site.css_0"><span class="MCBreadcrumbsPrefix">当前位置： </span><a class="MCBreadcrumbsLink" href="../../../../../developer_tools.htm">开发者工具</a><span class="MCBreadcrumbsDivider"> &gt; </span><a class="MCBreadcrumbsLink" href="../../../../../desktop_devtools.htm">桌面开发者工具</a><span class="MCBreadcrumbsDivider"> &gt; </span><a class="MCBreadcrumbsLink" href="../../../../nvidia_nsight.htm">NVIDIA Nsight Visual Studio Edition</a><span class="MCBreadcrumbsDivider"> &gt; </span><span class="MCBreadcrumbs">指令统计</span>
+        </div><a name="kanchor137"></a>
+        <div id="pageheader">
+            <h1><span class="SystemTitle">指令统计</span>
+            </h1>
+            <p style="font-size: 8pt;"><span style="color: #696969;">NVIDIA® Nsight™ Development Platform, Visual Studio Edition 4.7 用户指南</span>
+                <br /><span id="feedbacklink" style="font-size: 8pt; font-weight: normal;"><a href="mailto:devtools-support@nvidia.com?subject=Documentation Feedback: Nsight Visual Studio Edition User Guide">发送反馈</a></span>
+                <br />
+            </p>
+            <hr width="100%" size="0" align="center" />
+        </div>
+        <h3><a id="Overview"></a>概述</h3>
+        <p>
+          指令统计实验为理解 kernel 执行时目标设备的整体利用情况提供了第一层级的初步排查信息。它回答以下问题：kernel grid 是否能在整个执行期间持续让所有多处理器保持忙碌？工作负载是否在各处之间均衡分布？实际达到的指令吞吐量是否接近硬件的峰值性能？
+        </p>
+        <h5><a id="Background"></a>背景</h5>
+        <p>
+          对于计算能力 2.0 及更高的设备，全局工作分发引擎会将线程 block 调度到流多处理器（SM）上执行。如果一个多处理器至少被分配到一个 warp，就被视为活跃。在 kernel 执行期间某 SM 处于活跃状态的总周期数被定义为<b>活跃周期</b>。
+        </p>
+        <p>
+          每个多处理器都暴露多个 warp 调度器，能够每个周期至少执行一条指令。Fermi 架构（计算能力 2.x）上每个 SM 有两个 warp 调度器；Kepler 架构（计算能力 3.x）上每个 SM 配备四个 warp 调度器。在每次指令发射时刻，每个 warp 调度器都会从其分配到的 warp 列表中挑选一个能够推进执行的 warp。对该选中的 warp，调度器随后要么发射下一条单条指令，要么发射下两条指令。双发射在计算能力 2.x 及更高的设备上得到支持，且仅适用于相互独立的指令。
+        </p>
+        <p>
+          一个 warp 调度器可能需要多次发射同一条指令，才能真正完成 warp 中全部 32 个线程的执行。<b>已发射指令数</b>与<b>已执行指令数</b>之间存在差异主要有两个原因：第一，内存操作上的地址分歧和 bank 冲突（详见各<a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capabilities">计算能力</a>技术规范中的内存章节）。第二，某些汇编指令每个周期只能为半个 warp 发射，因此需要发射两次。双精度浮点指令就是此类指令的典型例子。由于每条已执行指令至少要被发射一次，因此下面这一关系在所有情况下都成立：
+        </p><pre>Instructions Issued &gt;= Instructions Executed</pre>
+        <p>
+          多次发射同一条指令也被称为<b>指令重发（Instruction Replay）</b>。每次重发迭代都会占用该 warp 调度器原本可用于发射新指令、推进执行的能力。同时，每次指令重发都会消耗处理该指令所需的计算资源。简而言之，所需的指令重发迭代越多，对 kernel 执行的性能影响就越大。
+        </p>
+        <h3><a id="Charts"></a>图表</h3>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="InstructionsPerClock"></a>每时钟周期指令数（IPC）</h4>
+                    <img src="instructionstatisticschartinstructionsperclock.png" style="float: right;mc-thumbnail: none;" />
+                    <p>
+          一张 z 序柱状图，分别展示每个 SM 上已发射指令与已执行指令所达到的吞吐量。理论 IPC 峰值是一项设备上限，由目标设备的计算能力决定。Y 轴按该峰值进行缩放。
+        </p>
+                    <p style="padding:10px;background-color:#eaefe0">
+          IPC 峰值是单个周期可达到的最大已执行指令数。可持续维持的已执行 IPC 最大值可能会更低。
+        </p>
+                    <h5>指标</h5>
+                    <p><b>已发射 IPC</b>
+          考虑所有指令重发迭代的情况下，每周期平均已发射的指令数。该值越接近"已执行 IPC"越好。如本文档<a href="#Background">背景</a>章节所述，某些汇编指令需要多次发射。因此，该指标的最优目标值取决于指令的组合。
+        </p>
+                    <p><b>已执行 IPC</b>
+          每周期平均已执行的指令数。数值越高，表明对所有可用资源的使用越高效。请注意，所报告的数值是按每个多处理器给出的。由于多处理器中的每个 warp 调度器都能独立执行指令，所以"每周期执行一条指令"的目标意味着平均 IPC 应等于每个 SM 的 warp 调度器数量。对一个 kernel 而言，可达到的最大目标 IPC 取决于其所执行指令的组合。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <p>
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="SmActivity"></a>SM 活动率</h4>
+                    <img src="instructionstatisticschartsmactivity.png" style="float: right;mc-thumbnail: none;" />
+                    <p>
+          展示 kernel 启动期间每个多处理器处于活跃状态的时间占比。如果一个多处理器当前至少被分配了一个 warp 来执行，则被视为活跃。即便 kernel grid 尚未完成，由于负载严重不均衡，某个 SM 也可能处于非活跃状态。SM 之间负载分布不均可能由以下几种因素引起：kernel 中各 block 的执行时间不同、各 SM 被调度的 block 数量存在差异，或两者兼有。
+        </p>
+                    <p>
+          负载不均衡的可观察结果是各多处理器之间的活动率数值差异显著：原因很简单——部分 SM 仍在忙于执行工作，而其他 SM 已经完成了自己的份额、由于没有更多可调度的工作项而处于空闲。这通常被称为尾部效应。block 数量较少的小型 kernel grid 更容易受到尾部效应的影响。<a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#conurrent-kernel-execution">并发 kernel 执行</a>可以利用空闲的多处理器去处理后续的 kernel 启动。由于 profile 类活动是对每次 kernel 启动单独进行观察的，profile 结果只能指示出尾部效应的存在。要分析并发 kernel 执行的有效性，请运行 CUDA trace 类活动。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <p>
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="InstructionsPerWarp"></a>每 warp 指令数（IPW）</h4>
+                    <img src="instructionstatisticschartinstructionsperwarp.png" style="float: right;mc-thumbnail: none;" />
+                    <p>
+          展示每个多处理器上每个 warp 平均已执行的指令数。各 SM 之间 IPW 指标差异较大，表明 kernel grid 中各 block 的工作负载不一致。这种不均衡并不一定会导致性能低下，但 IPW 对于理解 <a href="#SmActivity">SM 活动率</a>差异的原因非常有用。
+        </p>
+                    <p>
+          导致 IPW 出现较大差异最常见的代码模式，是其条件表达式依赖于 block 索引的条件执行代码块。例子包括：仅对某一个 block 执行的特殊预处理或后处理操作；或者仅对 grid 中某一部分触发的、代价高昂的边界条件检测与处理。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <p>
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="WarpsLaunched"></a>启动的 warp 数</h4>
+                    <img src="instructionstatisticschartwarpslaunched.png" style="float: right;mc-thumbnail: none;" />
+                    <p>
+          展示在所执行 kernel grid 中，每个多处理器上启动的 warp 总数。各 SM 之间启动 warp 数差异较大，最常见的原因是 kernel grid 提供的并行度不足。更具体地说，是 kernel block 数量过少，不足以充分利用所有可用的计算资源。仅当一个或多个 SM 上的 <a href="#SmActivity">SM 活动率</a>较低时，启动 warp 数差异大才是一个需要关注的问题。这种情况下，可以考虑采用另一种工作划分方式，使每个 warp 的执行时长方差更小，或者启动更多的线程 block，两者都有助于工作分发器更均匀地分发给定的工作。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <h3><a id="Analysis"></a>分析</h3>
+        <ul style="list-style-type:none">
+            <li value="1">
+            如果 kernel 启动的平均 <a href="#SmActivity">SM 活动率</a>较低，且……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……各多处理器之间差异很小，说明 kernel grid 无法充分利用所有计算资源。如果可能，请增大问题规模，或考察宿主应用是否可以应用<a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#conurrent-kernel-execution">并发 kernel 执行</a>来利用本来会闲置的计算资源。
+              </li><li style="text-indent:-20px;" value="2">
+                ……各多处理器之间差异较大，则查看<a href="#InstructionsPerWarp">每 warp 指令数</a>图表和<a href="#WarpsLaunched">启动的 warp 数</a>图表，以理解不均衡的成因。可能的优化策略包括：调整 kernel grid 的划分方案以暴露更多线程 block，或减小 grid 中各 block 之间的负载差异。
+              </li></ul></li>
+            <li value="2">
+            如果平均已执行的<a href="#InstructionsPerClock">每时钟周期指令数</a>较低 ……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……运行内存类实验，从中排查 kernel 是否存在不佳的内存访问模式或大量的 bank 冲突。这两者都会迫使指令多次重发，从而把资源消耗在被重发的操作上，而非用于继续推进 kernel 的执行。
+              </li><li style="text-indent:-20px;" value="2">
+                ……仔细检查已执行的指令组合中是否包含大量高延迟指令——这些指令所提供的 IPC 比设备理论最大值要低。此类指令通常包括双精度浮点运算和超越函数。<a href="achievedflops.htm">实际 FLOPS</a> 实验、<a href="achievediops.htm">实际 IOPS</a> 实验以及<a href="disassemblyregexmatch.htm">反汇编正则匹配</a>实验有助于识别指令组合。
+              </li><li style="text-indent:-20px;" value="3">
+                ……运行<a href="issueefficiency.htm">发射效率</a>实验，检查 kernel 中相邻指令之间是否存在大量依赖、且可用并行度不足以隐藏这些依赖。
+              </li><li style="text-indent:-20px;" value="4">
+                ……运行<a href="achievedoccupancy.htm">实际占用率</a>实验，验证 kernel grid 的整体并行度是否足以有效地隐藏延迟。
+              </li></ul></li>
+        </ul>
+        <div id="pagefooter">
+            <br />
+        </div>
+        <hr style="height: 1px;" width="100%" size="0" align="center" />
+        <script type="text/javascript" src="../../../../../../resources/stylesheets/run_prettify.js?lang=vb" autoload="true">
+        </script>
+        <p>
+        </p>
+        <div class="buttons inline-buttons clearfix topicToolbarProxy topicToolbarProxysite.css" style="mc-topic-toolbar-items: ;">
+            <div class="button-group-container-left">
+                <button class="button needs-pie previous-topic-button" type="button" title="Navigate previous">
+                    <img src="../../../../../../../Skins/Default/Stylesheets/Images/transparent.gif" alt="上一主题" />
+                </button>
+                <div class="button current-topic-index-button disabled"><span class="sequence-index"></span> / <span class="sequence-total"></span></div>
+                <button class="button needs-pie next-topic-button" type="button" title="Navigate next">
+                    <img src="../../../../../../../Skins/Default/Stylesheets/Images/transparent.gif" alt="下一主题" />
+                </button>
+            </div>
+        </div>
+        <p> <![CDATA[ ]]></p>
+        <p><span style="color: #696969; font-size: 8pt;">NVIDIA GameWorks Documentation Rev. 1.0.150630 ©2015. NVIDIA Corporation. All Rights Reserved.</span>
+        </p>
+    </body>
+</html>

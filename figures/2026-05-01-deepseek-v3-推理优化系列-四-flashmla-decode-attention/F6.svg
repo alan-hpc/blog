@@ -1,0 +1,46 @@
+<svg viewBox="0 0 1000 510" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M 0 0 L 10 5 L 0 10 z" fill="#24292f"/>
+  </marker>
+</defs>
+<rect x="0" y="0" width="1000" height="510" fill="#ffffff"/>
+<text x="500" y="38" text-anchor="middle" font-family="sans-serif" font-size="24" font-weight="700" fill="#24292f">FlashMLA input: MQA transpose turns heads into query rows</text>
+<text x="500" y="64" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="400" fill="#57606a">The source q-transpose sketch is the bridge from MLA absorption to the actual decode kernel shape.</text>
+<rect x="65" y="104" width="200" height="122" rx="8" fill="#eef7ff" stroke="#4a6fd3" stroke-width="1.8"/>
+<text x="165" y="132" text-anchor="middle" font-family="sans-serif" font-size="15" font-weight="700" fill="#4a6fd3">MHA</text>
+<text x="165" y="160" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="400" fill="#57606a">Q heads: H</text>
+<text x="165" y="179" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="400" fill="#57606a">K/V heads: H</text>
+<text x="165" y="198" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="400" fill="#57606a">one-to-one</text>
+<rect x="325" y="104" width="200" height="122" rx="8" fill="#f4faf4" stroke="#5fa55f" stroke-width="1.8"/>
+<text x="425" y="132" text-anchor="middle" font-family="sans-serif" font-size="15" font-weight="700" fill="#5fa55f">MQA / FlashMLA</text>
+<text x="425" y="160" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="400" fill="#57606a">Q heads: H</text>
+<text x="425" y="179" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="400" fill="#57606a">K/V heads: 1</text>
+<text x="425" y="198" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="400" fill="#57606a">many-to-one</text>
+<line x1="265" y1="165" x2="325" y2="165" stroke="#57606a" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="600" y="86" width="315" height="66" rx="8" fill="#eef7ff" stroke="#4a6fd3" stroke-width="1.5"/>
+<text x="757" y="112" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="700" fill="#4a6fd3">q before transpose</text>
+<text x="757" y="136" text-anchor="middle" font-family="serif" font-size="13" font-weight="600" fill="#4a6fd3">[B,1,H,D_qk] = [2,1,128,576]</text>
+<rect x="600" y="192" width="315" height="72" rx="8" fill="#fff8e7" stroke="#e0b300" stroke-width="1.5"/>
+<text x="757" y="220" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="700" fill="#e0b300">transpose axes 1 and 2</text>
+<text x="757" y="244" text-anchor="middle" font-family="serif" font-size="13" font-weight="600" fill="#e0b300">[B,H,1,D_qk] = [2,128,1,576]</text>
+<line x1="757" y1="152" x2="757" y2="192" stroke="#57606a" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="90" y="302" width="250" height="78" rx="8" fill="#f4faf4" stroke="#5fa55f" stroke-width="1.5"/>
+<text x="215" y="330" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="700" fill="#5fa55f">shared history cache</text>
+<text x="215" y="354" text-anchor="middle" font-family="serif" font-size="13" font-weight="600" fill="#5fa55f">k: [B,T,1,D_qk]</text>
+<text x="215" y="374" text-anchor="middle" font-family="serif" font-size="13" font-weight="600" fill="#5fa55f">v: [B,T,1,D_v]</text>
+<rect x="430" y="302" width="245" height="78" rx="8" fill="#fbf0fb" stroke="#a33ea1" stroke-width="1.5"/>
+<text x="552" y="330" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="700" fill="#a33ea1">reinterpretation</text>
+<text x="552" y="354" text-anchor="middle" font-family="serif" font-size="14" font-weight="600" fill="#a33ea1">S_q = H = 128</text>
+<text x="552" y="374" text-anchor="middle" font-family="sans-serif" font-size="11" font-weight="600" fill="#57606a">heads become query rows</text>
+<rect x="748" y="302" width="175" height="78" rx="8" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.5"/>
+<text x="835" y="330" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="700" fill="#24292f">FlashMLA tiles</text>
+<text x="835" y="354" text-anchor="middle" font-family="serif" font-size="13" font-weight="600" fill="#24292f">block_m = 64</text>
+<text x="835" y="374" text-anchor="middle" font-family="sans-serif" font-size="11" font-weight="600" fill="#57606a">two Q tiles per token</text>
+<line x1="340" y1="341" x2="430" y2="341" stroke="#57606a" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="675" y1="341" x2="748" y2="341" stroke="#57606a" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="757" y1="264" x2="552" y2="302" stroke="#57606a" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="170" y="430" width="660" height="52" rx="8" fill="#fff8e7" stroke="#e0b300" stroke-width="1.4"/>
+<text x="500" y="455" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="700" fill="#e0b300">这不是改变 attention 数学，而是把“128 个 head”改写成 kernel 更容易切分的 128 行 query。</text>
+<text x="500" y="474" text-anchor="middle" font-family="sans-serif" font-size="11" font-weight="500" fill="#57606a">KV 仍是单 head latent stream，所以后续 GEMM/softmax 看见的是 KV-shared MQA。</text>
+</svg>

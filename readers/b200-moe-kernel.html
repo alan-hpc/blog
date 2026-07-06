@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>B200 8卡 MoE 同精度对比 + kernel 拆解：DeepGEMM MegaMoE vs TRT-LLM【进行中...】</title>
+
+<!-- table-css-injected -->
+  <!-- Fonts: JetBrains Mono for code -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+  <!-- Highlight.js: Monokai Sublime theme -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/monokai-sublime.min.css">
+  <!-- KaTeX -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <!-- Shared reader styles -->
+  <link rel="stylesheet" href="/blog/readers/reader.css">
+</head>
+<body>
+
+<div id="lb" onclick="lbClose(event)">
+  <span id="lb-close" onclick="lbHide()">&#x2715;</span>
+  <img id="lb-img" src="" alt="">
+</div>
+
+<nav id="sb">
+  <div id="sb-title">
+    <p class="zh"><a href="https://alan-hpc.github.io/blog/" target="_blank">Yang Min · 技术博客</a></p>
+    <h2 class="section-h lv1" id="B200-8卡-MoE-同精度对比">B200 8卡 MoE 同精度对比 +…</h2>
+  </div>
+  <div class="ti tl1"><a href="#方法与数据清洗">方法与数据清洗</a></div>
+  <div class="ti tl1"><a href="#-wall-clock-对比--deepseek-v4-pro">① wall-clock 对比 — DeepSeek-V4-Pro</a></div>
+  <div class="ti tl1"><a href="#-wall-clock-对比--qwen35-next-a3b">② wall-clock 对比 — Qwen3.5-Next-A3B</a></div>
+  <div class="ti tl1"><a href="#-kernel-breakdown--47-ms-差距来自哪里">③ kernel breakdown — 4.7 ms 差距来自哪里？</a></div>
+  <div class="ti tl1"><a href="#trt-llm-全量-sweep">TRT-LLM 全量 sweep</a></div>
+  <div class="ti tl2"><a href="#deepseek-v4-pro--dp8ep8--alltoallnvlinkonesided">DeepSeek-V4-Pro · DP=8+EP=8 · alltoall=NVLinkOneSided</a></div>
+  <div class="ti tl2"><a href="#qwen35-next-a3b--dp8ep8--alltoallnvlinkonesided">Qwen3.5-Next-A3B · DP=8+EP=8 · alltoall=NVLinkOneSided</a></div>
+  <div class="ti tl1"><a href="#deepgemm-megamoe-原始数据">DeepGEMM MegaMoE 原始数据</a></div>
+  <div class="ti tl1"><a href="#结论">结论</a></div>
+  <div class="ti tl1"><a href="#原始数据">原始数据</a></div>
+</nav>
+
+<div id="reader">
+  <div id="reader-inner">
+
+    <header class="book-header">
+      <p class="kicker"><a href="https://alan-hpc.github.io/blog/" target="_blank">Yang Min · 技术博客</a> · 离线阅读版</p>
+      <h1>B200 8卡 MoE 同精度对比 + kernel 拆解：DeepGEMM MegaMoE vs TRT-LLM【进行中...】</h1>
+      <p class="sub">2026-04-27</p>
+      <div style="margin-top:16px;padding:12px 16px;border:1px solid var(--rule);
+                  border-radius:4px;background:var(--paper);font-family:-apple-system,sans-serif;
+                  font-size:12.5px;line-height:2.0;color:var(--muted);">
+        <span style="font-size:10px;letter-spacing:.9px;text-transform:uppercase;
+                     color:#888;display:block;margin-bottom:6px;">原文来源</span>
+        <a href="https://alan-hpc.github.io/blog/posts/2026-04-27-b200-8卡-moe-同精度对比-kernel-拆解-deepgemm-megamoe-vs-trt-llm/" style="color:var(--accent);text-decoration:none;" target="_blank">B200 8卡 MoE 同精度对比 + kernel 拆解：DeepGEMM MegaMoE vs TRT-LLM【进行中...】</a>
+        · Yang Min · 2026
+      </div>
+    </header>
+
+    <div class="callout"><p class="zh"><b>TL;DR</b> · B200 8 卡 EP=8。<b>同精度</b>（W=NVFP4 + A=FP8）下：DeepGEMM MegaMoE 比 TRT-LLM 1.3.0rc9 W4A8MXFP4-FP8 快 <b>2.52×</b> @ DSV4 BS=8192。后面有 nsys kernel breakdown 解释这 4.7 ms 差距来自哪里。</p></div><div class="table-scroll"><table class="data-table"><thead><tr><th>指标</th><th>数值</th><th>变化</th></tr></thead><tbody><tr><td>同精度 W=NVFP4 A=FP8</td><td><b>2.52×</b></td><td>DeepGEMM vs TRT-LLM @ DSV4 BS=8192</td></tr><tr><td>TRT-LLM 最快档 NVFP4</td><td><b>2.03×</b></td><td>DeepGEMM 仍快这么多</td></tr><tr><td>DSV4 DeepGEMM</td><td><b>3.07 ms</b></td><td>@ BS=8192 / rank</td></tr><tr><td>Qwen3.5 same-prec</td><td><b>1.54×</b></td><td>@ BS=8192 / rank</td></tr></tbody></table></div><section id="方法与数据清洗"><h2 id="方法与数据清洗" class="section-h lv1">方法与数据清洗</h2><p class="zh">测量方法只做一件事：<b>8 卡 EP=8，每 rank N tokens，跑一次 forward 的 wall-clock</b>。
+每个 rank 在 <code class="ic">cuda.synchronize()</code> 前后用 <code class="ic">perf_counter</code> 计时，5 轮 warmup 后取
+20 轮均值，<code class="ic">dist.barrier()</code> 确保同步，TRT-LLM 走 <code class="ic">NVLinkOneSided</code>
+alltoall，不是 raw kernel。</p>
+<p class="zh">精度对齐是这次对比的核心前提。DeepGEMM 走的是
+<code class="ic">m_grouped_fp8_fp4_gemm</code>（W=NVFP4 + A=FP8）；与它精度对等的是
+TRT-LLM 的 <b>W4A8MXFP4-FP8</b>，而不是 NVFP4（A=NVFP4，激活精度更低）。
+早期版本拿不同精度的两者直接比较，结论不可信。本文在引用跨精度数据时会明确标注。</p><section id="-wall-clock-对比--deepseek-v4-pro"><h2 id="-wall-clock-对比--deepseek-v4-pro" class="section-h lv1">① wall-clock 对比 — DeepSeek-V4-Pro</h2><p class="zh no-indent" style="font-size:12px;color:var(--muted);font-style:italic;">DeepSeek-V4-Pro · 8× B200 · EP=8 · DP=8 · alltoall=NVLinkOneSided
+· H=7168, I=3072, E=384, topk=6 · 每 rank 持 48 个 expert</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F1.drawio</div>
+  </div>
+  <figcaption>DSV4-Pro · EP=8 wall-clock per forward (ms)</figcaption>
+</figure>
+
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F2.drawio</div>
+  </div>
+  <figcaption>DSV4-Pro · DeepGEMM 优势倍数 (越大越优)</figcaption>
+</figure>
+<div class="table-scroll"><table class="data-table"><thead><tr><th class=num>tokens / rank</th><th class=num>DeepGEMM<br>MegaMoE<br>(W=NVFP4 A=FP8)</th><th class=num>TRT-LLM<br>W4A8 MXFP4-FP8<br>(W=NVFP4 A=FP8)</th><th class=num>DeepGEMM<br>领先 ⇨</th><th class=num>TRT-LLM<br>NVFP4 (A=NVFP4)</th><th class=num>领先<br>(vs NVFP4)</th></tr></thead><tbody><tr><td class=num>128</td><td class=num>0.55</td><td class=num>1.63</td><td class=num>2.99×</td><td class=num>1.18</td><td class=num>2.17×</td></tr><tr><td class=num>512</td><td class=num>0.55</td><td class=num>1.44</td><td class=num>2.61×</td><td class=num>1.16</td><td class=num>2.11×</td></tr><tr><td class=num>2048</td><td class=num>1.07</td><td class=num>2.84</td><td class=num>2.65×</td><td class=num>2.30</td><td class=num>2.15×</td></tr><tr><td class=num>8192</td><td class=num>3.07</td><td class=num>7.74</td><td class=num>2.52×</td><td class=num>6.23</td><td class=num>2.03×</td></tr></tbody></table></div><section id="-wall-clock-对比--qwen35-next-a3b"><h2 id="-wall-clock-对比--qwen35-next-a3b" class="section-h lv1">② wall-clock 对比 — Qwen3.5-Next-A3B</h2><p class="zh no-indent" style="font-size:12px;color:var(--muted);font-style:italic;">Qwen3.5-Next-A3B · 8× B200 · EP=8 · DP=8 · alltoall=NVLinkOneSided
+· H=2048, I=512, E=512, topk=10 · 每 rank 持 64 个 expert</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F3.drawio</div>
+  </div>
+  <figcaption>Qwen3.5 · EP=8 wall-clock per forward (ms)</figcaption>
+</figure>
+
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F4.drawio</div>
+  </div>
+  <figcaption>Qwen3.5 · DeepGEMM 优势倍数</figcaption>
+</figure>
+<div class="table-scroll"><table class="data-table"><thead><tr><th class=num>tokens / rank</th><th class=num>DeepGEMM<br>MegaMoE</th><th class=num>TRT-LLM<br>W4A8 MXFP4-FP8</th><th class=num>DeepGEMM<br>领先 ⇨</th><th class=num>TRT-LLM<br>NVFP4</th><th class=num>领先<br>(vs NVFP4)</th></tr></thead><tbody><tr><td class=num>128</td><td class=num>0.14</td><td class=num>0.54</td><td class=num>3.72×</td><td class=num>0.56</td><td class=num>3.87×</td></tr><tr><td class=num>512</td><td class=num>0.20</td><td class=num>0.58</td><td class=num>2.85×</td><td class=num>0.58</td><td class=num>2.88×</td></tr><tr><td class=num>2048</td><td class=num>0.46</td><td class=num>0.91</td><td class=num>1.99×</td><td class=num>0.97</td><td class=num>2.11×</td></tr><tr><td class=num>8192</td><td class=num>1.51</td><td class=num>2.33</td><td class=num>1.54×</td><td class=num>2.52</td><td class=num>1.67×</td></tr></tbody></table></div><section id="-kernel-breakdown--47-ms-差距来自哪里"><h2 id="-kernel-breakdown--47-ms-差距来自哪里" class="section-h lv1">③ kernel breakdown — 4.7 ms 差距来自哪里？</h2><p class="zh">4.7 ms 的差距在 wall-clock 层面已经可见，但原因不明显。用 nsys 在 rank 0 上采集
+25 次 forward，把「每 forward 摊到的 GPU-busy 时间」（avg_us × calls / 25）逐 kernel
+列出来，就能看清每条路径在 GPU 上实际消耗了多少算力。</p>
+<p class="zh no-indent" style="font-size:12px;color:var(--muted);font-style:italic;">DeepSeek-V4-Pro · BS=8192 · EP=8 · nsys rank 0 · cutlass GEMM 每 forward 调 2 次（gate+up + down），其余 1 次</p><div class="callout"><p class="zh"><b>CAVEAT</b> · 这张图展示的是每个 kernel 各自占用 GPU 的时间。TRT-LLM 走 multi-stream，dispatch / combine / AllReduce 跟 GEMM 在不同 stream 上能 overlap，所以柱子总长 ≥ 上面 wall-clock 表里的实测值。柱长可以看「这条 path 在 GPU 上一共干了多少活」，但不是「forward 实际耗时」——后者以 ① / ② 的 wall-clock 表为准。</p></div>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F5.drawio</div>
+  </div>
+  <figcaption>Kernel-level breakdown · DSV4-Pro BS=2048</figcaption>
+</figure>
+<div class="table-scroll"><table class="data-table"><thead><tr><th>kernel</th><th class=num>avg us / call</th><th class=num>calls / forward</th><th class=num>TRT NVFP4<br>(us / forward)</th><th class=num>avg us / call</th><th class=num>calls / forward</th><th class=num>TRT W4A8 MXFP4-FP8<br>(us / forward)</th></tr></thead><tbody><tr><td>cutlass GEMM (gate+up + down)</td><td class=num>1391</td><td class=num>2</td><td class=num>2782</td><td class=num>2131</td><td class=num>2</td><td class=num>4262</td></tr><tr><td>A2A combine</td><td class=num>1522</td><td class=num>1</td><td class=num>1522</td><td class=num>1727</td><td class=num>1</td><td class=num>1727</td></tr><tr><td>A2A dispatch</td><td class=num>251</td><td class=num>1</td><td class=num>251</td><td class=num>5403</td><td class=num>1</td><td class=num><b>5403 ⚠</b></td></tr><tr><td>SwiGLU</td><td class=num>556</td><td class=num>1</td><td class=num>556</td><td class=num>272</td><td class=num>1</td><td class=num>272</td></tr><tr><td>NCCL AllReduce</td><td class=num>449</td><td class=num>~0.88</td><td class=num>395</td><td class=num>214</td><td class=num>~0.88</td><td class=num>188</td></tr><tr><td>finalize routing</td><td class=num>482</td><td class=num>1</td><td class=num>482</td><td class=num>497</td><td class=num>1</td><td class=num>497</td></tr><tr><td>expand input</td><td class=num>286</td><td class=num>1</td><td class=num>286</td><td class=num>136</td><td class=num>1</td><td class=num>136</td></tr><tr><td>others (topk, prep, sanitize, ...)</td><td class=num>—</td><td class=num>—</td><td class=num>372</td><td class=num>—</td><td class=num>—</td><td class=num>377</td></tr><tr><td><b>SUM (GPU-busy, 各 stream 相加)</b></td><td colspan=2></td><td class=num><b>6646</b></td><td colspan=2></td><td class=num><b>12862</b></td></tr><tr><td><b>Wall-clock (实测 / ①, ②)</b></td><td colspan=2></td><td class=num><b>6230</b></td><td colspan=2></td><td class=num><b>7740</b></td></tr><tr><td><em>aux-stream overlap 节省</em></td><td colspan=2></td><td class=num><em>~416</em></td><td colspan=2></td><td class=num><em>~5122</em></td></tr><tr><td><b>DeepGEMM MegaMoE (1 fused kernel)</b></td><td colspan=5></td><td class=num><b>3082 us</b></td></tr></tbody></table></div><div class="callout"><p class="zh"><b>FINDING</b> · W4A8 慢，根因是 A2A dispatch 5403 us（NVFP4 才 251 us，21× 差距）——TRT-LLM 1.3.0rc9 的 W4A8+EP+alltoall 没走 NVFP4 那条 fast path。即便靠 multi-stream overlap 把 5.1 ms 藏掉，wall-clock 还是 7.74 ms。DeepGEMM 一发 fused kernel 3.08 ms，不需要靠 overlap 救场。</p></div><section id="trt-llm-全量-sweep"><h2 id="trt-llm-全量-sweep" class="section-h lv1">TRT-LLM 全量 sweep</h2><h3 id="deepseek-v4-pro--dp8ep8--alltoallnvlinkonesided" class="section-h lv2">DeepSeek-V4-Pro · DP=8+EP=8 · alltoall=NVLinkOneSided</h3><div class="table-scroll"><table class="data-table"><thead><tr><th class=num>BS</th><th class=num>BF16</th><th class=num>NVFP4</th><th class=num>W4A8 MXFP4-FP8</th><th class=num>W4A8 MXFP4-MXFP8</th></tr></thead><tbody><tr><td class=num>64</td><td class=num>2.91</td><td class=num>1.66</td><td class=num>1.97</td><td class=num>2.12</td></tr><tr><td class=num>128</td><td class=num>2.46</td><td class=num>1.18</td><td class=num>1.63</td><td class=num>1.61</td></tr><tr><td class=num>256</td><td class=num>2.19</td><td class=num>1.21</td><td class=num>1.77</td><td class=num>1.64</td></tr><tr><td class=num>512</td><td class=num>3.01</td><td class=num>1.16</td><td class=num>1.44</td><td class=num>1.51</td></tr><tr><td class=num>1024</td><td class=num>4.30</td><td class=num>1.63</td><td class=num>2.07</td><td class=num>2.13</td></tr><tr><td class=num>2048</td><td class=num>6.92</td><td class=num>2.30</td><td class=num>2.84</td><td class=num>3.00</td></tr><tr><td class=num>4096</td><td class=num>12.05</td><td class=num>3.55</td><td class=num>4.42</td><td class=num>4.65</td></tr><tr><td class=num>8192</td><td class=num>22.95</td><td class=num>6.23</td><td class=num>7.74</td><td class=num>7.97</td></tr></tbody></table></div><h3 id="qwen35-next-a3b--dp8ep8--alltoallnvlinkonesided" class="section-h lv2">Qwen3.5-Next-A3B · DP=8+EP=8 · alltoall=NVLinkOneSided</h3><div class="table-scroll"><table class="data-table"><thead><tr><th class=num>BS</th><th class=num>BF16</th><th class=num>NVFP4</th><th class=num>W4A8 MXFP4-FP8</th><th class=num>W4A8 MXFP4-MXFP8</th></tr></thead><tbody><tr><td class=num>64</td><td class=num>0.90</td><td class=num>1.07</td><td class=num>0.61</td><td class=num>0.99</td></tr><tr><td class=num>128</td><td class=num>0.53</td><td class=num>0.56</td><td class=num>0.54</td><td class=num>0.60</td></tr><tr><td class=num>256</td><td class=num>0.53</td><td class=num>0.61</td><td class=num>0.54</td><td class=num>0.56</td></tr><tr><td class=num>512</td><td class=num>0.68</td><td class=num>0.58</td><td class=num>0.58</td><td class=num>0.62</td></tr><tr><td class=num>1024</td><td class=num>0.82</td><td class=num>0.82</td><td class=num>0.74</td><td class=num>0.75</td></tr><tr><td class=num>2048</td><td class=num>1.18</td><td class=num>0.97</td><td class=num>0.91</td><td class=num>0.98</td></tr><tr><td class=num>4096</td><td class=num>1.88</td><td class=num>1.53</td><td class=num>1.44</td><td class=num>1.57</td></tr><tr><td class=num>8192</td><td class=num>3.41</td><td class=num>2.52</td><td class=num>2.33</td><td class=num>2.68</td></tr></tbody></table></div><section id="deepgemm-megamoe-原始数据"><h2 id="deepgemm-megamoe-原始数据" class="section-h lv1">DeepGEMM MegaMoE 原始数据</h2><div class="table-scroll"><table class="data-table"><thead><tr><th>模型</th><th class=num>tokens / rank</th><th class=num>us / forward (rank 0)</th><th class=num>TFLOPS / rank</th></tr></thead><tbody><tr><td>DeepSeek-V4-Pro</td><td class=num>128</td><td class=num>545</td><td class=num>185</td></tr><tr><td>DeepSeek-V4-Pro</td><td class=num>512</td><td class=num>550</td><td class=num>731</td></tr><tr><td>DeepSeek-V4-Pro</td><td class=num>2048</td><td class=num>1070</td><td class=num>1520</td></tr><tr><td>DeepSeek-V4-Pro</td><td class=num>8192</td><td class=num>3069</td><td class=num>2109</td></tr><tr><td>Qwen3.5-Next-A3B</td><td class=num>128</td><td class=num>144</td><td class=num>55</td></tr><tr><td>Qwen3.5-Next-A3B</td><td class=num>512</td><td class=num>202</td><td class=num>158</td></tr><tr><td>Qwen3.5-Next-A3B</td><td class=num>2048</td><td class=num>459</td><td class=num>282</td></tr><tr><td>Qwen3.5-Next-A3B</td><td class=num>8192</td><td class=num>1514</td><td class=num>339</td></tr></tbody></table></div><section id="结论"><h2 id="结论" class="section-h lv1">结论</h2><ul class="zh-list">
+<li><b>同精度对比（W=NVFP4 A=FP8），DeepGEMM 领先 2.5×</b>——DSV4 BS=8192：3.07 ms vs 7.74 ms；Qwen3.5 因 expert 规模较小，绝对差距收窄，倍数降至 1.54×。</li>
+<li><b>即便 TRT-LLM 用更激进的 A=NVFP4，DeepGEMM 仍快 2.03×</b>，说明差距不来自精度选择。</li>
+<li><b>根因定位</b>：TRT-LLM W4A8+EP+alltoall 的 dispatch kernel 耗时 5403 us，而 NVFP4 路径仅 251 us，差了 21×。1.3.0rc9 的这条路径存在明显未优化。</li>
+<li><b>DeepGEMM 的工程路线</b>：将 dispatch + L1 GEMM + SwiGLU + L2 GEMM + combine 融入一个 CUDA kernel，利用 NVLink 对称内存省去 host-side 协调；TRT-LLM 拆成 8 个 kernel 靠 multi-stream overlap 部分掩盖通信开销，overlap 有效时可以追近，但掩盖失效时差距就暴露出来。</li>
+</ul><section id="原始数据"><h2 id="原始数据" class="section-h lv1">原始数据</h2><p class="zh">{
+&ldquo;measured_per_forward_ms&rdquo;: {
+&ldquo;note&rdquo;: &ldquo;8 cards EP=8. DeepGEMM uses W=NVFP4 A=FP8 (m_grouped_fp8_fp4_gemm fused with dispatch+combine in 1 kernel). TRT-LLM uses CutlassFusedMoE with full DP=8 + EP=8 + NVLinkOneSided alltoall (dispatch + GEMM + combine on multi-stream).&rdquo;,
+&ldquo;deepgemm_w_nvfp4_a_fp8&rdquo;: {
+&ldquo;deepseek-v4-pro&rdquo;: {
+&ldquo;128&rdquo;: 0.545,
+&ldquo;512&rdquo;: 0.55,
+&ldquo;2048&rdquo;: 1.07,
+&ldquo;8192&rdquo;: 3.069
+},
+&ldquo;qwen3.5-next-80b-a3b&rdquo;: {
+&ldquo;128&rdquo;: 0.144,
+&ldquo;512&rdquo;: 0.202,
+&ldquo;2048&rdquo;: 0.459,
+&ldquo;8192&rdquo;: 1.514
+}
+},
+&ldquo;trtllm_w_nvfp4_a_fp8 (W4A8MXFP4FP8)&rdquo;: {
+&ldquo;deepseek-v4-pro&rdquo;: {
+&ldquo;64&rdquo;: 1.9744131248444319,
+&ldquo;128&rdquo;: 1.6300305724143982,
+&ldquo;256&rdquo;: 1.7704921076074243,
+&ldquo;512&rdquo;: 1.4350373414345086,
+&ldquo;1024&rdquo;: 2.072645735461265,
+&ldquo;2048&rdquo;: 2.8390072169713676,
+&ldquo;4096&rdquo;: 4.4212100096046925,
+&ldquo;8192&rdquo;: 7.737199240364134
+},
+&ldquo;qwen3.5-next-80b-a3b&rdquo;: {
+&ldquo;64&rdquo;: 0.610403052996844,
+&ldquo;128&rdquo;: 0.535779946949333,
+&ldquo;256&rdquo;: 0.5358675378374755,
+&ldquo;512&rdquo;: 0.5756756523624063,
+&ldquo;1024&rdquo;: 0.7443207316100597,
+&ldquo;2048&rdquo;: 0.9132408071309328,
+&ldquo;4096&rdquo;: 1.4370011514984071,
+&ldquo;8192&rdquo;: 2.3329878807999194
+}
+},
+&ldquo;trtllm_w_nvfp4_a_nvfp4 (NVFP4)&rdquo;: {
+&ldquo;deepseek-v4-pro&rdquo;: {
+&ldquo;64&rdquo;: 1.6611802740953863,
+&ldquo;128&rdquo;: 1.182900893036276,
+&ldquo;256&rdquo;: 1.2121365405619144,
+&ldquo;512&rdquo;: 1.159417803864926,
+&ldquo;1024&rdquo;: 1.633655244950205,
+&ldquo;2048&rdquo;: 2.303484734147787,
+&ldquo;4096&rdquo;: 3.552836657036096,
+&ldquo;8192&rdquo;: 6.229295732919127
+},
+&ldquo;qwen3.5-next-80b-a3b&rdquo;: {
+&ldquo;64&rdquo;: 1.0683458996936679,
+&ldquo;128&rdquo;: 0.5576708586886525,
+&ldquo;256&rdquo;: 0.6088105263188481,
+&ldquo;512&rdquo;: 0.5809077876619995,
+&ldquo;1024&rdquo;: 0.8195210830308497,
+&ldquo;2048&rdquo;: 0.9688294841907918,
+&ldquo;4096&rdquo;: 1.529309165198356,
+&ldquo;8192&rdquo;: 2.5212202221155167
+}
+},
+&ldquo;trtllm_bf16&rdquo;: {
+&ldquo;deepseek-v4-pro&rdquo;: {
+&ldquo;64&rdquo;: 2.906426670961082,
+&ldquo;128&rdquo;: 2.462910965550691,
+&ldquo;256&rdquo;: 2.189282001927495,
+&ldquo;512&rdquo;: 3.0099480994977057,
+&ldquo;1024&rdquo;: 4.298944433685392,
+&ldquo;2048&rdquo;: 6.923317722976208,
+&ldquo;4096&rdquo;: 12.04654494067654,
+&ldquo;8192&rdquo;: 22.950538829900324
+},
+&ldquo;qwen3.5-next-80b-a3b&rdquo;: {
+&ldquo;64&rdquo;: 0.904240133240819,
+&ldquo;128&rdquo;: 0.5322055891156197,
+&ldquo;256&rdquo;: 0.5307587212882936,
+&ldquo;512&rdquo;: 0.6803446565754712,
+&ldquo;1024&rdquo;: 0.815612799488008,
+&ldquo;2048&rdquo;: 1.183540525380522,
+&ldquo;4096&rdquo;: 1.8820309545844793,
+&ldquo;8192&rdquo;: 3.4117628703825176
+}
+}
+},
+&ldquo;kernel_breakdown_DSV4_BS8192&rdquo;: {
+&ldquo;note&rdquo;: &ldquo;nsys per-call avg us across 25 forwards. Cutlass GEMM is called twice per forward (gate+up + down); other kernels once. Sum of (avg × calls/forward) can exceed wall-clock because TRT-LLM uses multi-stream overlap.&rdquo;,
+&ldquo;TRT-LLM NVFP4&rdquo;: {
+&ldquo;per-forward wall-clock (ms)&rdquo;: 6.23,
+&ldquo;kernels (avg us per call × calls/forward)&rdquo;: {
+&ldquo;cutlass GEMM&rdquo;: {
+&ldquo;avg_us_per_call&rdquo;: 1391,
+&ldquo;calls_per_forward&rdquo;: 2,
+&ldquo;per_forward_us&rdquo;: 2782
+},
+&ldquo;A2A combine&rdquo;: {
+&ldquo;avg_us_per_call&rdquo;: 1522,
+&ldquo;calls_per_forward&rdquo;: 1,
+&ldquo;per_forward_us&rdquo;: 1522
+},
+&ldquo;A2A dispatch&rdquo;: {
+&ldquo;avg_us_per_call&rdquo;: 251,
+&ldquo;calls_per_forward&rdquo;: 1,
+&ldquo;per_forward_us&rdquo;: 251
+},
+&ldquo;SwiGLU&rdquo;: {
+&ldquo;avg_us_per_call&rdquo;: 556,
+&ldquo;calls_per_forward&rdquo;: 1,
+&ldquo;per_forward_us&rdquo;: 556
+},
+&ldquo;AllReduce&rdquo;: {
+&ldquo;avg_us_per_call&rdquo;: 449,
+&ldquo;calls_per_forward&rdquo;: 0.88,
+&ldquo;per_forward_us&rdquo;: 395
+},
+&ldquo;finalize routing&rdquo;: {
+&ldquo;avg_us_per_call&rdquo;: 482,
+&ldquo;calls_per_forward&rdquo;: 1,
+&ldquo;per_forward_us&rdquo;: 482
+},
+&ldquo;expand input&rdquo;: {
+&ldquo;avg_us_per_call&rdquo;: 286,
+&ldquo;calls_per_forward&rdquo;: 1,
+&ldquo;per_forward_us&rdquo;: 286
+},
+&ldquo;others (topk+prep+sanitize)&rdquo;: {
+&ldquo;avg_us_per_call&rdquo;: &ldquo;—&rdquo;,
+&ldquo;per_forward_us&rdquo;: 372
+}
+},
+&ldquo;sum_per_forward_us&rdquo;: 6646
+},
+&ldquo;TRT-LLM W4A8 MXFP4-FP8&rdquo;: {
+&ldquo;per-forward wall-clock (ms)&rdquo;: 7.74,
+&ldquo;kernels&rdquo;: {
+&ldquo;cutlass GEMM&rdquo;: {
+&ldquo;avg_us_per_call&rdquo;: 2131,
+&ldquo;calls_per_forward&rdquo;: 2,
+&ldquo;per_forward_us&rdquo;: 4262
+},
+&ldquo;A2A combine&rdquo;: {
+&ldquo;avg_us_per_call&rdquo;: 1727,
+&ldquo;calls_per_forward&rdquo;: 1,
+&ldquo;per_forward_us&rdquo;: 1727
+},
+&ldquo;A2A dispatch&rdquo;: {
+&ldquo;avg_us_per_call&rdquo;: 5403,
+&ldquo;calls_per_forward&rdquo;: 1,
+&ldquo;per_forward_us&rdquo;: 5403,
+&ldquo;_note&rdquo;: &ldquo;TRT-LLM 1.3.0rc9 W4A8+EP slow path&rdquo;
+},
+&ldquo;SwiGLU&rdquo;: {
+&ldquo;avg_us_per_call&rdquo;: 272,
+&ldquo;calls_per_forward&rdquo;: 1,
+&ldquo;per_forward_us&rdquo;: 272
+},
+&ldquo;AllReduce&rdquo;: {
+&ldquo;avg_us_per_call&rdquo;: 214,
+&ldquo;calls_per_forward&rdquo;: 0.88,
+&ldquo;per_forward_us&rdquo;: 188
+},
+&ldquo;finalize routing&rdquo;: {
+&ldquo;avg_us_per_call&rdquo;: 497,
+&ldquo;calls_per_forward&rdquo;: 1,
+&ldquo;per_forward_us&rdquo;: 497
+},
+&ldquo;expand input&rdquo;: {
+&ldquo;avg_us_per_call&rdquo;: 136,
+&ldquo;calls_per_forward&rdquo;: 1,
+&ldquo;per_forward_us&rdquo;: 136
+},
+&ldquo;others&rdquo;: {
+&ldquo;per_forward_us&rdquo;: 377
+}
+},
+&ldquo;sum_per_forward_us&rdquo;: 12862
+},
+&ldquo;DeepGEMM MegaMoE (1 fused kernel)&rdquo;: {
+&ldquo;per-forward wall-clock (ms)&rdquo;: 3.07,
+&ldquo;kernel&rdquo;: &ldquo;sm100_fp8_fp4_mega_moe_impl: 3082 us per call (full pipeline fused)&rdquo;
+}
+}
+}</p><p class="zh">source: 8× NVIDIA B200 sm100, driver 580.95.05, CUDA 13.0；TRT-LLM 1.3.0rc9 (PyPI) + DeepGEMM 2.4.2+9f4bed6 (system)；HPCX OpenMPI 4.1.6；脚本：`bench_dist_trtllm_full.py`, DeepGEMM `tests/test_mega_moe.py --num-processes 8`；nsys 2025.5.1 · generated: 2026-04-27T06:26:46Z</p></div></div><!-- /reader-inner -->
+</div><!-- /reader -->
+
+
+</body>
+</html>

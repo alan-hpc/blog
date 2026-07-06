@@ -1,0 +1,27 @@
+<svg viewBox='0 0 940 380' xmlns='http://www.w3.org/2000/svg' font-family='sans-serif'>
+<text x='470' y='30' font-size='15' font-weight='700' text-anchor='middle' fill='#1f2328'>TMEM 物理布局：256 KB = 128 lanes × 512 cols × 32-bit，分成 4 个 sub-partition</text>
+<text x='470' y='52' font-size='11.5' text-anchor='middle' fill='#666'>每个 warp 只能访问<tspan font-weight='700'>同 sub-partition 的 32 lanes</tspan>，遍历整个 TMEM 必须 4 个 warp 协作（即一个 warpgroup）</text>
+<line x1='90.0' y1='75' x2='90.0' y2='320' stroke='#ccc' stroke-width='1' stroke-dasharray='2 2'/><text x='90.0' y='70' font-size='10' fill='#999' text-anchor='middle'>col 0</text><line x1='192.5' y1='75' x2='192.5' y2='320' stroke='#ccc' stroke-width='1' stroke-dasharray='2 2'/><text x='192.5' y='70' font-size='10' fill='#999' text-anchor='middle'>col 64</text><line x1='295.0' y1='75' x2='295.0' y2='320' stroke='#ccc' stroke-width='1' stroke-dasharray='2 2'/><text x='295.0' y='70' font-size='10' fill='#999' text-anchor='middle'>col 128</text><line x1='397.5' y1='75' x2='397.5' y2='320' stroke='#ccc' stroke-width='1' stroke-dasharray='2 2'/><text x='397.5' y='70' font-size='10' fill='#999' text-anchor='middle'>col 192</text><line x1='500.0' y1='75' x2='500.0' y2='320' stroke='#ccc' stroke-width='1' stroke-dasharray='2 2'/><text x='500.0' y='70' font-size='10' fill='#999' text-anchor='middle'>col 256</text><line x1='602.5' y1='75' x2='602.5' y2='320' stroke='#ccc' stroke-width='1' stroke-dasharray='2 2'/><text x='602.5' y='70' font-size='10' fill='#999' text-anchor='middle'>col 320</text><line x1='705.0' y1='75' x2='705.0' y2='320' stroke='#ccc' stroke-width='1' stroke-dasharray='2 2'/><text x='705.0' y='70' font-size='10' fill='#999' text-anchor='middle'>col 384</text><line x1='807.5' y1='75' x2='807.5' y2='320' stroke='#ccc' stroke-width='1' stroke-dasharray='2 2'/><text x='807.5' y='70' font-size='10' fill='#999' text-anchor='middle'>col 448</text><line x1='910.0' y1='75' x2='910.0' y2='320' stroke='#ccc' stroke-width='1' stroke-dasharray='2 2'/><text x='910.0' y='70' font-size='10' fill='#999' text-anchor='middle'>col 512</text>
+<rect x='90' y='80' width='820' height='56' fill='#4a6fd3' opacity='0.10' stroke='#4a6fd3' stroke-width='1.5'/>
+<text x='30' y='106.0' font-size='11.5' fill='#4a6fd3' font-weight='700'>sub-part 0</text>
+<text x='30' y='122.0' font-size='10' fill='#666'>lanes 0–31</text>
+<text x='500' y='114.0' font-size='11.5' fill='#444' text-anchor='middle'>32 lanes × 512 cols × 32-bit = 64 KB</text>
+<text x='500' y='132.0' font-size='10' fill='#666' text-anchor='middle'>warp0 独占访问，无法跨 partition 直接读写</text>
+<rect x='90' y='140' width='820' height='56' fill='#5fa55f' opacity='0.10' stroke='#5fa55f' stroke-width='1.5'/>
+<text x='30' y='166.0' font-size='11.5' fill='#5fa55f' font-weight='700'>sub-part 1</text>
+<text x='30' y='182.0' font-size='10' fill='#666'>lanes 32–63</text>
+<text x='500' y='174.0' font-size='11.5' fill='#444' text-anchor='middle'>32 lanes × 512 cols × 32-bit = 64 KB</text>
+<text x='500' y='192.0' font-size='10' fill='#666' text-anchor='middle'>warp1 独占访问，无法跨 partition 直接读写</text>
+<rect x='90' y='200' width='820' height='56' fill='#e0b300' opacity='0.10' stroke='#e0b300' stroke-width='1.5'/>
+<text x='30' y='226.0' font-size='11.5' fill='#e0b300' font-weight='700'>sub-part 2</text>
+<text x='30' y='242.0' font-size='10' fill='#666'>lanes 64–95</text>
+<text x='500' y='234.0' font-size='11.5' fill='#444' text-anchor='middle'>32 lanes × 512 cols × 32-bit = 64 KB</text>
+<text x='500' y='252.0' font-size='10' fill='#666' text-anchor='middle'>warp2 独占访问，无法跨 partition 直接读写</text>
+<rect x='90' y='260' width='820' height='56' fill='#a33ea1' opacity='0.10' stroke='#a33ea1' stroke-width='1.5'/>
+<text x='30' y='286.0' font-size='11.5' fill='#a33ea1' font-weight='700'>sub-part 3</text>
+<text x='30' y='302.0' font-size='10' fill='#666'>lanes 96–127</text>
+<text x='500' y='294.0' font-size='11.5' fill='#444' text-anchor='middle'>32 lanes × 512 cols × 32-bit = 64 KB</text>
+<text x='500' y='312.0' font-size='10' fill='#666' text-anchor='middle'>warp3 独占访问，无法跨 partition 直接读写</text>
+<rect x='90' y='340' width='820' height='30' fill='#fee' stroke='#b85450' stroke-width='1.5' stroke-dasharray='3 2'/>
+<text x='500' y='360' font-size='12' text-anchor='middle' fill='#5a1a1a' font-weight='600'>分配粒度 = 列为单位 · 必须 2 的幂 · 最少 32 列 · 等价 16 KB chunk</text>
+</svg>

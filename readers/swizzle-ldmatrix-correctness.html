@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Shared Memory Swizzle 正确性深析：从一行 XOR 到 Hopper / Blackwell 的硬件 descriptor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/monokai-sublime.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+  <link rel="stylesheet" href="reader.css">
+</head>
+<body>
+
+<div id="lb" onclick="lbClose(event)"><span id="lb-close" onclick="lbHide()">&#x2715;</span><img id="lb-img" src="" alt=""></div>
+
+<nav id="sb">
+  <div id="sb-title">
+    <p id="sb-kicker">AI Infra Deep Dive · CUTLASS × Tensor Core 数据通路</p>
+    <h2>Shared Memory Swizzle 正确性深析：从一行 XOR 到 Hopper / Blackwell 的硬件 descriptor</h2>
+  </div>
+  <div class="ti tl1"><a href="#c1">Overview · 一个看似矛盾的现象</a></div>
+  <div class="ti tl2"><a href="#c1-1">导航 · 六个问题</a></div>
+  <div class="ti tl1"><a href="#c2">实验设置 · 一个可手算的 8×8</a></div>
+  <div class="ti tl1"><a href="#c3">1. Swizzle 是什么 · 作用在 shared 地址上的一次 XOR</a></div>
+  <div class="ti tl1"><a href="#c4">2. store 与 load 如何实现 · 同一个地址函数的往返</a></div>
+  <div class="ti tl1"><a href="#c5">3. 数值守恒、冲突消失 · 带真实 bank 号的对照</a></div>
+  <div class="ti tl1"><a href="#c6">4. ldmatrix 的具体配合 · 交地址 + 固定发牌</a></div>
+  <div class="ti tl1"><a href="#c7">5. 真实 GEMM 里 swizzle 作用几次 · CUTLASS SM80 实证</a></div>
+  <div class="ti tl1"><a href="#c8">6. Hopper 与 Blackwell · descriptor 如何保证直读正确</a></div>
+  <div class="ti tl2"><a href="#c8-1">6.1 Hopper · GMMA descriptor</a></div>
+  <div class="ti tl2"><a href="#c8-2">6.2 Blackwell · UMMA descriptor 与 TMEM</a></div>
+  <div class="ti tl2"><a href="#c8-3">6.3 三代对照</a></div>
+  <div class="ti tl1"><a href="#c9">7. CUTLASS 源码勘验 · swizzle 的单一真相如何被代码强制</a></div>
+  <div class="ti tl2"><a href="#c9-1">7.1 Swizzle 本体就是一行 XOR</a></div>
+  <div class="ti tl2"><a href="#c9-2">7.2 GMMA canonical 布局 atom：swizzle 强度即模板参数</a></div>
+  <div class="ti tl2"><a href="#c9-3">7.3 单一真相的机械证明：layout_type() + make_gmma_desc</a></div>
+  <div class="ti tl2"><a href="#c9-4">7.4 Blackwell · make_umma_desc 是同一套机制</a></div>
+  <div class="ti tl1"><a href="#c10">附 · 为什么 FP8 强制 tile 宽度不小于 32 元素</a></div>
+  <div class="ti tl1"><a href="#c11">代码坐标表</a></div>
+</nav>
+
+<div id="reader">
+  <div id="reader-inner">
+    <header class="book-header">
+      <p class="kicker">AI Infra Deep Dive · CUTLASS × Tensor Core 数据通路</p>
+      <h1>Shared Memory Swizzle 正确性深析：从一行 XOR 到 Hopper / Blackwell 的硬件 descriptor</h1>
+    </header>
+<blockquote>
+<p>Swizzle 改变了元素在 shared memory 的物理地址，却不改变逻辑矩阵——因为写入端与读取端引用同一个地址函数。本文用一个带真实数值的 8×8 例子，把这条不变量从一行 XOR 一直追到 CUTLASS 的 GMMA / UMMA descriptor。</p>
+</blockquote>
+<h2 id="c1" class="section-h lv1">Overview · 一个看似矛盾的现象</h2>
+<p>在 Tensor Core 数据通路里，shared memory 几乎总要做 <strong>swizzle</strong>。随之而来一个让人困惑的现象：swizzle 改变了元素在 shared memory 中的物理存放位置，<code>ldmatrix</code>（或 <code>wgmma</code>）又按这个被改变的布局去访问，两处看起来都「错位」了，但 Tensor Core 最终算出的 $C = A \cdot B$ 完全正确。</p>
+<p>这并非巧合，而是一条精心设计的不变量：<strong>只要写入与读取使用同一个地址映射，逻辑元素的身份就不会丢失。</strong> swizzle 换的是物理座位，不是逻辑身份；而换座位这件事在写入和读取两端同步发生。</p>
+<p>本文不停留在比喻层面，而是落到可验证的实现：先用一行 <code>addr ^= ...</code> 给出 swizzle 的本体，再用真实数值跑通一次 store / load 往返，然后进入 <code>ldmatrix</code> 的具体语义，最后到 CUTLASS 的 SM80 GEMM 主循环、Hopper GMMA descriptor 与 Blackwell UMMA descriptor，逐处确认这条不变量如何被代码强制保证。</p>
+<figure id="fig-F1" class="fig">
+  <img src="./swizzle-ldmatrix-correctness_figs/_external/F1.png" alt="F1" onclick="lbShow(this.src)">
+  <figcaption class="italic">图 F1 · Global→Shared→Register 数据通路。swizzle 只作用在两个触碰 shared memory 的端点——G2S 写入地址与 S2R 读取地址；Global 端与 Register 端均不参与 swizzle。两端引用同一个地址函数，逻辑值因此守恒。</figcaption>
+
+</figure>
+
+<h3 id="c1-1" class="section-h lv2">导航 · 六个问题</h3>
+<ul>
+<li><strong>Q1</strong> Swizzle 物理上到底是什么？→ §1，一行作用在 shared 地址上的 XOR。</li>
+<li><strong>Q2</strong> store 与 load 如何实现，为什么数值不变？→ §2，同一个地址函数的往返闭合。</li>
+<li><strong>Q3</strong> 为什么数值不变、bank conflict 却消失了？→ §3，带真实 bank 号的对照。</li>
+<li><strong>Q4</strong> <code>ldmatrix</code> 具体如何配合 swizzle？→ §4，8 个行地址 + 固定发牌映射。</li>
+<li><strong>Q5</strong> 在真实 GEMM 里 swizzle 作用几次？→ §5，CUTLASS SM80 主循环的 G2S / S2R 两端实证。</li>
+<li><strong>Q6</strong> Hopper / Blackwell 直接从 shared 读，靠什么保证？→ §6，GMMA / UMMA descriptor 实证。</li>
+</ul>
+<p><strong>一句话结论：</strong> swizzle 是 shared memory 这一层的单一地址声明，写入端与读取端引用同一份；变的只是「谁来执行反 swizzle」（软件算地址 → 硬件读 descriptor）与「结果落在哪里」（寄存器 → TMEM）。</p>
+<h2 id="c2" class="section-h lv1">实验设置 · 一个可手算的 8×8</h2>
+<p>为了让每一步都能手算核对，全文使用同一个最小例子。</p>
+<pre><code>矩阵      A，8×8，元素值约定 A[r][c] = 10·r + c     （行号×10 + 列号，便于辨认身份）
+存储      bf16，每元素 2 字节，行主序，行跨度 8 元素 = 16 字节
+bank 模型 简化为 8 个 bank（真实硬件 32 个，机制一致），每 bank 每周期服务一个访问
+访问模式  按列取数：warp 的 8 个线程，线程 r 取目标列 c0 的 A[r][c0]
+</code></pre>
+<p>按列取数正是 <code>ldmatrix</code> / <code>wgmma</code> 取一整列操作数的形态，也是 bank conflict 的高发场景。逻辑真值表（后续所有正确性以它为准）：</p>
+<pre><code>A[r][c]  c0  c1  c2  c3  c4  c5  c6  c7
+r0        0   1   2   3   4   5   6   7
+r1       10  11  12  13  14  15  16  17
+r2       20  21  22  23  24  25  26  27
+r3       30  31  32  33  34  35  36  37
+r4       40  41  42  43  44  45  46  47
+r5       50  51  52  53  54  55  56  57
+r6       60  61  62  63  64  65  66  67
+r7       70  71  72  73  74  75  76  77
+</code></pre>
+<h2 id="c3" class="section-h lv1">1. Swizzle 是什么 · 作用在 shared 地址上的一次 XOR</h2>
+<p>本节回答 Q1。在 Ampere / Ada 上，swizzle 不依赖任何专用硬件：它就是计算 shared memory 地址时多写的一行 <code>addr ^= ...</code>。写入写这一行，读取也写同一行。</p>
+<p>元素 $(r,c)$ 的朴素字节地址是 $\text{off} = 16r + 2c$，只占 7 个 bit：</p>
+<figure id="fig-F2" class="fig">
+  <img src="./swizzle-ldmatrix-correctness_figs/_external/F2.png" alt="F2" onclick="lbShow(this.src)">
+  <figcaption class="italic">图 F2 · 7-bit 字节地址的位域分解。高 3 位（b6–b4）= 行 r，中 3 位（b3–b1）= 列 c，最低位 b0 = 元素内字节。swizzle 把『行』那 3 位 XOR 进『列』那 3 位，使列号变为 c⊕r；它从不触碰行位与字节位。</figcaption>
+
+</figure>
+
+<p>swizzle 函数本体即两个地址函数之差：</p>
+<pre><code class="language-cpp">using bf16 = __nv_bfloat16;
+constexpr int W = 8;                       // 每行 8 个元素
+
+// 朴素字节地址:(r,c) -&gt; r*16 + c*2
+__device__ inline uint32_t addr_plain(int r, int c) {
+    return (r * W + c) * sizeof(bf16);     // = r*16 + c*2
+}
+
+// swizzle 字节地址:仅多一行 XOR
+__device__ inline uint32_t addr_swz(int r, int c) {
+    uint32_t off = (r * W + c) * sizeof(bf16);
+    off ^= ((off &gt;&gt; 4) &amp; 0x7) &lt;&lt; 1;        // &lt;-- swizzle 全部内容
+    return off;                            // (off&gt;&gt;4)&amp;7 = r;  &lt;&lt;1 对齐到 c 的位段
+}
+</code></pre>
+<p>逐位验证 $(r,c)=(1,3)$，即值 $13$ 该落到何处：</p>
+<pre><code>朴素   off = 1*16 + 3*2 = 22 = 0b001 011 0     (行=001, 列=011, 字节=0)
+取行   (22 &gt;&gt; 4) &amp; 7 = 1 ;  对齐 1 &lt;&lt; 1 = 2 = 0b000 001 0
+XOR    22 ^ 2 = 0b001 011 0 ^ 0b000 001 0 = 0b001 001 0 = 20
+结果   字节 20 = 元素索引 10 = p2  (列位从 011=3 变为 001=2，正是 3⊕1)
+</code></pre>
+<div class="callout">
+<p class="zh no-indent"><b>swizzle 的可逆性来自 XOR 自身</b></p>
+<p>$x \mapsto x \oplus f(x)$ 在每个 swizzle 周期内是一个置换：没有两个逻辑地址映到同一物理地址，也没有物理地址无人认领。元素既不丢失、不重叠，也不会凭空多出，只是更换物理位置。这是后文「往返闭合」与「FP8 宽度约束」共同的前提。</p>
+</div>
+<h2 id="c4" class="section-h lv1">2. store 与 load 如何实现 · 同一个地址函数的往返</h2>
+<p>本节回答 Q2。「数值为什么不变」的答案不在于两种方案碰巧得到同值，而在于<strong>每种方案内部，读地址等于写地址</strong>——写入位置 X、读取位置 X，取回的必然是写入的那个值。</p>
+<pre><code class="language-cpp">extern __shared__ bf16 smem[];            // 8*8 = 64 个 bf16
+
+// 写入 A[r][c]
+bf16 v = A_global[r * W + c];
+
+// 无 swizzle:写到 r*16 + c*2
+st_shared(smem, addr_plain(r, c), v);
+// 有 swizzle:写到 XOR 后的地址
+st_shared(smem, addr_swz(r, c), v);
+
+// 读回 A[r][c]——读取调用同一个地址函数
+bf16 a = ld_shared(smem, addr_plain(r, c));   // 无 swizzle
+bf16 b = ld_shared(smem, addr_swz(r, c));     // 有 swizzle,用同一个 addr_swz
+</code></pre>
+<p>写入与读取都调用同一个 <code>addr_swz</code>。把 $13$ 写入 <code>addr_swz(1,3)=20</code>，再从 <code>addr_swz(1,3)=20</code> 读取，取回的必然是 $13$。</p>
+<p>形式化地，记写入为 $\text{smem}[\sigma(r,c)] = A[r][c]$，读取为 $\text{reg} = \text{smem}[\sigma(r,c)]$。两端的 $\sigma$ 是同一个函数，于是</p>
+<p>$$\text{reg} = \text{smem}[\sigma(r,c)] = A[r][c]$$</p>
+<p>与 $\sigma$ 的具体形式、与它是否「错位」无关。结果恒等于无 swizzle 时的真值。</p>
+<aside class="kbox">
+
+切换有 / 无 swizzle，等价于把 `addr_swz` 替换为 `addr_plain`，kernel 其余部分一字不改。这就是 swizzle 在 Ampere 路径上的完整实现——一个作用于 shared 地址的纯函数，写读两端共用。
+
+</aside>
+
+<h2 id="c5" class="section-h lv1">3. 数值守恒、冲突消失 · 带真实 bank 号的对照</h2>
+<p>本节回答 Q3。两种地址函数存入后的物理布局不同，但存入的<strong>真值集合完全相同</strong>，区别只是摆放顺序。下表中每格写的是该物理槽实际存放的逻辑列对应的值；颜色无关，看 bank 列即可。</p>
+<p>无 swizzle，物理槽 = c，bank = c（每行摆法一致）：</p>
+<pre><code>行＼槽  p0    p1    p2    p3    p4    p5    p6    p7
+r0       0     1     2     3     4     5     6     7
+r1      10    11    12    13    14    15    16    17
+r2      20    21    22    23    24    25    26    27
+...     每一竖列同 bank —— 同一逻辑列的 8 个元素全部落在同一个 bank
+</code></pre>
+<p>有 swizzle，物理槽 = c⊕r，bank = c⊕r（每行额外旋转 r 位）：</p>
+<pre><code>行＼槽  p0    p1    p2    p3    p4    p5    p6    p7
+r0       0     1     2     3     4     5     6     7      (⊕0)
+r1      11    10    13    12    15    14    17    16      (⊕1)
+r2      22    23    20    21    26    27    24    25      (⊕2)
+r3      33    32    31    30    37    36    35    34      (⊕3)
+...     每一竖列覆盖全部 8 个 bank —— 同一逻辑列被摊到 8 个不同 bank
+</code></pre>
+<p>注意 r1 行：值 $10,11,12,\dots$ 全部仍在，只是 $10\leftrightarrow11$、$12\leftrightarrow13$ 互换了位置（$\oplus 1$ 的效果）。没有任何数值改变。</p>
+<p>现在两种布局都来取列 c3，期望值 $3,13,23,33,43,53,63,73$：</p>
+<pre><code>                无 swizzle (槽=3)          有 swizzle (槽=3⊕r)
+线程 r  期望值   读物理槽  bank            读物理槽  bank
+0        3        p3        3               p3        3
+1       13        p3        3               p2        2
+2       23        p3        3               p1        1
+3       33        p3        3               p0        0
+4       43        p3        3               p7        7
+5       53        p3        3               p6        6
+6       63        p3        3               p5        5
+7       73        p3        3               p4        4
+冲突              8 路冲突(全撞 bank 3)      0 冲突(8 个 bank 各一)
+</code></pre>
+<p>两列「期望值」完全相同——这就是送进 Tensor Core 的寄存器内容。唯一不同的是「bank」列：无 swizzle 全部撞向 bank 3，硬件串行化、吞吐降到 1/8；有 swizzle 摊满 8 个 bank，单周期取完。</p>
+<div class="callout">
+<p class="zh no-indent"><b>「物理错位」与「逻辑错位」是两件事</b></p>
+<p>swizzle 路径下，线程 1 实际访问的是物理槽 p2 而非直觉的 p3——物理访问位置确实错位，且这是有意为之（为分散 bank）。但读取公式 $3\oplus r$ 精确抵消了写入时同样的偏移，逻辑数值不错位。「访问错位」不等于「读到错误数据」。</p>
+</div>
+<h2 id="c6" class="section-h lv1">4. ldmatrix 的具体配合 · 交地址 + 固定发牌</h2>
+<p>本节回答 Q4。前面的「读一列」是简化模型；<code>ldmatrix.sync.aligned.m8n8.x1</code> 的真实语义分两步。</p>
+<p><strong>第一步（交地址）</strong>：warp 的前 8 个线程（t = 0..7）各交出一行的起始地址——线程 t 交第 t 行地址。一行 8 个 bf16 = 16 字节，是一次访问的整块。</p>
+<p><strong>第二步（发牌）</strong>：硬件把读到的 8×8 = 64 个值，按写死的 lane → 寄存器映射分给 32 个线程，每人 2 个（一个 32-bit 寄存器）。映射规则为 $t \to$ 第 $\lfloor t/4 \rfloor$ 行、第 $(t\bmod 4)\cdot 2$ 与 $+1$ 两列：</p>
+<pre><code>线程 t   行 r=t/4   列      寄存器拿到的值
+0        0          0,1     0, 1
+1        0          2,3     2, 3
+2        0          4,5     4, 5
+3        0          6,7     6, 7
+4        1          0,1     10, 11
+5        1          2,3     12, 13
+...
+28       7          0,1     70, 71
+31       7          6,7     76, 77
+</code></pre>
+<p>这张发牌表由硬件固定，与 swizzle 无关；它定义了「算完之后每个值落在谁的寄存器」，恰好对齐 <code>mma</code> 期望的 fragment 布局。</p>
+<p>swizzle 在 <code>ldmatrix</code> 里防的是<strong>第一步</strong>的冲突：8 个线程同时交出 8 个行起始地址。典型布局（行跨度为 128 字节的倍数）下，这 8 个行首周期性撞进同一个 bank-group。swizzle 把第 r 行整块挪到 bank-group $0\oplus r = r$：</p>
+<pre><code>                无 swizzle              有 swizzle
+线程 t  取第几行  行内容    bank-group   bank-group (0⊕r)
+0        r0       0..7      G0           G0
+1        r1       10..17    G0           G1
+2        r2       20..27    G0           G2
+...                         全撞 G0       散到 G0..G7
+冲突              8 路冲突                0 冲突
+</code></pre>
+<figure id="fig-F3" class="fig">
+  <img src="./swizzle-ldmatrix-correctness_figs/_external/F3.png" alt="F3" onclick="lbShow(this.src)">
+  <figcaption class="italic">图 F3 · ldmatrix 的 8 个行地址。左:无 swizzle，8 行行首全撞 bank-group G0，第一步串行化(8 路冲突);右:有 swizzle，行 r 整块扇出到 Gr，单次取完。行被整块搬运——行内 8 个元素的次序从不打乱(只搬块、不搬块内字节)。</figcaption>
+
+</figure>
+
+<div class="callout">
+<p class="zh no-indent"><b>swizzle 的粒度等于访问宽度</b></p>
+<p><code>ldmatrix</code> 每线程从其地址连续抓 8 个元素送进寄存器。若 swizzle 打乱块内字节，这 8 个元素就不再是连续逻辑元素，fragment 即失效。实际的 swizzle（如下文 <code>Swizzle&lt;3,3,3&gt;</code> 的 base bits）只在「16 字节块之间」洗牌，块内顺序原封不动，因此每线程那 8 个连续元素始终正确对齐 MMA 期望布局。</p>
+</div>
+<aside class="kbox">
+
+因为行地址用 $\sigma$ 计算、读到的是正确行，硬件固定的发牌映射就把每个值送进正确寄存器。上表「寄存器拿到的值」在有无 swizzle 下完全一致，区别仅在于有 swizzle 时第一步快约 8 倍。
+
+</aside>
+
+<h2 id="c7" class="section-h lv1">5. 真实 GEMM 里 swizzle 作用几次 · CUTLASS SM80 实证</h2>
+<p>本节回答 Q5。真实 GEMM 的数据流是 Global → Shared → Register，swizzle 在<strong>两个触碰 shared memory 的端点各被求值一次</strong>：G2S 写入与 S2R 读取。下面以 CUTLASS 官方教程 kernel 为据。</p>
+<p>swizzle 只定义一次——它是 shared memory tile 的 layout 属性，见 <a href="https://github.com/NVIDIA/cutlass/blob/main/examples/cute/tutorial/sgemm_sm80.cu#L358-L363">sgemm_sm80.cu:358-363</a>：</p>
+<pre><code class="language-cpp">auto swizzle_atom = composition(Swizzle&lt;3,3,3&gt;{},
+                                Layout&lt;Shape &lt;_8,Shape &lt;_8, _8&gt;&gt;,
+                                       Stride&lt;_8,Stride&lt;_1,_64&gt;&gt;&gt;{});
+auto sA = tile_to_shape(swizzle_atom, make_shape(bM, bK, bP));   // 带 swizzle 的 smem 布局
+auto sB = tile_to_shape(swizzle_atom, make_shape(bN, bK, bP));
+</code></pre>
+<p>随后这个<strong>同一个 <code>sA</code></strong> 被两个 copy 引用。G2S 写入端，<code>partition_D</code>（写目标）见 <a href="https://github.com/NVIDIA/cutlass/blob/main/examples/cute/tutorial/sgemm_sm80.cu#L120">sgemm_sm80.cu:120</a>，<code>copy</code> 见 <a href="https://github.com/NVIDIA/cutlass/blob/main/examples/cute/tutorial/sgemm_sm80.cu#L145-L146">L145-146</a>：</p>
+<pre><code class="language-cpp">Tensor tAsA = thr_copy_a.partition_D(sA);            // 写目标 = swizzled sA
+// ...
+copy(copy_a, tAgA(_,_,_,k_tile_next), tAsA(_,_,_,k_pipe));   // cp.async 落到 swizzled 位置
+</code></pre>
+<p>S2R 读取端，<code>make_tiled_copy_A</code> 见 <a href="https://github.com/NVIDIA/cutlass/blob/main/examples/cute/tutorial/sgemm_sm80.cu#L176">L176</a>，<code>partition_S</code>（读源）见 <a href="https://github.com/NVIDIA/cutlass/blob/main/examples/cute/tutorial/sgemm_sm80.cu#L178">L178</a>，<code>copy</code>（ldmatrix）见 <a href="https://github.com/NVIDIA/cutlass/blob/main/examples/cute/tutorial/sgemm_sm80.cu#L244-L245">L244-245</a>：</p>
+<pre><code class="language-cpp">TiledCopy s2r_copy_a = make_tiled_copy_A(s2r_atom_a, mma);
+Tensor tXsA = s2r_thr_copy_a.partition_S(sA);        // 读源 = 同一个 swizzled sA
+// ...
+copy(s2r_atom_a, tXsA_p(_,_,Int&lt;0&gt;{}), tXrA(_,_,Int&lt;0&gt;{}));   // ldmatrix 从 swizzled 位置读
+</code></pre>
+<p><code>tAsA</code>（G2S 写目标）与 <code>tXsA</code>（S2R 读源）都是同一个 swizzled <code>sA</code> 的 partition，因此两次都套用同一个 <code>Swizzle&lt;3,3,3&gt;</code>。</p>
+<table class="data-table">
+<thead>
+<tr>
+<th>数据位置</th>
+<th>是否 swizzle</th>
+<th>依据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Global memory</td>
+<td>否，自然 layout</td>
+<td><code>tAgA</code> 来自 global tensor</td>
+</tr>
+<tr>
+<td>Shared 写入地址（G2S）</td>
+<td>是，<code>Swizzle&lt;3,3,3&gt;</code></td>
+<td><code>partition_D(sA)</code></td>
+</tr>
+<tr>
+<td>Shared 读取地址（S2R）</td>
+<td>是，同一个 <code>Swizzle&lt;3,3,3&gt;</code></td>
+<td><code>partition_S(sA)</code></td>
+</tr>
+<tr>
+<td>Register（fragment）</td>
+<td>否，MMA fragment 布局</td>
+<td><code>tXrA</code></td>
+</tr>
+</tbody>
+</table>
+<aside class="kbox">
+
+「swizzle 作用两次」的精确表述：一个 swizzle，在 G2S 写、S2R 读两个触碰 shared memory 的端点各被求值一次；Global 端与 Register 端不参与。两端引用同一个 layout 对象，写读一致由类型系统保证。
+
+</aside>
+
+<h2 id="c8" class="section-h lv1">6. Hopper 与 Blackwell · descriptor 如何保证直读正确</h2>
+<p>本节回答 Q6。Hopper 的 <code>wgmma</code> 与 Blackwell 的 <code>tcgen05.mma</code> 常直接从 shared memory 读操作数，不经 <code>ldmatrix</code>。此时反 swizzle 由硬件完成，靠一个 descriptor 把 swizzle 模式声明给取数单元。</p>
+<h3 id="c8-1" class="section-h lv2">6.1 Hopper · GMMA descriptor</h3>
+<p>CUTLASS <a href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/arch/mma_sm90_desc.hpp#L48-L52">mma_sm90_desc.hpp:48-52</a> 的 swizzle 枚举与 <a href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/arch/mma_sm90_desc.hpp#L80">L80 起</a> 的 64-bit descriptor：</p>
+<pre><code class="language-cpp">enum class LayoutType : uint8_t {
+  INTERLEAVE = 0,
+  B128 = 1,    // SWIZZLE_128B
+  B64  = 2,    // SWIZZLE_64B
+  B32  = 3,    // SWIZZLE_32B
+};
+
+union GmmaDescriptor {
+  struct {
+    uint16_t start_address_      : 14, : 2;   // bit[0,14), 低 4 bit 不含 -&gt; 16B 对齐
+    uint16_t leading_byte_offset_: 14, : 2;   // LBO
+    uint16_t stride_byte_offset_ : 14, : 2;   // SBO
+    uint8_t  : 1, base_offset_   : 3,  : 4;   // bit[49,52), 仅 128B/64B 有效
+    uint8_t  : 6, layout_type_   : 2;         // bit[62,64): swizzle 模式
+  } bitfield;
+};
+</code></pre>
+<p><code>start_address_</code> 在 <a href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/arch/mma_sm90_desc.hpp#L110">L110</a>，<code>base_offset_</code> 在 <a href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/arch/mma_sm90_desc.hpp#L122">L122</a>，<code>layout_type_</code> 在 <a href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/arch/mma_sm90_desc.hpp#L125">L125</a>。</p>
+<p>保证机制：G2S 由 TMA 按 swizzled smem layout（<code>Swizzle&lt;3,3,3&gt;</code> = 128B）写入；S → Tensor Core 由 <code>wgmma</code> 拿 descriptor 直接取数，<code>layout_type_ = B128</code> 这 2 个 bit 告知张量核心「该 smem 用 128B swizzle 存放」，硬件结合 <code>base_offset_</code>（相位）与 LBO / SBO（走位）自行反推地址。这两端的 swizzle 模式并非各自填写——CuTe 的 <code>make_gmma_desc</code> 从同一个 smem layout 推导 <code>layout_type_</code>，写入用的 swizzle 与 descriptor 声明的 swizzle 同源（源码逐行勘验见 §7.3）。</p>
+<div class="callout">
+<p class="zh no-indent"><b>wgmma 只接受 4 种 canonical swizzle</b></p>
+<p>descriptor 仅能编码 NONE / 32B / 64B / 128B 四种模式，因此 smem 必须使用 <code>GMMA::Layout_K_SW128_Atom</code> 这类 canonical layout，不能用任意 XOR。这把「可表达的 swizzle」限制为「硬件可识别的 swizzle」，从源头排除写读不一致。</p>
+</div>
+<h3 id="c8-2" class="section-h lv2">6.2 Blackwell · UMMA descriptor 与 TMEM</h3>
+<p>CUTLASS <a href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/arch/mma_sm100_desc.hpp#L79-L91">mma_sm100_desc.hpp:79-91</a> 的 SM100（tcgen05 / UMMA）枚举多了一档，且 <code>layout_type_</code> 扩到 3 bit（见 <a href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/arch/mma_sm100_desc.hpp#L98">L98 起</a> 的 <code>SmemDescriptor</code> 与 <a href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/arch/mma_sm100_desc.hpp#L111-L112">L111-112</a> 的位段注释）：</p>
+<pre><code class="language-cpp">enum class LayoutType : uint8_t {
+  SWIZZLE_NONE         = 0,
+  SWIZZLE_128B_BASE32B = 1,   // Blackwell 新增
+  SWIZZLE_128B         = 2,
+  SWIZZLE_64B          = 4,
+  SWIZZLE_32B          = 6,
+};
+// SmemDescriptor: layout_type_ 占 bit[61,64) —— 3 bit(Hopper 为 2 bit @[62,64))
+//                 另新增 lbo_mode_ @bit[52,53)
+</code></pre>
+<p>此外 SM100 多出一个独立的 32-bit <code>InstrDescriptor</code>（构建函数见 <a href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/arch/mma_sm100_desc.hpp#L477">mma_sm100_desc.hpp:477 起</a>），携带 <code>a_format_</code> / <code>b_format_</code> / <code>c_format_</code>、<code>m_dim_</code> / <code>n_dim_</code>、<code>a_major_</code> / <code>b_major_</code>、<code>sparse_flag_</code> 等；其 <code>InstrDescriptorBlockScaled</code> 变体带独立 scale-factor ID，供 FP4 / FP8 block-scale 使用。</p>
+<p>最大的架构差异是输出位置：<code>tcgen05.mma</code> 的累加器在 <strong>Tensor Memory（TMEM）</strong>，操作数 A 可来自 TMEM 或 SMEM、B 来自 SMEM。因此对来自 SMEM 的操作数，swizzle 保证与 Hopper 一致（<code>SmemDescriptor.layout_type_</code> 声明、CuTe 从 smem layout 推导、硬件按它反推）；对来自 TMEM 的操作数则不经 shared，也就不涉及 swizzle，由 tcgen05 的 TMEM layout 自行管理。</p>
+<h3 id="c8-3" class="section-h lv2">6.3 三代对照</h3>
+<table class="data-table">
+<thead>
+<tr>
+<th>架构</th>
+<th>反 swizzle 由谁执行</th>
+<th>swizzle 模式存放</th>
+<th>MMA 输出落点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Ampere / Ada</td>
+<td>软件（<code>ldmatrix</code> 地址 = <code>addr_swz</code>）</td>
+<td>kernel 代码中的 XOR</td>
+<td>寄存器</td>
+</tr>
+<tr>
+<td>Hopper</td>
+<td>硬件（<code>wgmma</code> 取数单元）</td>
+<td>GMMA descriptor <code>layout_type_</code>（2 bit）</td>
+<td>寄存器（累加器）</td>
+</tr>
+<tr>
+<td>Blackwell</td>
+<td>硬件（<code>tcgen05</code> 取数单元）</td>
+<td>UMMA <code>SmemDescriptor.layout_type_</code>（3 bit，多 <code>128B_BASE32B</code>）</td>
+<td>TMEM</td>
+</tr>
+</tbody>
+</table>
+<aside class="kbox">
+
+贯穿三代的不变量：swizzle 模式始终是 shared memory 这一层的单一声明，由 CuTe 从 smem layout 推导，写入端（TMA / cp.async）与读取端（ldmatrix / wgmma / tcgen05）引用同一份，因此写读永远一致。代际间变化的只是「谁执行反 swizzle」（软件 → 硬件）与「操作数 / 输出落点」（寄存器 → TMEM）。
+
+</aside>
+
+<h2 id="c9" class="section-h lv1">7. CUTLASS 源码勘验 · swizzle 的单一真相如何被代码强制</h2>
+<p>前文的论断——「swizzle 是 shared memory 层的单一声明，写读两端引用同一份」——不是设计意图的转述，而是可在 CUTLASS 源码里逐行验证的事实。本节落到 <code>include/cute</code> 的真实实现。</p>
+<h3 id="c9-1" class="section-h lv2">7.1 Swizzle 本体就是一行 XOR</h3>
+<p><code>Swizzle&lt;B,M,S&gt;</code> 的核心方法 <code>apply</code> 见 <a href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/swizzle.hpp#L55-L78">swizzle.hpp:55-78</a>，与 §1 手写的 <code>addr_swz</code> 完全同构：</p>
+<pre><code class="language-cpp">template &lt;int BBits, int MBase, int SShift = MBase&gt;
+struct Swizzle {
+  using bit_msk = cute::constant&lt;int, (1 &lt;&lt; BBits) - 1&gt;;
+  using yyy_msk = cute::constant&lt;int, bit_msk{} &lt;&lt; (MBase + max(0, SShift))&gt;;
+  using msk_sft = cute::constant&lt;int, SShift&gt;;
+
+  template &lt;class Offset&gt;
+  CUTE_HOST_DEVICE constexpr static auto apply(Offset const&amp; offset) {
+    return offset ^ shiftr(offset &amp; yyy_msk{}, msk_sft{});   // ZZZ ^= YYY
+  }
+};
+</code></pre>
+<p>三个模板参数的语义：<code>B</code> = 参与 XOR 的位数（决定 swizzle 强度），<code>M</code> = base，即最低被保护、永不参与 XOR 的位数（正是 §4 的「访问粒度」），<code>S</code> = 选择位段与目标位段的距离。<code>apply</code> 取高位段（<code>yyy_msk</code>）右移 <code>S</code> 后异或进低位段——一次 XOR，与架构无关。</p>
+<h3 id="c9-2" class="section-h lv2">7.2 GMMA canonical 布局 atom：swizzle 强度即模板参数</h3>
+<p>Hopper GMMA 不接受任意 swizzle，只接受四种 canonical 布局，定义见 <a href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/atom/mma_traits_sm90_gmma.hpp#L78-L104">mma_traits_sm90_gmma.hpp:78-104</a>：</p>
+<pre><code class="language-cpp">// 位级布局（element 级 atom 由 upcast&lt;sizeof_bits&lt;T&gt;&gt; 得到）
+using Layout_K_INTER_Atom_Bits = ComposedLayout&lt;Swizzle&lt;0,4,3&gt;, smem_ptr_flag, Layout&lt;Shape&lt;_8, _128&gt;,Stride&lt; _128,_1&gt;&gt;&gt;;
+using Layout_K_SW32_Atom_Bits  = ComposedLayout&lt;Swizzle&lt;1,4,3&gt;, smem_ptr_flag, Layout&lt;Shape&lt;_8, _256&gt;,Stride&lt; _256,_1&gt;&gt;&gt;;
+using Layout_K_SW64_Atom_Bits  = ComposedLayout&lt;Swizzle&lt;2,4,3&gt;, smem_ptr_flag, Layout&lt;Shape&lt;_8, _512&gt;,Stride&lt; _512,_1&gt;&gt;&gt;;
+using Layout_K_SW128_Atom_Bits = ComposedLayout&lt;Swizzle&lt;3,4,3&gt;, smem_ptr_flag, Layout&lt;Shape&lt;_8,_1024&gt;,Stride&lt;_1024,_1&gt;&gt;&gt;;
+</code></pre>
+<p>swizzle 强度完全由 <code>Swizzle</code> 的第一个参数 <code>B</code> 表达，<code>M=4</code>、<code>S=3</code> 固定不变：</p>
+<table class="data-table">
+<thead>
+<tr>
+<th>canonical atom</th>
+<th>swizzle</th>
+<th>B</th>
+<th>字节周期</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Layout_K_INTER_Atom</code></td>
+<td><code>Swizzle&lt;0,4,3&gt;</code></td>
+<td>0</td>
+<td>无</td>
+<td>不 swizzle（interleave）</td>
+</tr>
+<tr>
+<td><code>Layout_K_SW32_Atom</code></td>
+<td><code>Swizzle&lt;1,4,3&gt;</code></td>
+<td>1</td>
+<td>32 B</td>
+<td>4 路残余冲突</td>
+</tr>
+<tr>
+<td><code>Layout_K_SW64_Atom</code></td>
+<td><code>Swizzle&lt;2,4,3&gt;</code></td>
+<td>2</td>
+<td>64 B</td>
+<td>2 路残余冲突</td>
+</tr>
+<tr>
+<td><code>Layout_K_SW128_Atom</code></td>
+<td><code>Swizzle&lt;3,4,3&gt;</code></td>
+<td>3</td>
+<td>128 B</td>
+<td>0 冲突</td>
+</tr>
+</tbody>
+</table>
+<p>§5 教程 kernel 用的 <code>Swizzle&lt;3,3,3&gt;</code> 是对 4 字节 <code>float</code> 在 element 级的等价写法；GMMA atom 在 bit 级统一为 <code>Swizzle&lt;3,4,3&gt;</code>，<code>M=4</code> 对应 16-bit 的 base 保护。两者描述同一个 128 B swizzle，仅计量单位不同。</p>
+<h3 id="c9-3" class="section-h lv2">7.3 单一真相的机械证明：<code>layout_type()</code> + <code>make_gmma_desc</code></h3>
+<p>「写端 swizzle 与读端 descriptor 同源」并非约定，而是 <code>make_gmma_desc</code> 从 smem layout <strong>反读</strong> swizzle 写进 descriptor 的直接结果。</p>
+<p>第一步，<code>layout_type()</code> 把布局里的 <code>Swizzle&lt;B,4,3&gt;</code> 解出强度 <code>B</code>，见 <a href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/atom/mma_traits_sm90_gmma.hpp#L130-L152">mma_traits_sm90_gmma.hpp:130-152</a>：</p>
+<pre><code class="language-cpp">using Swizzle = get_swizzle_t&lt;Engine&gt;;          // 从 layout 取出 swizzle
+constexpr int B = Swizzle::num_bits;
+static_assert(M == 4, &quot;Unsupported layout swizzle&quot;);
+static_assert(S == 3, &quot;Unsupported layout swizzle&quot;);
+switch (B) {
+  case 0: return LayoutType::INTERLEAVE;
+  case 1: return LayoutType::B32;
+  case 2: return LayoutType::B64;
+  case 3: return LayoutType::B128;
+}
+</code></pre>
+<p>第二步，<code>make_gmma_desc</code> 把这个 <code>LayoutType</code> 直接写进 descriptor 的 <code>layout_type_</code> 位段，见 <a href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/atom/mma_traits_sm90_gmma.hpp#L199-L300">mma_traits_sm90_gmma.hpp:199-300</a>：</p>
+<pre><code class="language-cpp">GmmaDescriptor desc;
+constexpr LayoutType LAYOUT_TYPE = layout_type(u128_tensor);   // 从同一个 smem tensor 解出
+desc.bitfield.layout_type_ = uint8_t(LAYOUT_TYPE);             // 写进 descriptor
+desc.bitfield.start_address_ = start_address &gt;&gt; 4;
+// stride/leading byte offset 也从该 layout 的 canonical strides 推出:
+desc.bitfield.stride_byte_offset_  = stride_01;
+desc.bitfield.leading_byte_offset_ = stride_10;
+</code></pre>
+<p>函数内的注释给出了被强制的 canonical 形态，例如 K-major B128 为 <code>Swizzle&lt;3,4,3&gt; o smem_ptr o ((8,n),2):((8,SBO),1)</code>——descriptor 的 LBO / SBO 即由此 layout 的 stride 推出，不是手填。</p>
+<div class="callout">
+<p class="zh no-indent"><b>为什么这就排除了写读不一致</b></p>
+<p>G2S（TMA）与 S→TensorCore（wgmma）拿到的是同一个 <code>sA</code> tensor。前者的 TMA descriptor swizzle 字段、后者的 GMMA descriptor <code>layout_type_</code>，都由 <code>make_*_desc</code> 从这同一个 layout 的 <code>Swizzle&lt;B,4,3&gt;</code> 反读得到。两端不存在「各自填写 swizzle」的机会，因此结构上无法不一致——<code>static_assert(M==4 &amp;&amp; S==3)</code> 还在编译期拒绝任何非 canonical swizzle。</p>
+</div>
+<h3 id="c9-4" class="section-h lv2">7.4 Blackwell · <code>make_umma_desc</code> 是同一套机制</h3>
+<p>SM100（tcgen05 / UMMA）沿用完全相同的「layout 反读 → 写 descriptor」结构，见 <a href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/atom/mma_traits_sm100.hpp#L206-L225">mma_traits_sm100.hpp:206-225</a>：</p>
+<pre><code class="language-cpp">SmemDescriptor desc;
+desc.version_  = 1;     // Blackwell 版本标记
+desc.lbo_mode_ = 0;     // 默认 legacy LBO 模式
+constexpr UMMA::LayoutType LAYOUT_TYPE = UMMA::layout_type(u128_tensor);   // 同样从 layout 解出
+desc.layout_type_ = uint8_t(LAYOUT_TYPE);                                  // 写进 3-bit 位段
+</code></pre>
+<p>差异仅在枚举多一档，且新增 <code>Layout_MN_SW128_32B_Atom = Swizzle&lt;2,5,2&gt;</code>（即 <code>SWIZZLE_128B_BASE32B</code>），见 <a href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/atom/mma_traits_sm100.hpp#L72">mma_traits_sm100.hpp:72</a> 与 <a href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/atom/mma_traits_sm100.hpp#L175">L175</a> 的 canonical 注释 <code>128B_BASE32B : Swizzle&lt;2,5,2&gt; o smem_ptr o ((T,8,m),(4,k))</code>。机制不变：smem 操作数的 swizzle 由 layout 单一决定、由 <code>make_umma_desc</code> 写进 descriptor；TMEM 操作数不经 shared，不涉及 swizzle。</p>
+<figure id="fig-F4" class="fig">
+  <img src="./swizzle-ldmatrix-correctness_figs/_external/F4.png" alt="F4" onclick="lbShow(this.src)">
+  <figcaption class="italic">图 F4 · swizzle 的单一真相通路。一个带 Swizzle<B,4,3> 的 smem layout 是唯一来源:写端经 TMA descriptor 落数据，读端经 make_gmma_desc / make_umma_desc 把同一个 B 反读进 GMMA / UMMA descriptor 的 layout_type_。两端 swizzle 同源,编译期 static_assert 还会拒绝非 canonical 形态。</figcaption>
+
+</figure>
+
+<aside class="kbox">
+
+源码勘验结论：`Swizzle::apply` 是一行 XOR；GMMA / UMMA 只接受 `Swizzle<B,4,3>`（SM100 另加 `Swizzle<2,5,2>`）四到五种 canonical 强度；`make_gmma_desc` / `make_umma_desc` 从同一个 smem layout 反读 `B` 写进 descriptor 的 `layout_type_`。「写读同源」由这条 layout→descriptor 通路在编译期机械保证，而非运行期约定。
+
+</aside>
+
+<h2 id="c10" class="section-h lv1">附 · 为什么 FP8 强制 tile 宽度不小于 32 元素</h2>
+<p>ThunderKittens 的 FP8 实现要求最小 tile 宽度为 32 元素。原因正是 §1 不变量的对齐前提：swizzle 按固定字节周期（32 / 64 / 128 B）异或，$\sigma$ 要成为 tile 内的合法置换，一行须正好铺满整数个 swizzle 周期。FP8 每元素 1 字节，128 B 周期等于 128 个元素，是 bf16（2 字节 → 64 元素）的两倍。若沿用 bf16 的 16 元素窄 tile，FP8 下一行仅 16 字节，装不下完整周期，$\sigma$ 在 tile 内不再是置换——会把元素搬出边界或令两元素撞同槽，不变量随之失效。将最小宽度提到 32，即是守护「$\sigma$ 写读一致且合法」这一唯一前提。</p>
+<h2 id="c11" class="section-h lv1">代码坐标表</h2>
+<table class="data-table">
+<thead>
+<tr>
+<th>主题</th>
+<th>文件:行</th>
+<th>跳转</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Swizzle&lt;3,3,3&gt;</code> smem 布局</td>
+<td>examples/cute/tutorial/sgemm_sm80.cu:358-363</td>
+<td><a href="https://github.com/NVIDIA/cutlass/blob/main/examples/cute/tutorial/sgemm_sm80.cu#L358-L363">link</a></td>
+</tr>
+<tr>
+<td>G2S 写目标 <code>partition_D(sA)</code></td>
+<td>sgemm_sm80.cu:120</td>
+<td><a href="https://github.com/NVIDIA/cutlass/blob/main/examples/cute/tutorial/sgemm_sm80.cu#L120">link</a></td>
+</tr>
+<tr>
+<td>G2S <code>copy</code>（cp.async）</td>
+<td>sgemm_sm80.cu:145-146</td>
+<td><a href="https://github.com/NVIDIA/cutlass/blob/main/examples/cute/tutorial/sgemm_sm80.cu#L145-L146">link</a></td>
+</tr>
+<tr>
+<td>S2R 读源 <code>partition_S(sA)</code></td>
+<td>sgemm_sm80.cu:178</td>
+<td><a href="https://github.com/NVIDIA/cutlass/blob/main/examples/cute/tutorial/sgemm_sm80.cu#L178">link</a></td>
+</tr>
+<tr>
+<td>S2R <code>copy</code>（ldmatrix）</td>
+<td>sgemm_sm80.cu:244-245</td>
+<td><a href="https://github.com/NVIDIA/cutlass/blob/main/examples/cute/tutorial/sgemm_sm80.cu#L244-L245">link</a></td>
+</tr>
+<tr>
+<td>GMMA <code>LayoutType</code> 枚举</td>
+<td>include/cute/arch/mma_sm90_desc.hpp:48-52</td>
+<td><a href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/arch/mma_sm90_desc.hpp#L48-L52">link</a></td>
+</tr>
+<tr>
+<td><code>GmmaDescriptor</code> 位域</td>
+<td>mma_sm90_desc.hpp:80-125</td>
+<td><a href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/arch/mma_sm90_desc.hpp#L80-L125">link</a></td>
+</tr>
+<tr>
+<td>UMMA <code>LayoutType</code> 枚举</td>
+<td>include/cute/arch/mma_sm100_desc.hpp:79-91</td>
+<td><a href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/arch/mma_sm100_desc.hpp#L79-L91">link</a></td>
+</tr>
+<tr>
+<td>UMMA <code>SmemDescriptor</code> 位域</td>
+<td>mma_sm100_desc.hpp:98-112</td>
+<td><a href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/arch/mma_sm100_desc.hpp#L98-L112">link</a></td>
+</tr>
+<tr>
+<td>UMMA <code>InstrDescriptor</code> 构建</td>
+<td>mma_sm100_desc.hpp:477</td>
+<td><a href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/arch/mma_sm100_desc.hpp#L477">link</a></td>
+</tr>
+<tr>
+<td><code>Swizzle&lt;B,M,S&gt;::apply</code>（一行 XOR）</td>
+<td>include/cute/swizzle.hpp:55-78</td>
+<td><a href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/swizzle.hpp#L55-L78">link</a></td>
+</tr>
+<tr>
+<td>GMMA canonical 布局 atom</td>
+<td>mma_traits_sm90_gmma.hpp:78-104</td>
+<td><a href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/atom/mma_traits_sm90_gmma.hpp#L78-L104">link</a></td>
+</tr>
+<tr>
+<td><code>layout_type()</code>（从 layout 解 swizzle）</td>
+<td>mma_traits_sm90_gmma.hpp:130-152</td>
+<td><a href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/atom/mma_traits_sm90_gmma.hpp#L130-L152">link</a></td>
+</tr>
+<tr>
+<td><code>make_gmma_desc</code>（layout→descriptor）</td>
+<td>mma_traits_sm90_gmma.hpp:199-300</td>
+<td><a href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/atom/mma_traits_sm90_gmma.hpp#L199-L300">link</a></td>
+</tr>
+<tr>
+<td><code>make_umma_desc</code>（SM100 同机制）</td>
+<td>mma_traits_sm100.hpp:206-225</td>
+<td><a href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/atom/mma_traits_sm100.hpp#L206-L225">link</a></td>
+</tr>
+<tr>
+<td>SM100 新增 <code>Swizzle&lt;2,5,2&gt;</code> atom</td>
+<td>mma_traits_sm100.hpp:72,175</td>
+<td><a href="https://github.com/NVIDIA/cutlass/blob/main/include/cute/atom/mma_traits_sm100.hpp#L72">link</a></td>
+</tr>
+</tbody>
+</table>
+  </div><!-- /reader-inner -->
+</div><!-- /reader -->
+
+  <script src="reader.js"></script>
+</body>
+</html>

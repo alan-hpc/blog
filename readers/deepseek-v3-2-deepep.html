@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DeepSeek V3 推理系统深度解析（二）：DeepEP HT/LL Dispatch 与 Buffer 地址协议</title>
+
+<!-- table-css-injected -->
+  <!-- Fonts: JetBrains Mono for code -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+  <!-- Highlight.js: Monokai Sublime theme -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/monokai-sublime.min.css">
+  <!-- KaTeX -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <!-- Shared reader styles -->
+  <link rel="stylesheet" href="/blog/readers/reader.css">
+</head>
+<body>
+
+<div id="lb" onclick="lbClose(event)">
+  <span id="lb-close" onclick="lbHide()">&#x2715;</span>
+  <img id="lb-img" src="" alt="">
+</div>
+
+<nav id="sb">
+  <div id="sb-title">
+    <p class="zh"><a href="https://alan-hpc.github.io/blog/" target="_blank">Yang Min · 技术博客</a></p>
+    <h2 class="section-h lv1" id="DeepSeek-V3-推理系统深度解析二DeepEP-HTLL-Dispatch">DeepSeek V3 推理系统深度解析（二）：DeepEP HT/LL Dispatch…</h2>
+  </div>
+  <div class="ti tl1"><a href="#prologue--本篇问题与读法">Prologue · 本篇问题与读法</a></div>
+  <div class="ti tl1"><a href="#stage-1--deepep-在-v3-推理栈里的位置">Stage 1 · DeepEP 在 V3 推理栈里的位置</a></div>
+  <div class="ti tl1"><a href="#stage-2--buffer通信库的状态中心">Stage 2 · Buffer：通信库的状态中心</a></div>
+  <div class="ti tl2"><a href="#21--ipc-handle-和-task-fifo">2.1 · IPC handle 和 task fifo</a></div>
+  <div class="ti tl1"><a href="#stage-3--get_dispatch_layout先计数再发包">Stage 3 · get_dispatch_layout：先计数，再发包</a></div>
+  <div class="ti tl1"><a href="#stage-4--intranode-dispatch通道并行--环形缓冲">Stage 4 · Intranode Dispatch：通道并行 + 环形缓冲</a></div>
+  <div class="ti tl1"><a href="#stage-5--internode-dispatchnvlink-聚合--rdma-转发">Stage 5 · Internode Dispatch：NVLink 聚合 + RDMA 转发</a></div>
+  <div class="ti tl1"><a href="#stage-6--combinedispatch-的反向归约">Stage 6 · Combine：dispatch 的反向归约</a></div>
+  <div class="ti tl1"><a href="#stage-7--low-latency-模式decode-的另一条路">Stage 7 · Low Latency 模式：Decode 的另一条路</a></div>
+  <div class="ti tl1"><a href="#stage-8--实测与工程经验">Stage 8 · 实测与工程经验</a></div>
+  <div class="ti tl1"><a href="#stage-9--vllm-阅读路径">Stage 9 · vLLM 阅读路径</a></div>
+  <div class="ti tl1"><a href="#stage-10--deepep-边界通信库必须嵌进-moe-状态机">Stage 10 · DeepEP 边界：通信库必须嵌进 MoE 状态机</a></div>
+  <div class="ti tl1"><a href="#deep-dive--deepep-内核级展开">Deep Dive · DeepEP 内核级展开</a></div>
+  <div class="ti tl2"><a href="#4--deepepht-与-ll-双模通信">4 · DeepEP：HT 与 LL 双模通信</a></div>
+  <div class="ti tl3"><a href="#41-跨节点通信瓶颈rdma--nvlink--9">4.1 跨节点通信瓶颈：RDMA = NVLink / 9</a></div>
+  <div class="ti tl3"><a href="#42-buffer-与-layout">4.2 Buffer 与 Layout</a></div>
+  <div class="ti tl3"><a href="#43-ht-模式prefill以量取胜">4.3 HT 模式（Prefill）：以量取胜</a></div>
+  <div class="ti tl3"><a href="#44-ll-模式decode以稳取胜">4.4 LL 模式（Decode）：以稳取胜</a></div>
+  <div class="ti tl3"><a href="#45-ht-vs-ll-速查">4.5 HT vs LL 速查</a></div>
+  <div class="ti tl2"><a href="#11--deepep-内核级展开">11 · DeepEP 内核级展开</a></div>
+  <div class="ti tl3"><a href="#111-buffer-初始化与-ipc-句柄交换">11.1 Buffer 初始化与 IPC 句柄交换</a></div>
+  <div class="ti tl3"><a href="#112-同号卡-nvshmem-unique_id-广播">11.2 同号卡 NVSHMEM unique_id 广播</a></div>
+  <div class="ti tl3"><a href="#113-config-结构体与-buffer-size-估算">11.3 Config 结构体与 buffer size 估算</a></div>
+  <div class="ti tl3"><a href="#114-get_dispatch_layout--sm-分区计数">11.4 get_dispatch_layout — SM 分区计数</a></div>
+  <div class="ti tl3"><a href="#115-notify_dispatch--两阶段同步">11.5 notify_dispatch — 两阶段同步</a></div>
+  <div class="ti tl3"><a href="#116-intranode-dispatch--通道并行--环形缓冲">11.6 Intranode Dispatch — 通道并行 + 环形缓冲</a></div>
+  <div class="ti tl3"><a href="#117-internode-dispatch--5-角色">11.7 Internode Dispatch — 5 角色</a></div>
+  <div class="ti tl3"><a href="#118-combine--反向归约">11.8 Combine — 反向归约</a></div>
+  <div class="ti tl3"><a href="#119-实测吞吐h800-vs-h100--单元测试">11.9 实测吞吐：H800 vs H100 / 单元测试</a></div>
+  <div class="ti tl3"><a href="#1110-ll-模式-8-卡单元测试故障与修复">11.10 LL 模式 8 卡单元测试故障与修复</a></div>
+  <div class="ti tl3"><a href="#1111-deepep-报告全图集">11.11 DeepEP 报告全图集</a></div>
+  <div class="ti tl1"><a href="#optimization-audit--本篇优化点查漏">Optimization Audit · 本篇优化点查漏</a></div>
+  <div class="ti tl1"><a href="#map--本篇图解索引">Map · 本篇图解索引</a></div>
+</nav>
+
+<div id="reader">
+  <div id="reader-inner">
+
+    <header class="book-header">
+      <p class="kicker"><a href="https://alan-hpc.github.io/blog/" target="_blank">Yang Min · 技术博客</a> · 离线阅读版</p>
+      <h1>DeepSeek V3 推理系统深度解析（二）：DeepEP HT/LL Dispatch 与 Buffer 地址协议</h1>
+      <p class="sub">2026-05-04</p>
+      <div style="margin-top:16px;padding:12px 16px;border:1px solid var(--rule);
+                  border-radius:4px;background:var(--paper);font-family:-apple-system,sans-serif;
+                  font-size:12.5px;line-height:2.0;color:var(--muted);">
+        <span style="font-size:10px;letter-spacing:.9px;text-transform:uppercase;
+                     color:#888;display:block;margin-bottom:6px;">原文来源</span>
+        <a href="https://alan-hpc.github.io/blog/posts/2026-05-01-deepseek-v3-推理优化系列-二-deepep-通信内核/" style="color:var(--accent);text-decoration:none;" target="_blank">DeepSeek V3 推理系统深度解析（二）：DeepEP HT/LL Dispatch 与 Buffer 地址协议</a>
+        · Yang Min · 2026
+      </div>
+    </header>
+
+    <p class="zh">DeepEP 的难点不在于 AllToAll 本身，而在于<b>高吞吐和低延迟两种 dispatch 场景对通信语义的要求截然不同</b>。HT kernel 走异步推送模式，最大化 prefill 的吞吐；LL kernel 走同步等待模式，最小化 decode 单步延迟；两者共享同一套 NVLink/IB 物理拓扑，但 buffer 管理、fence 机制和 token 分组策略完全不同。不理解这两种场景的差异，就会把 DeepEP 误读成一个通用 AllToAll 替代方案，而不是一套针对 MoE EP 语义的专项设计。</p><div class="callout"><p class="zh"><b>系列目录</b> ：1. DeepSeekV3 开篇、PD 分离与 Cross-node EP / 2. DeepEP HT/LL Dispatch 与 Buffer 协议 / 3. DeepGEMM Expert Compute 与 FP8 Layout / 4. MLA Prefill/Decode 分流与 FlashMLA Latent KV / 5. DBO 与五段 Decode 流水 / 6. MTP 投机采样 / 7. DSA 稀疏注意力 / 8. vLLM 源码全链路与 MoE Backend</p></div><section id="prologue--本篇问题与读法"><h2 id="prologue--本篇问题与读法" class="section-h lv1">Prologue · 本篇问题与读法</h2><p class="zh">这一篇把 MoE 通信从普通 AllToAll 中拆出来看。Router 已经给出 token 到 expert 的稀疏映射，DeepEP 要解决的是如何把这份 routing metadata 变成 dispatch/combine 协议。当前 DeepEP README 已经进入 V2/ElasticBuffer 与 NCCL Gin 路线；为了对齐 V3/R1 公开系统，这里仍把 HT/LL、Buffer、NVLink/RDMA 与 legacy NVSHMEM 路径讲清楚，并在边界处标出版本差异。</p><p class="zh">DeepEP 的核心目标是为 MoE 模型提供高效 expert-parallel 通信。它不是一个通用 AllToAll 包装，而是面向 MoE token routing 的通信库：知道 token 会发给 expert，知道 combine 要按 top-k weight 做归约，也知道 prefill 与 decode 的通信形态完全不同。</p><section id="stage-1--deepep-在-v3-推理栈里的位置"><h2 id="stage-1--deepep-在-v3-推理栈里的位置" class="section-h lv1">Stage 1 · DeepEP 在 V3 推理栈里的位置</h2><p class="zh">MoE 层的前半段是 router：每个 token 选 top-k expert。后半段是 expert compute：每张 GPU 只持有一部分 expert。中间必须有一个通信层，把 token 从原 rank 搬到 expert 所在 rank；算完后再把 expert output 搬回原 token 所在 rank。</p><div class=highlight><p class="zh"><code class=language-text data-lang=text><span class=line><span class=cl>hidden states
+</span></span><span class=line><span class=cl>  -&gt; router / topk
+</span></span><span class=line><span class=cl>  -&gt; DeepEP dispatch
+</span></span><span class=line><span class=cl>  -&gt; DeepGEMM expert compute
+</span></span><span class=line><span class=cl>  -&gt; DeepEP combine
+</span></span><span class=line><span class=cl>  -&gt; residual path
+</span></span></code></pre></div><p class="zh">DeepEP 提供三类路径：</p><div class="table-scroll"><table class="data-table"><thead><tr><th>路径</th><th>主要场景</th><th>通信介质</th><th>目标</th></tr></thead><tbody><tr><td>Intranode</td><td>单节点 8 卡 EP</td><td>NVLink / IPC buffer</td><td>节点内 AllToAll</td></tr><tr><td>Internode HT</td><td>训练 / Prefill</td><td>NVLink + RDMA</td><td>吞吐优先</td></tr><tr><td>Low Latency</td><td>Decode</td><td>RDMA / IBGDA + fixed buffer</td><td>尾延迟优先</td></tr></tbody></table></div>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F1.drawio</div>
+  </div>
+  <figcaption>MoE 通信语义：routing metadata 决定 dispatch 与 combine</figcaption>
+</figure>
+<section id="stage-2--buffer通信库的状态中心"><h2 id="stage-2--buffer通信库的状态中心" class="section-h lv1">Stage 2 · Buffer：通信库的状态中心</h2><p class="zh"><code class="ic">Buffer</code> 是 DeepEP 的核心对象。它同时承担三件事：</p><ol class="zh-list"><li>管理 NVLink、RDMA、low-latency staging 等通信 buffer。</li><li>交换同节点 IPC handle 和跨节点 NVSHMEM unique id。</li><li>为 dispatch / combine 暴露 Python API，同时把真正通信下沉到 C++/CUDA。</li></ol><p class="zh">初始化时，DeepEP 会根据全局 rank 拆出两个坐标：</p><div class=highlight><p class="zh"><code class=language-text data-lang=text><span class=line><span class=cl>rdma_rank = rank / NUM_MAX_NVL_PEERS
+</span></span><span class=line><span class=cl>nvl_rank  = rank % NUM_MAX_NVL_PEERS
+</span></span></code></pre></div><p class="zh"><code class="ic">rdma_rank</code> 表示节点号，<code class="ic">nvl_rank</code> 表示节点内 GPU 号。这个坐标系贯穿后面所有通信路径：节点内走 NVLink，跨节点走 RDMA，跨节点时通常还要先在节点内聚合 / 转发。</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F2.drawio</div>
+  </div>
+  <figcaption>成本模型：启动延迟与 payload 带宽分开建账</figcaption>
+</figure>
+<h3 id="21--ipc-handle-和-task-fifo" class="section-h lv2">2.1 · IPC handle 和 task fifo</h3><p class="zh">节点内通信使用 CUDA IPC。每个 rank 分配自己的 NVLink buffer 后，用 <code class="ic">cudaIpcGetMemHandle</code> 取 handle，再通过 <code class="ic">all_gather_object</code> 分发给同节点其它 rank。其它 rank 用 <code class="ic">cudaIpcOpenMemHandle</code> 把远端 buffer 映射进本进程地址空间。</p><p class="zh"><code class="ic">task_fifo_ptrs</code> 是另一个关键结构。它不是数据 buffer，而是 GPU 端 barrier / notification 的小队列。DeepEP 的 intranode dispatch 和 combine 会用它同步“某个通道已经写入 / 某个 warp 已经消费”。</p><aside class=cc-dd style="background:#eef7ee;border-left:4px solid #5fa55f;margin:16px 0;padding:14px 18px;border-radius:4px;color:#1a3d1a;line-height:1.75;font-size:14.2px"><div style="display:inline-block;background:#5fa55f;color:#fff;font-size:11.5px;font-weight:700;padding:2px 10px;border-radius:3px;letter-spacing:.5px;margin-bottom:8px">DEEP DIVE</div><div style="font-size:1.04em;color:#0f3d0f;margin:.2em 0 .6em;font-weight:700">为什么要自己管这些 buffer？</div><div class=cc-dd-body><p class="zh">MoE dispatch 不是普通 collective。它的数据量由 router 决定，目的 rank 由 expert placement 决定，combine 还要反向归约。把这件事交给通用 AllToAll 会丢掉 token/expert 结构信息。DeepEP 自己管理 buffer，可以把 layout、计数、发送、接收、归约合成更贴近 MoE 的通信路径。</p></div></aside><section id="stage-3--get_dispatch_layout先计数再发包"><h2 id="stage-3--get_dispatch_layout先计数再发包" class="section-h lv1">Stage 3 · get_dispatch_layout：先计数，再发包</h2><p class="zh">真正发包前，DeepEP 先跑 <code class="ic">get_dispatch_layout</code>。它根据 <code class="ic">topk_idx</code> 计算每个 expert、每个 rank、每个 RDMA rank 会收到多少 token。</p><p class="zh">在单机 8 卡、256 expert、top-k=8、4096 tokens 的典型测试中，kernel 采用：</p><div class="table-scroll"><table class="data-table"><thead><tr><th>参数</th><th style=text-align:right>值</th><th>含义</th></tr></thead><tbody><tr><td><code class="ic">kNumThreads</code></td><td style=text-align:right>256</td><td>每个 block 256 线程</td></tr><tr><td><code class="ic">kNumExpertsPerSM</code></td><td style=text-align:right>32</td><td>一个 SM 负责 32 个 expert 的统计</td></tr><tr><td><code class="ic">kNumRanksPerSM</code></td><td style=text-align:right>8</td><td>一个 SM 负责 8 个 rank 的统计</td></tr><tr><td><code class="ic">num_sms</code></td><td style=text-align:right>9</td><td>8 个 expert 统计 SM + 1 个 rank 统计 SM</td></tr></tbody></table></div>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F3.drawio</div>
+  </div>
+  <figcaption>HT Dispatch：prefill 聚合消息换吞吐</figcaption>
+</figure>
+<p class="zh">这个 kernel 本身不复杂，但它决定了后续 dispatch 的效率：如果每次发送时再临时判断 token 该去哪个 rank，通信路径会被大量分支和原子操作拖慢。</p><section id="stage-4--intranode-dispatch通道并行--环形缓冲"><h2 id="stage-4--intranode-dispatch通道并行--环形缓冲" class="section-h lv1">Stage 4 · Intranode Dispatch：通道并行 + 环形缓冲</h2><p class="zh">单节点 8 卡时，DeepEP 的 intranode dispatch 可以看作“多通道 NVLink AllToAll”。每个通道都有独立 buffer，发送端写入，接收端读取。</p><p class="zh">典型形态：</p><div class=highlight><p class="zh"><code class=language-text data-lang=text><span class=line><span class=cl>num_channels_total = num_channels * kNumRanks
+</span></span><span class=line><span class=cl>                   = 12 * 8
+</span></span><span class=line><span class=cl>                   = 96
+</span></span></code></pre></div><p class="zh">也就是说，每个 rank 的每个通道都对应一个独立缓冲区。这样发送和接收不会互相抢同一段内存，也更容易把 NVLink 带宽打满。</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F4.drawio</div>
+  </div>
+  <figcaption>LL Dispatch：decode 固定形状压尾延迟</figcaption>
+</figure>
+<p class="zh"><code class="ic">notify_dispatch</code> 是第一阶段，它生成 rank prefix、channel prefix 和接收计数。真正 <code class="ic">dispatch</code> 是第二阶段，它把 token 数据按通道写入远端 NVLink buffer。接收端从 buffer 中读出 token，写入 <code class="ic">recv_x</code>，供后面的 expert compute 使用。</p><section id="stage-5--internode-dispatchnvlink-聚合--rdma-转发"><h2 id="stage-5--internode-dispatchnvlink-聚合--rdma-转发" class="section-h lv1">Stage 5 · Internode Dispatch：NVLink 聚合 + RDMA 转发</h2><p class="zh">跨节点时，DeepEP 不会让每个源 rank 直接给每个目标 rank 发 RDMA。它会利用节点内 NVLink 做一层聚合和分发，跨节点只走必要的 RDMA 路径。</p><p class="zh">以 rank 0 发 token 到 rank 9 为例：</p><ol class="zh-list"><li>源节点 GPU0 把数据写到目标 <code class="ic">rdma_rank=1</code> 对应的 RDMA buffer。</li><li>目标节点某个 forwarder rank 接收 RDMA 数据。</li><li>forwarder 再通过节点内 NVLink 把 token 分发给目标 GPU1。</li></ol>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F5.drawio</div>
+  </div>
+  <figcaption>Buffer 地址协议：rank + offset 取代 host 逐步路由</figcaption>
+</figure>
+
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F6.drawio</div>
+  </div>
+  <figcaption>vLLM 接口：parallel config 与 router metadata 进入 DeepEP</figcaption>
+</figure>
+<p class="zh">这种设计的核心收益是降低 RDMA 连接和小消息的压力。MoE routing 是 token 级别的，但网络不适合 token 级别的小包乱飞；DeepEP 做的是把 token 组织成网络喜欢的粗粒度传输。</p><section id="stage-6--combinedispatch-的反向归约"><h2 id="stage-6--combinedispatch-的反向归约" class="section-h lv1">Stage 6 · Combine：dispatch 的反向归约</h2><p class="zh">Combine 是 dispatch 的反向镜像，但比 dispatch 多一个要求：同一个 token 会经过 top-k expert，回来的多个 expert output 要按 <code class="ic">topk_weights</code> 加权求和。</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F7.drawio</div>
+  </div>
+  <figcaption>端到端隐藏：通信收益依赖后续 compute 窗口</figcaption>
+</figure>
+<p class="zh">这也是为什么官方精度栈里 dispatch 可以 FP8，而 combine 通常保持 BF16：dispatch 是 token 激活的搬运，combine 是多路 expert output 的 weighted sum。后者的数值误差会直接进入残差路径，不能轻易再压一档。</p><section id="stage-7--low-latency-模式decode-的另一条路"><h2 id="stage-7--low-latency-模式decode-的另一条路" class="section-h lv1">Stage 7 · Low Latency 模式：Decode 的另一条路</h2><p class="zh">Decode 阶段每步只新增 1 个 token。HT 模式里的计数、scatter、动态 shape 在这里都会变成显性延迟。LL 模式的设计方向相反：固定 shape、固定 buffer、低尾延迟。</p><div class="table-scroll"><table class="data-table"><thead><tr><th>维度</th><th>HT / Normal</th><th>LL</th></tr></thead><tbody><tr><td>目标</td><td>大 batch 吞吐</td><td>小 batch latency</td></tr><tr><td>dispatch 形态</td><td>先计数再成批发送</td><td>fixed staging buffer</td></tr><tr><td>layout</td><td>contiguous</td><td>masked</td></tr><tr><td>CUDA Graph</td><td>不友好</td><td>友好</td></tr><tr><td>典型调优</td><td><code class="ic">num_sms</code>、chunk size</td><td>QPs、staging、IBGDA</td></tr></tbody></table></div><p class="zh">DeepEP 报告中的测试记录也说明了 LL 路径的工程难度：GDRCopy、NVSHMEM、IBGDA、RoCE patch、host buffer memtype 都会影响能不能跑通。对生产推理来说，LL 的难点不只在 kernel，而在网络栈和运行环境。</p><section id="stage-8--实测与工程经验"><h2 id="stage-8--实测与工程经验" class="section-h lv1">Stage 8 · 实测与工程经验</h2><p class="zh">DeepEP 报告里有几组值得保留的经验：</p><div class="table-scroll"><table class="data-table"><thead><tr><th>测试</th><th>观察</th></tr></thead><tbody><tr><td><code class="ic">test_intranode.py</code></td><td>H100 NVLink 带宽高于 H800，dispatch/combine 大致体现 2x 左右差距</td></tr><tr><td><code class="ic">test_internode.py</code></td><td>RoCE patch + NVSHMEM 3.2.5 后 combine RDMA 带宽明显改善</td></tr><tr><td><code class="ic">test_low_latency.py</code></td><td>LL 路径对 NVSHMEM / IBGDA 环境非常敏感，单元测试可能能输出但无法正常退出</td></tr><tr><td>Megatron-LM 8 卡</td><td>某些单机配置下 DeepEP 反而略慢，说明单节点不一定是 DeepEP 最优用武之地</td></tr><tr><td>Megatron-LM 16 卡</td><td>两机 16 卡 DP+EP 下 DeepEP 明显提升，跨节点 EP 才是它的主战场</td></tr></tbody></table></div><p class="zh">这里有一个重要判断：DeepEP 的收益不是“所有场景都更快”，而是当 MoE EP 跨节点以后，它用更贴近 token routing 的通信路径替代通用 collective。</p><section id="stage-9--vllm-阅读路径"><h2 id="stage-9--vllm-阅读路径" class="section-h lv1">Stage 9 · vLLM 阅读路径</h2><p class="zh">在 vLLM 里读 DeepEP，建议按下面顺序：</p><div class="table-scroll"><table class="data-table"><thead><tr><th>层级</th><th>文件 / 模块</th><th>看什么</th></tr></thead><tbody><tr><td>All2All 管理</td><td><code class="ic">distributed/device_communicators/all2all.py</code></td><td>DeepEP HT / LL manager 初始化</td></tr><tr><td>MoE 三段式</td><td><code class="ic">fused_moe/modular_kernel.py</code></td><td><code class="ic">_prepare</code>、<code class="ic">_fused_experts</code>、<code class="ic">_finalize</code></td></tr><tr><td>HT prepare/finalize</td><td><code class="ic">deepep_ht_prepare_finalize.py</code></td><td>prefill dispatch/combine</td></tr><tr><td>LL prepare/finalize</td><td><code class="ic">deepep_ll_prepare_finalize.py</code></td><td>decode low-latency dispatch/combine</td></tr><tr><td>layout glue</td><td><code class="ic">deep_gemm_utils.py</code></td><td><code class="ic">ep_scatter</code>、<code class="ic">ep_gather</code></td></tr></tbody></table></div><p class="zh">关键是别把 DeepEP 和 DeepGEMM 分开看：DeepEP 的输出 layout 决定 DeepGEMM 走 contiguous 还是 masked；DeepGEMM 的耗时又决定 DeepEP 的通信能不能被 DBO 藏住。</p><section id="stage-10--deepep-边界通信库必须嵌进-moe-状态机"><h2 id="stage-10--deepep-边界通信库必须嵌进-moe-状态机" class="section-h lv1">Stage 10 · DeepEP 边界：通信库必须嵌进 MoE 状态机</h2><p class="zh">DeepEP 的本质是 MoE-specific communication runtime：</p><ol class="zh-list"><li>Buffer 层解决可互访地址空间和通信状态。</li><li><code class="ic">get_dispatch_layout</code> 先把 token / expert / rank 关系算清楚。</li><li>Intranode 用多通道 NVLink 环形缓冲。</li><li>Internode 用 NVLink 聚合 + RDMA 两级路由。</li><li>Combine 不是简单回传，而是带权重的反向归约。</li><li>LL 模式为了 decode 牺牲 layout 紧凑性，换固定 shape 和低尾延迟。</li></ol><p class="zh">下一篇接着看 DeepGEMM：当 token 已经被 DeepEP 搬到 expert 所在 GPU，如何用 FP8 grouped GEMM 把 expert compute 跑满。</p><section id="deep-dive--deepep-内核级展开"><h2 id="deep-dive--deepep-内核级展开" class="section-h lv1">Deep Dive · DeepEP 内核级展开</h2><h3 id="4--deepepht-与-ll-双模通信" class="section-h lv2">4 · DeepEP：HT 与 LL 双模通信</h3><p class="zh"><em>RDMA = NVLink/9 · Buffer & Layout · HT for Prefill · LL for Decode</em></p><h4 id="41-跨节点通信瓶颈rdma--nvlink--9" class="section-h lv3">4.1 跨节点通信瓶颈：RDMA = NVLink / 9</h4><p class="zh">H800 节点内 NVLink 带宽 ~450 GB/s（NVSwitch 全互联），跨节点 RDMA 单卡 ~50 GB/s（400 Gb NDR IB）。带宽比 ~9:1。这是为什么 V3 的 dispatch / combine 必须<b>节点内 NVLink + 节点间 RDMA 双路径</b> 而不是单一 All2All。</p><div class="callout"><p class="zh no-indent"><b>❌ 朴素 All2All 在 V3 上的三大成本</b></p><ol class="zh-list"><li><b>路径单一</b> ：所有 token 走同一条链路，RDMA 立刻打满</li><li><b>粒度错配</b> ：router 选的是单个 expert，但 expert 跨节点分布，逐 token 发送会放大 RDMA 请求数</li><li><b>通信计算串行</b> ：不做 overlap 就是纯开销</li></ol></div><h4 id="42-buffer-与-layout" class="section-h lv3">4.2 Buffer 与 Layout</h4><p class="zh">DeepEP 的核心是 <code class="ic">Buffer</code> 类，它管理三块显存：NVLink IPC buffer、RDMA buffer、低延迟 staging buffer。每个 rank 在初始化时通过 <code class="ic">cudaIpcGetMemHandle</code> 把 NVLink buffer 的句柄广播给同节点其它 rank，跨节点则通过 <code class="ic">nvshmem_unique_id</code> 同步 NVSHMEM 地址空间。</p><div class=highlight><p class="zh"><code class=language-cpp data-lang=cpp><span class=line><span class=cl><span class=c1>// deep_ep.cpp Buffer::Buffer
+</span></span></span><span class=line><span class=cl><span class=c1>// num_nvl_bytes 和 num_rdma_bytes 分别表示 nvlink 和 rdma 各需要多少 buffer
+</span></span></span><span class=line><span class=cl><span class=c1>// rdma_rank 表示节点号，nvl_rank 表示机内卡号
+</span></span></span><span class=line><span class=cl><span class=n>rdma_rank</span> <span class=o>=</span> <span class=n>rank</span> <span class=o>/</span> <span class=n>NUM_MAX_NVL_PEERS</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=n>nvl_rank</span>  <span class=o>=</span> <span class=n>rank</span> <span class=o>%</span> <span class=n>NUM_MAX_NVL_PEERS</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=n>num_rdma_ranks</span> <span class=o>=</span> <span class=n>std</span><span class=o>::</span><span class=n>max</span><span class=p>(</span><span class=mi>1</span><span class=p>,</span> <span class=n>num_ranks</span> <span class=o>/</span> <span class=n>NUM_MAX_NVL_PEERS</span><span class=p>);</span>
+</span></span><span class=line><span class=cl><span class=n>num_nvl_ranks</span>  <span class=o>=</span> <span class=n>std</span><span class=o>::</span><span class=n>min</span><span class=p>(</span><span class=n>num_ranks</span><span class=p>,</span> <span class=n>NUM_MAX_NVL_PEERS</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1>// 一次性分配 NVLink buffer + task fifo + ptr arrays
+</span></span></span><span class=line><span class=cl><span class=n>cudaMalloc</span><span class=p>(</span><span class=o>&amp;</span><span class=n>buffer_ptrs</span><span class=p>[</span><span class=n>nvl_rank</span><span class=p>],</span>
+</span></span><span class=line><span class=cl>           <span class=n>num_nvl_bytes</span> <span class=o>+</span> <span class=n>fifo_bytes</span> <span class=o>+</span> <span class=n>buffer_ptr_bytes</span> <span class=o>+</span> <span class=n>task_ptr_bytes</span><span class=p>);</span>
+</span></span><span class=line><span class=cl><span class=n>cudaIpcGetMemHandle</span><span class=p>(</span><span class=o>&amp;</span><span class=n>ipc_handles</span><span class=p>[</span><span class=n>nvl_rank</span><span class=p>],</span> <span class=n>buffer_ptrs</span><span class=p>[</span><span class=n>nvl_rank</span><span class=p>]);</span>
+</span></span></code></pre></div><p class="zh"><code class="ic">task_fifo_ptrs</code> 用于机内卡间的 barrier，<code class="ic">buffer_ptrs_gpu</code> 在 GPU 端保存机内其它 GPU 的 buffer 指针 — kernel 可以直接 load/store 这些远端 NVLink 地址做 IPC 通信。</p><h4 id="43-ht-模式prefill以量取胜" class="section-h lv3">4.3 HT 模式（Prefill）：以量取胜</h4><h5 id=431-fp8-block-quantization>4.3.1 FP8 Block Quantization</h5><p class="zh">HT dispatch 只支持 FP8 block scales，所以发送前要先做 <code class="ic">moe_kernel_quantize_input</code>：每 128 个元素一组算 scale，输入 <code class="ic">(M, H)</code> BF16，输出 <code class="ic">(M, H)</code> FP8 E4M3 + <code class="ic">(M, H/128)</code> FP32 scale。这把 dispatch 的每 token 流量从 14 KB 降到 7.4 KB。</p><div class="callout"><p class="zh no-indent"><b>✅ 为什么 FP8 量化必须在 dispatch 之前</b></p><ol class="zh-list"><li>减少跨节点 RDMA 字节 50%</li><li>对齐 DeepGEMM 的 FP8 输入要求，省一次额外量化 kernel</li><li>支持 UE8M0 packed scales（Blackwell 的 4 × UE8M0 packed int32）</li></ol></div><h5 id=432-get_dispatch_layout--双计数向量>4.3.2 get_dispatch_layout — 双计数向量</h5><p class="zh">在真正发包前，<code class="ic">buffer.get_dispatch_layout</code> 根据 <code class="ic">topk_idx</code> 为每个 rank 算两个计数向量：</p><ul class="zh-list"><li><code class="ic">num_tokens_per_rank</code> — 每个 rank 的总 token 数（含 + NVLink 目标）</li><li><code class="ic">num_tokens_per_rdma_rank</code> — 每个 rank 中需要走 RDMA 的 token 数</li></ul><p class="zh">Kernel 实现非常紧凑（<code class="ic">get_dispatch_layout.cu</code>）：</p><ul class="zh-list"><li>并行策略：<code class="ic">kNumThreads = 256</code>、<code class="ic">kNumExpertsPerSM = 32</code>、<code class="ic">kNumRanksPerSM = 8</code></li><li>SM 数量：<code class="ic">num_sms = ceil(num_experts / 32) + ceil(num_ranks / 8)</code> — 前段 SM 算 expert 统计，后段 SM 算 rank 统计</li><li>同时输出 <code class="ic">is_token_in_rank: (M, top-k)</code>，让 dispatch 阶段直接知道每个 token 该不该发往某个 rank</li></ul>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F8.drawio</div>
+  </div>
+  <figcaption>S2-1  HT Dispatch 的双通路：节点内 NVLink 聚合 + 跨节点 RDMA 二级路由。RDMA 占跨 rank 通信 2/3、带宽只有 NVLink 的 1/9，注定是 prefill MoE 的第一瓶颈。</figcaption>
+</figure>
+<h5 id=433-dispatch两级路由>4.3.3 Dispatch：两级路由</h5><p class="zh">跨节点目标 rank（如 GPU 2/3）走 RDMA 时，DeepEP 内部还会再做一次节点内聚合，避免每个源 rank 都单独发一份到 IB 网卡。这让 RDMA 流量的单 QP 负载更均衡，也是 <code class="ic">num_qps_per_rank = 10</code>（≈ <code class="ic">num_sms / 2</code>）足够的原因：10 个 QP × 双向，已能饱和一块 400 Gb NDR 网卡的 32 条活跃流。</p><h5 id=434-combinebf16--weighted-sum>4.3.4 Combine：BF16 + weighted sum</h5><p class="zh">Combine 是 dispatch 的反向镜像：每个 expert 的输出需要 weighted-sum 回原始 token。<b>combine 传的是 BF16</b> ，每 token 14 KB，是 dispatch 的 2 倍。这就是为什么单层 MoE 的 combine 延迟（~9.4 ms）≈ dispatch（~4.7 ms）的两倍。</p><p class="zh">权重加权在两个地方选一处完成：</p><ul class="zh-list"><li><b>DeepGEMM 路径</b> ：<code class="ic">deepgemm_unpermute_and_reduce</code> / <code class="ic">ep_gather</code> 内部用 $topk\_weights × mm2\_out$ 直接写到 token-order 输出</li><li><b>Triton 路径</b> ：如果 expert backend 返回 <code class="ic">(M, top-k, H)</code> 格式，<code class="ic">TopKWeightAndReduceContiguous</code> 会在 combine 前 reduce 一次</li></ul><h4 id="44-ll-模式decode以稳取胜" class="section-h lv3">4.4 LL 模式（Decode）：以稳取胜</h4><h5 id=441-三条硬约束>4.4.1 三条硬约束</h5><p class="zh">Decode 阶段每步只新增 1 个 token，整个 batch 也就几十到两百。三条硬约束决定了后端选型：</p><ul class="zh-list"><li><b>延迟敏感</b> — ITL 目标 &lt; 30–50 ms / token</li><li><b>形状固定</b> — 必须能进 CUDA Graph，否则 launch 开销吃掉毫秒</li><li><b>RDMA latency 主导</b> — 带宽不是瓶颈（batch 小），发起 RDMA 请求的固定开销才是</li></ul><div class="callout"><p class="zh no-indent"><b>❌ HT 路径拿到 Decode 会发生什么</b></p><ol class="zh-list"><li><b>动态 shape</b> ：num_tokens_per_rank 每步不同 → 无法 CUDA Graph</li><li><b>SM 抢占</b> ：HT 通信用 20 SM，Decode 本来 SM 就空不下来</li><li><b>Contiguous 排列</b> ：每步都 scatter 一遍，把 Decode 的微小开销再放大</li><li><b>BF16 combine 太重</b> ：batch 小时带宽并非瓶颈，但 2× 数据量意味着 2× 发起开销</li></ol></div><div class="callout"><p class="zh no-indent"><b>✅ LL 路径的对应解法</b></p><ol class="zh-list"><li>low_latency_mode=True + cooperative launch kernel，形状固定</li><li>num_sms=0 — 完全靠 RDMA 硬件自走</li><li>Masked layout — 每 expert 都按 max_m 占位，kernel 比较向量不读每行</li><li>Combine 内置 weighted-sum，每 token 一次聚合</li></ol></div><h5 id=442-cooperative-kernel--64-qps>4.4.2 cooperative kernel + 64 QPs</h5><p class="zh"><code class="ic">DeepEPLLAll2AllManager</code> 的几个关键 knob：</p><div class="table-scroll"><table class="data-table"><tr><th>参数</th><th>值</th><th>说明</th></tr><tr><td>num_qps_per_rank</td><td>64</td><td>RDMA tail latency 通过多 QP 并发分摊</td></tr><tr><td>allow_nvlink_for_ll</td><td>True</td><td>同 Node 的 GPU 走 NVLink 节省跳数</td></tr><tr><td>low_latency_mode</td><td>True</td><td>cooperative kernel launch，可写远端 LL staging</td></tr><tr><td>num_sms</td><td><b>0</b></td><td>通信不占 SM，DeepGEMM 用满 132 SM</td></tr></table></div><aside class=cc-dd style="background:#eef7ee;border-left:4px solid #5fa55f;margin:16px 0;padding:14px 18px;border-radius:4px;color:#1a3d1a;line-height:1.75;font-size:14.2px"><div style="display:inline-block;background:#5fa55f;color:#fff;font-size:11.5px;font-weight:700;padding:2px 10px;border-radius:3px;letter-spacing:.5px;margin-bottom:8px">DEEP DIVE</div><div style="font-size:1.04em;color:#0f3d0f;margin:.2em 0 .6em;font-weight:700">为什么 num_sms=0 还能跑 RDMA？</div><div class=cc-dd-body><p class="zh">RDMA 数据路径由 IB HCA 与 InfiniBand 交换机完成，SM 只是用来<b>触发</b> work request（如 <code class="ic">ibv_post_send</code>）和轮询 completion。LL kernel 把 SM 工作量压到最小：每 rank 用固定几个 warp 发起 send，剩下 SM 自由给 DeepGEMM。HT 模式留 20 SM 是为了把 token 先搬一步做 layout，LL 直接让 token 留在原位 — 不需要这些 SM。</p></div></aside><h5 id=443-lowlatencylayout-与三块-buffer>4.4.3 LowLatencyLayout 与三块 buffer</h5><p class="zh">Decode 初始化时 DeepEP LL 申请三块显存：<b>NVLink、RDMA、Staging</b> 。与 HT 最大区别是 <b>num_sms=0</b> ，通信完全由 RDMA 硬件自走。</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F9.drawio</div>
+  </div>
+  <figcaption>S2-2  LL 模式 buffer 分配：与 HT 最大区别是 num_sms=0，通信完全由 RDMA 硬件自走，不跟 DeepGEMM 抢 SM。</figcaption>
+</figure>
+<h4 id="45-ht-vs-ll-速查" class="section-h lv3">4.5 HT vs LL 速查</h4>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F10.drawio</div>
+  </div>
+  <figcaption>S2-3  HT vs LL：一个追吞吐、一个追延迟。Decode 要每个 step 严格稳定，所以愿意牺牲 padding 空间，换取固定 shape + CUDA Graph + 0 SM 通信。</figcaption>
+</figure>
+<div class="table-scroll"><table class="data-table"><tr><th>维度</th><th>Prefill (HT)</th><th>Decode (LL)</th></tr><tr><td>batch 规模</td><td>千-万 tokens</td><td>几十 tokens</td></tr><tr><td>dispatch kernel</td><td>deep_ep_ht_dispatch</td><td>deep_ep_ll_dispatch (cooperative)</td></tr><tr><td>SM 占用</td><td>num_sms=20</td><td><b>num_sms=0</b></td></tr><tr><td>layout</td><td>Contiguous (M_sum × K)</td><td>Masked (E × max_m × K)</td></tr><tr><td>combine dtype</td><td>BF16</td><td>BF16（但总量微小）</td></tr><tr><td>weighted sum</td><td>ep_gather (Triton)</td><td>kernel 内置</td></tr><tr><td>QPs/rank</td><td>10 (num_sms/2)</td><td><b>64</b></td></tr><tr><td>CUDA Graph</td><td>❌ 动态 shape</td><td>✓ 固定 shape</td></tr><tr><td>延迟/层</td><td>~20 ms（无 DBO）→ ~13 ms</td><td>~1-2 ms/层</td></tr><tr><td>主瓶颈</td><td>RDMA 带宽</td><td>RDMA per-op latency</td></tr><tr><td>主优化</td><td>DBO + NVLink/RDMA 双通路 + FP8</td><td>Graph + 64 QPs + Masked layout</td></tr></table></div><h3 id="11--deepep-内核级展开" class="section-h lv2">11 · DeepEP 内核级展开</h3><p class="zh">前文给出了 HT 与 LL 的总体设计。这一节是源码级展开 — <code class="ic">Buffer</code> 初始化、<code class="ic">Config</code>、<code class="ic">get_dispatch_layout</code> 内核分区、<code class="ic">notify_dispatch</code> 两阶段、intranode/internode dispatch、combine 的发送/接收端协作、Megatron-LM 实测吞吐。</p><h4 id="111-buffer-初始化与-ipc-句柄交换" class="section-h lv3">11.1 Buffer 初始化与 IPC 句柄交换</h4><div class=highlight><p class="zh"><code class=language-cpp data-lang=cpp><span class=line><span class=cl><span class=c1>// deep_ep.cpp Buffer::Buffer
+</span></span></span><span class=line><span class=cl><span class=n>Buffer</span><span class=o>::</span><span class=n>Buffer</span><span class=p>(</span><span class=kt>int</span> <span class=n>rank</span><span class=p>,</span> <span class=kt>int</span> <span class=n>num_ranks</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>               <span class=kt>int64_t</span> <span class=n>num_nvl_bytes</span><span class=p>,</span> <span class=kt>int64_t</span> <span class=n>num_rdma_bytes</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>               <span class=kt>bool</span> <span class=n>low_latency_mode</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=kt>int64_t</span> <span class=n>fifo_bytes</span>      <span class=o>=</span> <span class=k>sizeof</span><span class=p>(</span><span class=kt>int</span><span class=p>)</span>  <span class=o>*</span> <span class=n>NUM_MAX_FIFO_SLOTS</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=kt>int64_t</span> <span class=n>buffer_ptr_bytes</span> <span class=o>=</span> <span class=k>sizeof</span><span class=p>(</span><span class=kt>void</span><span class=o>*</span><span class=p>)</span><span class=o>*</span> <span class=n>NUM_MAX_NVL_PEERS</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=kt>int64_t</span> <span class=n>task_ptr_bytes</span>   <span class=o>=</span> <span class=k>sizeof</span><span class=p>(</span><span class=kt>int</span><span class=o>*</span><span class=p>)</span> <span class=o>*</span> <span class=n>NUM_MAX_NVL_PEERS</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=n>CUDA_CHECK</span><span class=p>(</span><span class=n>cudaGetDevice</span><span class=p>(</span><span class=o>&amp;</span><span class=n>device_id</span><span class=p>));</span>
+</span></span><span class=line><span class=cl>    <span class=n>rdma_rank</span> <span class=o>=</span> <span class=n>rank</span> <span class=o>/</span> <span class=n>NUM_MAX_NVL_PEERS</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=n>nvl_rank</span>  <span class=o>=</span> <span class=n>rank</span> <span class=o>%</span> <span class=n>NUM_MAX_NVL_PEERS</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=n>num_rdma_ranks</span> <span class=o>=</span> <span class=n>std</span><span class=o>::</span><span class=n>max</span><span class=p>(</span><span class=mi>1</span><span class=p>,</span> <span class=n>num_ranks</span> <span class=o>/</span> <span class=n>NUM_MAX_NVL_PEERS</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>    <span class=n>num_nvl_ranks</span>  <span class=o>=</span> <span class=n>std</span><span class=o>::</span><span class=n>min</span><span class=p>(</span><span class=n>num_ranks</span><span class=p>,</span> <span class=n>NUM_MAX_NVL_PEERS</span><span class=p>);</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></div><p class="zh">NVLink buffer 的几块内存一次 <code class="ic">cudaMalloc</code> 拿到位 — 数据区 + task fifo + 远端 buffer 指针数组 + 远端 task 指针数组：</p><div class=highlight><p class="zh"><code class=language-cpp data-lang=cpp><span class=line><span class=cl><span class=k>if</span> <span class=p>(</span><span class=n>num_nvl_bytes</span> <span class=o>&gt;</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=c1>// Local IPC: alloc local memory and set local IPC handle
+</span></span></span><span class=line><span class=cl>    <span class=n>CUDA_CHECK</span><span class=p>(</span><span class=n>cudaMalloc</span><span class=p>(</span><span class=o>&amp;</span><span class=n>buffer_ptrs</span><span class=p>[</span><span class=n>nvl_rank</span><span class=p>],</span>
+</span></span><span class=line><span class=cl>        <span class=n>num_nvl_bytes</span> <span class=o>+</span> <span class=n>fifo_bytes</span> <span class=o>+</span> <span class=n>buffer_ptr_bytes</span> <span class=o>+</span> <span class=n>task_ptr_bytes</span><span class=p>));</span>
+</span></span><span class=line><span class=cl>    <span class=n>CUDA_CHECK</span><span class=p>(</span><span class=n>cudaIpcGetMemHandle</span><span class=p>(</span><span class=o>&amp;</span><span class=n>ipc_handles</span><span class=p>[</span><span class=n>nvl_rank</span><span class=p>],</span> <span class=n>buffer_ptrs</span><span class=p>[</span><span class=n>nvl_rank</span><span class=p>]));</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=n>buffer_ptrs_gpu</span> <span class=o>=</span> <span class=k>reinterpret_cast</span><span class=o>&lt;</span><span class=kt>void</span><span class=o>**&gt;</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>        <span class=k>reinterpret_cast</span><span class=o>&lt;</span><span class=kt>uint8_t</span><span class=o>*&gt;</span><span class=p>(</span><span class=n>buffer_ptrs</span><span class=p>[</span><span class=n>nvl_rank</span><span class=p>])</span>
+</span></span><span class=line><span class=cl>        <span class=o>+</span> <span class=n>num_nvl_bytes</span> <span class=o>+</span> <span class=n>fifo_bytes</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=c1>// task fifo 紧跟数据区
+</span></span></span><span class=line><span class=cl>    <span class=n>task_fifo_ptrs</span><span class=p>[</span><span class=n>nvl_rank</span><span class=p>]</span> <span class=o>=</span> <span class=k>reinterpret_cast</span><span class=o>&lt;</span><span class=kt>int</span><span class=o>*&gt;</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>        <span class=k>reinterpret_cast</span><span class=o>&lt;</span><span class=kt>uint8_t</span><span class=o>*&gt;</span><span class=p>(</span><span class=n>buffer_ptrs</span><span class=p>[</span><span class=n>nvl_rank</span><span class=p>])</span> <span class=o>+</span> <span class=n>num_nvl_bytes</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>    <span class=n>task_fifo_ptrs_gpu</span> <span class=o>=</span> <span class=k>reinterpret_cast</span><span class=o>&lt;</span><span class=kt>int</span><span class=o>**&gt;</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>        <span class=k>reinterpret_cast</span><span class=o>&lt;</span><span class=kt>uint8_t</span><span class=o>*&gt;</span><span class=p>(</span><span class=n>buffer_ptrs</span><span class=p>[</span><span class=n>nvl_rank</span><span class=p>])</span>
+</span></span><span class=line><span class=cl>        <span class=o>+</span> <span class=n>num_nvl_bytes</span> <span class=o>+</span> <span class=n>fifo_bytes</span> <span class=o>+</span> <span class=n>buffer_ptr_bytes</span><span class=p>);</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></div><p class="zh"><code class="ic">task_fifo_ptrs</code> 用于机内卡间 barrier；<code class="ic">buffer_ptrs_gpu</code> 在 GPU 端保存机内其他 GPU 的 buffer 指针（同样对 <code class="ic">task_fifo_ptrs_gpu</code>）。这样 kernel 直接 load/store 远端 NVLink 地址做 IPC 通信。</p><p class="zh">CPU 侧用于 device 阻塞 host 的 counter（<code class="ic">cudaMallocHost</code> + <code class="ic">cudaHostAllocMapped</code> 拿 pinned + mapped 内存）：</p><div class=highlight><p class="zh"><code class=language-cpp data-lang=cpp><span class=line><span class=cl><span class=n>CUDA_CHECK</span><span class=p>(</span><span class=n>cudaMallocHost</span><span class=p>(</span><span class=o>&amp;</span><span class=n>moe_recv_counter</span><span class=p>,</span> <span class=k>sizeof</span><span class=p>(</span><span class=kt>int64_t</span><span class=p>),</span> <span class=n>cudaHostAllocMapped</span><span class=p>));</span>
+</span></span><span class=line><span class=cl><span class=n>CUDA_CHECK</span><span class=p>(</span><span class=n>cudaHostGetDevicePointer</span><span class=p>(</span><span class=o>&amp;</span><span class=n>moe_recv_counter_mapped</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>                                    <span class=k>const_cast</span><span class=o>&lt;</span><span class=kt>int</span><span class=o>*&gt;</span><span class=p>(</span><span class=n>moe_recv_counter</span><span class=p>),</span> <span class=mi>0</span><span class=p>));</span>
+</span></span><span class=line><span class=cl><span class=o>*</span><span class=n>moe_recv_counter</span> <span class=o>=</span> <span class=o>-</span><span class=mi>1</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=n>CUDA_CHECK</span><span class=p>(</span><span class=n>cudaMallocHost</span><span class=p>(</span><span class=o>&amp;</span><span class=n>moe_recv_expert_counter</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>                          <span class=k>sizeof</span><span class=p>(</span><span class=kt>int</span><span class=p>)</span> <span class=o>*</span> <span class=n>NUM_MAX_LOCAL_EXPERTS</span><span class=p>,</span> <span class=n>cudaHostAllocMapped</span><span class=p>));</span>
+</span></span><span class=line><span class=cl><span class=n>CUDA_CHECK</span><span class=p>(</span><span class=n>cudaHostGetDevicePointer</span><span class=p>(</span><span class=o>&amp;</span><span class=n>moe_recv_expert_counter_mapped</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>                                    <span class=k>const_cast</span><span class=o>&lt;</span><span class=kt>int</span><span class=o>*&gt;</span><span class=p>(</span><span class=n>moe_recv_expert_counter</span><span class=p>),</span> <span class=mi>0</span><span class=p>));</span>
+</span></span><span class=line><span class=cl><span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=n>NUM_MAX_LOCAL_EXPERTS</span><span class=p>;</span> <span class=o>++</span><span class=n>i</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=n>moe_recv_expert_counter</span><span class=p>[</span><span class=n>i</span><span class=p>]</span> <span class=o>=</span> <span class=o>-</span><span class=mi>1</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=k>if</span> <span class=p>(</span><span class=n>num_rdma_ranks</span> <span class=o>&gt;</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=n>CUDA_CHECK</span><span class=p>(</span><span class=n>cudaMallocHost</span><span class=p>(</span><span class=o>&amp;</span><span class=n>moe_recv_rdma_counter</span><span class=p>,</span> <span class=k>sizeof</span><span class=p>(</span><span class=kt>int</span><span class=p>),</span> <span class=n>cudaHostAllocMapped</span><span class=p>));</span>
+</span></span><span class=line><span class=cl>    <span class=n>CUDA_CHECK</span><span class=p>(</span><span class=n>cudaHostGetDevicePointer</span><span class=p>(</span><span class=o>&amp;</span><span class=n>moe_recv_rdma_counter_mapped</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>                                        <span class=k>const_cast</span><span class=o>&lt;</span><span class=kt>int</span><span class=o>*&gt;</span><span class=p>(</span><span class=n>moe_recv_rdma_counter</span><span class=p>),</span> <span class=mi>0</span><span class=p>));</span>
+</span></span><span class=line><span class=cl>    <span class=o>*</span><span class=n>moe_recv_rdma_counter</span> <span class=o>=</span> <span class=o>-</span><span class=mi>1</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></div><h4 id="112-同号卡-nvshmem-unique_id-广播" class="section-h lv3">11.2 同号卡 NVSHMEM unique_id 广播</h4><p class="zh">DeepEP 跨节点连通的"对等 GPU"是同号卡：rdma_rank=0 的所有 GPU（节点 0 各 nvl_rank）创建并广播 unique_id：</p><div class=highlight><p class="zh"><code class=language-python data-lang=python><span class=line><span class=cl><span class=n>ipc_handles</span> <span class=o>=</span> <span class=p>[</span><span class=kc>None</span><span class=p>,</span> <span class=p>]</span> <span class=o>*</span> <span class=bp>self</span><span class=o>.</span><span class=n>group_size</span>
+</span></span><span class=line><span class=cl><span class=n>local_ipc_handle</span> <span class=o>=</span> <span class=bp>self</span><span class=o>.</span><span class=n>runtime</span><span class=o>.</span><span class=n>get_local_ipc_handle</span><span class=p>()</span>
+</span></span><span class=line><span class=cl><span class=n>dist</span><span class=o>.</span><span class=n>all_gather_object</span><span class=p>(</span><span class=n>ipc_handles</span><span class=p>,</span> <span class=n>local_ipc_handle</span><span class=p>,</span> <span class=n>group</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Synchronize NVSHMEM unique IDs</span>
+</span></span><span class=line><span class=cl><span class=n>root_unique_id</span> <span class=o>=</span> <span class=kc>None</span>
+</span></span><span class=line><span class=cl><span class=k>if</span> <span class=bp>self</span><span class=o>.</span><span class=n>runtime</span><span class=o>.</span><span class=n>get_num_rdma_ranks</span><span class=p>()</span> <span class=o>&gt;</span> <span class=mi>1</span> <span class=ow>or</span> <span class=n>low_latency_mode</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>    <span class=n>nvshmem_unique_ids</span> <span class=o>=</span> <span class=p>[</span><span class=kc>None</span><span class=p>,</span> <span class=p>]</span> <span class=o>*</span> <span class=bp>self</span><span class=o>.</span><span class=n>group_size</span>
+</span></span><span class=line><span class=cl>    <span class=k>if</span> <span class=p>(</span><span class=n>low_latency_mode</span> <span class=ow>and</span> <span class=bp>self</span><span class=o>.</span><span class=n>rank</span> <span class=o>==</span> <span class=mi>0</span><span class=p>)</span> <span class=ow>or</span> \
+</span></span><span class=line><span class=cl>       <span class=p>(</span><span class=ow>not</span> <span class=n>low_latency_mode</span> <span class=ow>and</span> <span class=bp>self</span><span class=o>.</span><span class=n>runtime</span><span class=o>.</span><span class=n>get_rdma_rank</span><span class=p>()</span> <span class=o>==</span> <span class=mi>0</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>        <span class=n>root_unique_id</span> <span class=o>=</span> <span class=bp>self</span><span class=o>.</span><span class=n>runtime</span><span class=o>.</span><span class=n>get_local_nvshmem_unique_id</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>    <span class=n>dist</span><span class=o>.</span><span class=n>all_gather_object</span><span class=p>(</span><span class=n>nvshmem_unique_ids</span><span class=p>,</span> <span class=n>root_unique_id</span><span class=p>,</span> <span class=n>group</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=n>root_unique_id</span> <span class=o>=</span> <span class=n>nvshmem_unique_ids</span><span class=p>[</span>
+</span></span><span class=line><span class=cl>        <span class=mi>0</span> <span class=k>if</span> <span class=n>low_latency_mode</span> <span class=k>else</span> <span class=bp>self</span><span class=o>.</span><span class=n>runtime</span><span class=o>.</span><span class=n>get_root_rdma_rank</span><span class=p>(</span><span class=kc>True</span><span class=p>)]</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=bp>self</span><span class=o>.</span><span class=n>runtime</span><span class=o>.</span><span class=n>sync</span><span class=p>(</span><span class=n>device_ids</span><span class=p>,</span> <span class=n>ipc_handles</span><span class=p>,</span> <span class=n>root_unique_id</span><span class=p>)</span>
+</span></span></code></pre></div><p class="zh"><code class="ic">sync</code> 内部用 <code class="ic">cudaIpcOpenMemHandle</code> 把同节点其他 GPU 的 IPC 句柄映射到地址空间：</p><div class=highlight><p class="zh"><code class=language-cpp data-lang=cpp><span class=line><span class=cl><span class=kt>void</span> <span class=n>Buffer</span><span class=o>::</span><span class=n>sync</span><span class=p>(...)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=k>if</span> <span class=p>(</span><span class=n>num_nvl_bytes</span> <span class=o>&gt;</span> <span class=mi>0</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>,</span> <span class=n>offset</span> <span class=o>=</span> <span class=n>rdma_rank</span> <span class=o>*</span> <span class=n>num_nvl_ranks</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=n>num_nvl_ranks</span><span class=p>;</span> <span class=o>++</span><span class=n>i</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>            <span class=k>auto</span> <span class=n>handle_str</span> <span class=o>=</span> <span class=n>std</span><span class=o>::</span><span class=n>string</span><span class=p>(</span><span class=n>all_gathered_handles</span><span class=p>[</span><span class=n>offset</span> <span class=o>+</span> <span class=n>i</span><span class=p>].</span><span class=n>value</span><span class=p>());</span>
+</span></span><span class=line><span class=cl>            <span class=k>if</span> <span class=p>(</span><span class=n>offset</span> <span class=o>+</span> <span class=n>i</span> <span class=o>!=</span> <span class=n>rank</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>                <span class=n>std</span><span class=o>::</span><span class=n>memcpy</span><span class=p>(</span><span class=n>ipc_handles</span><span class=p>[</span><span class=n>i</span><span class=p>].</span><span class=n>reserved</span><span class=p>,</span> <span class=n>handle_str</span><span class=p>.</span><span class=n>c_str</span><span class=p>(),</span> <span class=n>CUDA_IPC_HANDLE_SIZE</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>                <span class=n>CUDA_CHECK</span><span class=p>(</span><span class=n>cudaIpcOpenMemHandle</span><span class=p>(</span><span class=o>&amp;</span><span class=n>buffer_ptrs</span><span class=p>[</span><span class=n>i</span><span class=p>],</span> <span class=n>ipc_handles</span><span class=p>[</span><span class=n>i</span><span class=p>],</span>
+</span></span><span class=line><span class=cl>                                                <span class=n>cudaIpcMemLazyEnablePeerAccess</span><span class=p>));</span>
+</span></span><span class=line><span class=cl>                <span class=n>task_fifo_ptrs</span><span class=p>[</span><span class=n>i</span><span class=p>]</span> <span class=o>=</span> <span class=k>reinterpret_cast</span><span class=o>&lt;</span><span class=kt>int</span><span class=o>*&gt;</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>                    <span class=k>reinterpret_cast</span><span class=o>&lt;</span><span class=kt>uint8_t</span><span class=o>*&gt;</span><span class=p>(</span><span class=n>buffer_ptrs</span><span class=p>[</span><span class=n>i</span><span class=p>])</span> <span class=o>+</span> <span class=n>num_nvl_bytes</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>            <span class=p>}</span>
+</span></span><span class=line><span class=cl>        <span class=p>}</span>
+</span></span><span class=line><span class=cl>        <span class=n>CUDA_CHECK</span><span class=p>(</span><span class=n>cudaMemcpy</span><span class=p>(</span><span class=n>buffer_ptrs_gpu</span><span class=p>,</span> <span class=n>buffer_ptrs</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>                              <span class=k>sizeof</span><span class=p>(</span><span class=kt>void</span><span class=o>*</span><span class=p>)</span> <span class=o>*</span> <span class=n>NUM_MAX_NVL_PEERS</span><span class=p>,</span> <span class=n>cudaMemcpyHostToDevice</span><span class=p>));</span>
+</span></span><span class=line><span class=cl>        <span class=n>CUDA_CHECK</span><span class=p>(</span><span class=n>cudaMemcpy</span><span class=p>(</span><span class=n>task_fifo_ptrs_gpu</span><span class=p>,</span> <span class=n>task_fifo_ptrs</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>                              <span class=k>sizeof</span><span class=p>(</span><span class=kt>int</span><span class=o>*</span><span class=p>)</span> <span class=o>*</span> <span class=n>NUM_MAX_NVL_PEERS</span><span class=p>,</span> <span class=n>cudaMemcpyHostToDevice</span><span class=p>));</span>
+</span></span><span class=line><span class=cl>        <span class=n>CUDA_CHECK</span><span class=p>(</span><span class=n>cudaDeviceSynchronize</span><span class=p>());</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>    <span class=p>...</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></div><h4 id="113-config-结构体与-buffer-size-估算" class="section-h lv3">11.3 Config 结构体与 buffer size 估算</h4><p class="zh"><code class="ic">Config</code> 决定 NVLink chunk size、SM 数、buffer 块大小：</p><ul class="zh-list"><li><code class="ic">num_sms</code> — 用于通信的 SM 数（HT=20，LL=0）</li><li><code class="ic">num_max_nvl_chunked_send_tokens</code> / <code class="ic">num_max_nvl_chunked_recv_tokens</code> — NVLink 单次传输的 token 块上限</li><li><code class="ic">num_max_rdma_chunked_send_tokens</code> / <code class="ic">num_max_rdma_chunked_recv_tokens</code> — RDMA 对应字段</li></ul><p class="zh"><code class="ic">get_nvl_buffer_size_hint</code> / <code class="ic">get_rdma_buffer_size_hint</code> 提供推荐缓冲区大小。Buffer 在 <code class="ic">dispatch</code> / <code class="ic">combine</code> 内通过 <code class="ic">get_dispatch_config</code> / <code class="ic">get_combine_config</code> 拉取。配置随 rank 数动态调整：节点内（&lt; 8 ranks）与节点间（> 8 ranks）使用不同模板。</p><p class="zh">低延迟模式额外定义 <code class="ic">LowLatencyLayout</code>：发送、接收、信号三块缓冲区固定大小预分配，每次都用 <code class="ic">clean_low_latency_buffer</code> 清零，配合 IBGDA 做高效 RDMA。</p><h4 id="114-get_dispatch_layout--sm-分区计数" class="section-h lv3">11.4 get_dispatch_layout — SM 分区计数</h4>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F11.drawio</div>
+  </div>
+  <figcaption>S2-4  DeepEP Buffer 内存布局：NVLink IPC buffer + RDMA buffer + LL Staging 三大块；task fifo 与远端 buffer 指针数组紧贴数据区。</figcaption>
+</figure>
+
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F12.drawio</div>
+  </div>
+  <figcaption>S2-5  同节点 8 卡 IPC handle 交换 + 跨节点 nvshmem unique_id 广播：rdma_rank=0 的同号卡负责创建 unique_id。</figcaption>
+</figure>
+<p class="zh"><code class="ic">get_dispatch_layout</code> 在 dispatch 之前算两个全局计数向量。kernel 用了一个简单但漂亮的 SM 分区策略：</p><p class="zh"><code class="ic">kNumThreads = 256       // 每 block 256 线程
+kNumExpertsPerSM = 32   // 每 SM 处理 32 个 expert
+kNumRanksPerSM   = 8    // 每 SM 处理 8 个 rank
+num_sms = ceil(num_experts / 32) + ceil(num_ranks / 8)
+</code></pre><p class="zh">前 <code class="ic">ceil(num_experts/32)</code> 个 SM 算 expert 统计，后 <code class="ic">ceil(num_ranks/8)</code> 个 SM 算 rank 统计。每个线程在 stride=256 上扫 token，命中本 SM 负责的 expert/rank 范围就累加共享内存里的中间结果，最后规约写回 global。</p><p class="zh">举例：<code class="ic">num_tokens=4096, num_topk=8, num_ranks=8, num_experts=256</code>：</p><p class="zh"><code class="ic">num_sms = ceil(256/32) + ceil(8/8) = 8 + 1 = 9
+前 8 个 SM 处理 expert 统计（每 SM 32 个 expert）
+第 9 个 SM 处理 rank 统计
+单机场景: num_tokens_per_rdma_rank = nullptr
+</code></pre><p class="zh">输出向量：</p><ul class="zh-list"><li><code class="ic">num_tokens_per_expert</code> — 每 expert 接收 token 数</li><li><code class="ic">num_tokens_per_rank</code> — 每 rank 接收 token 数（HT 用）</li><li><code class="ic">num_tokens_per_rdma_rank</code> — 每 RDMA rank 接收 token 数（HT 跨节点用）</li><li><code class="ic">is_token_in_rank</code> — <code class="ic">(M, num_ranks)</code> bool，标识每个 token 是否要发往某个 rank</li></ul><h4 id="115-notify_dispatch--两阶段同步" class="section-h lv3">11.5 notify_dispatch — 两阶段同步</h4><p class="zh"><code class="ic">notify_dispatch</code> 是 intranode dispatch 的第一阶段（一个 SM、128 线程），干两件事：</p><ol class="zh-list"><li><b>同步与计数汇总</b> ：把 <code class="ic">num_tokens_per_rank</code> / <code class="ic">num_tokens_per_expert</code> 通过 NVLink IPC 上的 <code class="ic">task_fifo_ptrs</code> 做 barrier 同步</li><li><b>生成元数据</b> ：<code class="ic">rank_prefix_matrix</code>（每 rank 的接收偏移）+ <code class="ic">channel_prefix_matrix</code>（每通道的 token 分布）</li></ol><p class="zh">举例（kNumRanks=8, num_nvl_bytes=1MB）：</p><p class="zh"><code class="ic">buffer_ptrs[0] → 0x1000000           // 数据区
+task_fifo_ptrs[0] = buffer_ptrs[0] + 1MB → 0x1100000
+
+notify_dispatch 内:
+  local_per_rank_buffer = buffer_ptrs[0]                  // [0x1000000, 0x1000040)
+  task_fifo_ptrs[0]                                       // [0x1100000, 0x1100100)
+barrier_device:
+  atomicAdd_system(task_fifo_ptrs[0] + thread_id, 1);     // 跨 GPU IPC 原子加
+</code></pre><p class="zh">第二阶段（<code class="ic">sm_id ∈ [1, 8]</code>）按通道做 token 计数，输出到：</p><ul class="zh-list"><li><code class="ic">moe_recv_counter_mapped</code> — 当前 rank 接收 token 总数</li><li><code class="ic">moe_recv_expert_counter_mapped</code> — 每 expert 的接收 token 数</li><li><code class="ic">rank_prefix_matrix_copy</code> — <code class="ic">(8, 8)</code> 接收偏移</li><li><code class="ic">channel_prefix_matrix</code> — <code class="ic">(8, num_channels)</code> 通道分布</li></ul><h4 id="116-intranode-dispatch--通道并行--环形缓冲" class="section-h lv3">11.6 Intranode Dispatch — 通道并行 + 环形缓冲</h4>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F13.drawio</div>
+  </div>
+  <figcaption>S2-6  get_dispatch_layout SM 分区：前 ceil(num_experts/32) 个 SM 算 expert 计数，后 ceil(num_ranks/8) 个 SM 算 rank 计数。</figcaption>
+</figure>
+
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F14.drawio</div>
+  </div>
+  <figcaption>S2-7  Intranode dispatch 通道并行：12 通道 × 8 rank = 96 个独立环形缓冲，发送/接收端通过 channel_tail_idx / channel_head_idx 协作。</figcaption>
+</figure>
+<p class="zh">数据分发用发送-接收模型，配 NVLink 高带宽：</p><ul class="zh-list"><li>每 block <code class="ic">kNumRanks * 32</code> 线程（8 rank → 256 线程）；<code class="ic">__launch_bounds__(kNumRanks*32, 1)</code> 限制每 SM 1 个 block</li><li><code class="ic">num_sms=24</code> → 启动 24 个 block，分 12 个发送 block + 12 个接收 block</li><li><code class="ic">num_channels=12</code>：每个 channel 独立缓冲（12 通道 × 8 rank = 96 个缓冲槽）</li></ul><p class="zh">发送端（偶数 SM, sm_id % 2 == 0）：</p><p class="zh"><code class="ic">任务分配: 每 warp 一个 rank (send_warp_id = thread_id / 32)
+通道:    responsible_channel = sm_id / 2
+
+每通道处理量按 channel_prefix_matrix 切片
+分块: num_max_send_tokens=8（HT 模式）/ 256（LL 模式）
+缓冲: channel_x_buffers[channel * kNumRanks + target_rank]
+拷贝: UNROLLED_WARP_COPY 优化的 16B / lane 内存拷贝
+同步: 写入完成后更新 channel_tail_idx
+</code></pre><p class="zh">接收端（奇数 SM, sm_id % 2 == 1）：</p><p class="zh"><code class="ic">warp 0 — 队列头管理
+  循环检查 channel_tail_idx
+  更新 channel_head_idx = min(warp_channel_head_idx[未退休 warp])
+warp 1..N — 数据搬运 + 写出 recv_x
+共享内存:
+  warp_channel_head_idx[num_recv_warps][kNumRanks]
+  channel_tail_idx[kNumRanks]
+  warp_retired[num_recv_warps]
+</code></pre><p class="zh">环形缓冲是否能写新槽：<code class="ic">(256 - num_used_slots) > 8</code>。这个保守阈值给接收端预留空间防越界。</p><p class="zh">举例（GPU 0 通道 0）：</p><p class="zh"><code class="ic">责任通道 0:
+  channel_rank_offset = 0 * 8 + target_rank
+  warp 0 (rank 0) → 缓冲槽 0
+  warp 1 (rank 1) → 缓冲槽 1
+  ...
+通道 0 的 341 个 token 切到 8 个 rank 的缓冲区
+rank 0 从 channel_x_buffers[0] 接收
+</code></pre><h4 id="117-internode-dispatch--5-角色" class="section-h lv3">11.7 Internode Dispatch — 5 角色</h4>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F15.drawio</div>
+  </div>
+  <figcaption>S2-8  Internode dispatch 5 个 warp 角色协作：kRDMASender / kRDMASenderCoordinator (源) → kRDMAAndNVLForwarder (目标节点 nvl_rank=0) → kNVLReceivers (目标 rank)。</figcaption>
+</figure>
+
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F16.drawio</div>
+  </div>
+  <figcaption>S2-9  跨节点流量两级路由：源 rank → 节点内 NVL 聚合 → 跨节点 RDMA → 目标节点 NVL 分发，避免每源 rank 单独发往 IB 网卡。</figcaption>
+</figure>
+<p class="zh">跨节点流量在 <code class="ic">internode::dispatch</code> 内被切成 5 种 warp 角色：</p><div class="table-scroll"><table class="data-table"><tr><th>WarpRole</th><th>位置</th><th>职责</th></tr><tr><td>kRDMASender</td><td>源 rank</td><td>把 token 写入本节点 RDMA send_buffer</td></tr><tr><td>kRDMASenderCoordinator</td><td>源 rank</td><td>协调 RDMA put 操作（下发 wr）</td></tr><tr><td>kRDMAAndNVLForwarder</td><td>目标节点 nvl_rank=0 的 GPU</td><td>从 RDMA recv_buffer 转发到节点内 NVLink 缓冲</td></tr><tr><td>kForwarderCoordinator</td><td>目标节点</td><td>协调跨节点转发的 push/pull</td></tr><tr><td>kNVLReceivers</td><td>目标 rank</td><td>从节点内 NVLink 缓冲读到 recv_x</td></tr></table></div><p class="zh">举例（rank 0 → rank 9，1 号机 GPU 0 → 2 号机 GPU 1）：</p><p class="zh"><code class="ic">rank 0 (节点 1, GPU 0)
+  kRDMASender:
+    写入 rdma_channel_data.send_buffer[lane_id], 目标 rdma_rank = 1
+  kRDMASenderCoordinator:
+    通过 RDMA put 到节点 2 的 rdma_channel_data.recv_buffer[1]
+
+rank 8 (节点 2, GPU 0, nvl_rank=0)
+  kRDMAAndNVLForwarder:
+    读节点 2 的 rdma_channel_data.recv_buffer[0]（来自 rdma_rank 0）
+    转发到节点内 NVLink 缓冲
+
+rank 9 (节点 2, GPU 1, nvl_rank=1)
+  kNVLReceivers:
+    从 NVLink 缓冲读到 recv_x
+</code></pre><h4 id="118-combine--反向归约" class="section-h lv3">11.8 Combine — 反向归约</h4>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F17.drawio</div>
+  </div>
+  <figcaption>S2-10  Combine 反向归约：各 rank 的专家输出 + topk_weights 经 NVLink/RDMA 双路径加权 reduce 回原 token。</figcaption>
+</figure>
+<p class="zh"><code class="ic">combine</code> 是 dispatch 的逆过程：把各 rank 的 token 数据 + topk 权重归约回原 rank。</p><p class="zh">发送端（偶数 SM）：</p><p class="zh"><code class="ic">任务: 每 warp 一个 rank (send_warp_id = thread_id / 32)
+通道: responsible_channel = sm_id / 2
+分块发送 (num_max_send_tokens=256)
+写入 channel_x_buffers / channel_topk_weights_buffers
+更新 channel_tail_idx 通知接收端
+</code></pre><p class="zh">接收端（奇数 SM）：</p><p class="zh"><code class="ic">num_recv_warps = 8
+warp 0: 队列头维护
+  循环检查 channel_tail_idx
+  更新 channel_head_idx = min(未退休 warp 的 head)
+warp 1..7: 归约
+  从所有 sender 的 channel_x_buffers 读入
+  weighted reduce 写入 combined_x
+共享内存:
+  warp_channel_head_idx[num_recv_warps][kNumRanks]
+  channel_tail_idx[kNumRanks]
+  warp_retired[num_recv_warps]
+</code></pre><p class="zh">跨节点版本走 <code class="ic">combined_rdma_head</code> / <code class="ic">combined_nvl_head</code> 双指针，分别对应 RDMA buffer 与 NVLink buffer 两条链路上的进度。</p><p class="zh">低延迟模式 <code class="ic">low_latency_combine</code> 用 IBGDA 直接走 RDMA，且<b>支持加权 reduce 在 kernel 内一步完成</b> — 不再需要 vLLM Triton 侧的 ep_gather 二次扫描。</p><h4 id="119-实测吞吐h800-vs-h100--单元测试" class="section-h lv3">11.9 实测吞吐：H800 vs H100 / 单元测试</h4><p class="zh">DeepEP 自带的 <code class="ic">test_intranode.py</code> / <code class="ic">test_internode.py</code> / <code class="ic">test_low_latency.py</code> 给出以下数字（H800 8 卡 vs H100 8 卡）：</p><h5 id=intranodenvlink-单元>Intranode（NVLink 单元）</h5><p class="zh"><code class="ic">[tuning] Best dispatch (FP8): SMs 24, NVL chunk 32, RDMA chunk 32
+[tuning] Best combine:        SMs 24, NVL chunk  2, RDMA chunk 12
+</code></pre><div class="table-scroll"><table class="data-table"><tr><th>测试</th><th>H800（NVLink 400 GB/s）</th><th>H100（NVLink 900 GB/s）</th><th>差距</th></tr><tr><td>Dispatch (NVL bw)</td><td>153 GB/s</td><td>344 GB/s</td><td>2.25×（理论 NVLink 比 2.25×）</td></tr><tr><td>Combine (NVL bw)</td><td>158 GB/s</td><td>331 GB/s</td><td>2.10×</td></tr></table></div><p class="zh">NVLink 实际利用率：H800 ≈ 38%，H100 ≈ 38% — 跟硬件拓扑匹配。</p><h5 id=internoderdma-单元nvshmem-325--roce-patch>Internode（RDMA 单元，nvshmem 3.2.5 + RoCE patch）</h5><p class="zh"><code class="ic">[tuning] Best dispatch (FP8): SMs 24, NVL chunk 24, RDMA chunk 32
+[tuning] Best combine:        SMs 24, NVL chunk  3, RDMA chunk 12
+</code></pre><div class="table-scroll"><table class="data-table"><tr><th>测试</th><th>H800（8 NICs）</th><th>H100（4 NICs）</th><th>RDMA bw</th></tr><tr><td>Dispatch</td><td>43 GB/s</td><td>45 GB/s</td><td>—</td></tr><tr><td>Combine</td><td>43 GB/s</td><td>45 GB/s</td><td>—</td></tr></table></div><div class="callout"><p class="zh">带宽统计包含自环流量，<a href="https://github.com/deepseek-ai/DeepEP/issues/51">issue #51</a> 有讨论。</p></div><h5 id=megatron-lm-端到端4b--19b-moe1dp1pp8ep1tp单机-8-卡>Megatron-LM 端到端（4B / 19B MoE，1DP1PP8EP1TP，单机 8 卡）</h5><p class="zh"><code class="ic">nvshmem_3.2.5 + commit e995aa22</code> (<code class="ic">roce-support</code>)：</p><div class="table-scroll"><table class="data-table"><tr><th>实现</th><th>模型</th><th>策略</th><th>Throughput (tok/s)</th><th>TFLOPS/GPU</th><th>MFU/(989)</th></tr><tr><td>baseline (vanilla a2a)</td><td>4B</td><td>1DP1PP8EP1TP</td><td>72,544</td><td>165.66</td><td>16.74%</td></tr><tr><td>DeepEP</td><td>4B</td><td>1DP1PP8EP1TP</td><td>94,541</td><td>216.86</td><td>21.94%</td></tr><tr><td>baseline</td><td>19B</td><td>1DP1PP16EP1TP</td><td>69,458</td><td>79.10</td><td>8.00%</td></tr><tr><td>DeepEP</td><td>19B</td><td>1DP1PP16EP1TP</td><td>110,737</td><td>126.46</td><td>12.79%</td></tr></table></div><p class="zh"><b>核心结论</b> ：双机 16 卡 19B MoE 上 DeepEP 提升 <b>+59.87%</b> 吞吐 — RDMA 跨节点路径优化的红利在大模型 + 跨节点场景最明显。</p><h4 id="1110-ll-模式-8-卡单元测试故障与修复" class="section-h lv3">11.10 LL 模式 8 卡单元测试故障与修复</h4><p class="zh">参考 <a href="https://github.com/deepseek-ai/DeepEP/issues/38">issue #38</a>：单机 8 卡跑 <code class="ic">test_low_latency.py</code> 不能正常退出，开 <code class="ic">NVSHMEM_DEBUG=INFO</code> 发现 host buffer 设置问题。修复：</p><p class="zh"><code class="ic">NVSHMEM_IBGDA_FORCE_NIC_BUF_MEMTYPE=&#34;auto&#34;
+</code></pre><h4 id="1111-deepep-报告全图集" class="section-h lv3">11.11 DeepEP 报告全图集</h4><p class="zh">下面是 DeepEP 分析报告中所有 18 张原图按报告顺序汇总，每张配上原文上下文摘要。</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F18.drawio</div>
+  </div>
+  <figcaption>S2-11  test_low_latency.py 单元测试问题（issue #38 关联截图）</figcaption>
+</figure>
+
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F19.drawio</div>
+  </div>
+  <figcaption>S2-12  设置 NVSHMEM_IBGDA_FORCE_NIC_BUF_MEMTYPE=auto 后的运行结果</figcaption>
+</figure>
+
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F20.drawio</div>
+  </div>
+  <figcaption>S2-13  get_dispatch_layout 调用逻辑（前段 SM 算 expert，后段 SM 算 rank）</figcaption>
+</figure>
+
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F21.drawio</div>
+  </div>
+  <figcaption>S2-14  Intranode dispatch 通道偏移：channel_rank_offset 0–95 定位 12 通道 × 8 rank</figcaption>
+</figure>
+
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F22.drawio</div>
+  </div>
+  <figcaption>S2-15  test_intranode.py 单元测试 — 官方参考数据 H800/H100 NVLink 配置</figcaption>
+</figure>
+
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F23.drawio</div>
+  </div>
+  <figcaption>S2-16  Internode dispatch 跨机示例：rank 0 (节点 1 GPU 0) → rank 9 (节点 2 GPU 1)</figcaption>
+</figure>
+
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F24.drawio</div>
+  </div>
+  <figcaption>S2-17  LowLatencyLayout：低延迟模式预分配固定缓冲 + clean_low_latency_buffer 零初始化</figcaption>
+</figure>
+
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F25.drawio</div>
+  </div>
+  <figcaption>S2-18  DeepEP 设计目标全景：节点内/间 NVLink+RDMA、HT、LL、FP8 调度、计算-通信重叠</figcaption>
+</figure>
+
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F26.drawio</div>
+  </div>
+  <figcaption>S2-19  DeepEP 通信模式：高吞吐 NVLink+RDMA · 低延迟 RDMA+IBGDA · Buffer 类管理</figcaption>
+</figure>
+
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F27.drawio</div>
+  </div>
+  <figcaption>S2-20  test_intranode.py NVLink 实测带宽（H800 400GB/s、50GB/s × 8 NIC）</figcaption>
+</figure>
+
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F28.drawio</div>
+  </div>
+  <figcaption>S2-21  buffer_ptr 内存组成：cudaMalloc 一次性分配数据区 + fifo + 远端指针表 + 任务表</figcaption>
+</figure>
+
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F29.drawio</div>
+  </div>
+  <figcaption>S2-22  Intranode 性能对比：H800 153 GB/s vs H100 344 GB/s（2.25× 与 NVLink 比 2.25× 吻合）</figcaption>
+</figure>
+
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F30.drawio</div>
+  </div>
+  <figcaption>S2-23  task_fifo 物理布局示例 + barrier_device 的 atomicAdd_system 跨 GPU IPC 同步</figcaption>
+</figure>
+
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F31.drawio</div>
+  </div>
+  <figcaption>S2-24  Megatron-LM 测试 — 4B/19B MoE bf16 性能对比（DeepEP +59.87% 单机 16 卡）</figcaption>
+</figure>
+
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F32.drawio</div>
+  </div>
+  <figcaption>S2-25  notify_dispatch 完整调用逻辑：rank_prefix_matrix + channel_prefix_matrix 生成</figcaption>
+</figure>
+
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F33.drawio</div>
+  </div>
+  <figcaption>S2-26  test_intranode 数据汇总（NVLink 带宽 + 测试参数）</figcaption>
+</figure>
+
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F34.drawio</div>
+  </div>
+  <figcaption>S2-27  Intranode combine 队列管理：warp 0 维护 head 指针，warp 1..7 做归约</figcaption>
+</figure>
+
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F35.drawio</div>
+  </div>
+  <figcaption>S2-28  测试故障修复路径：NVSHMEM_DEBUG=INFO 发现 host buffer 设置问题</figcaption>
+</figure>
+<section id="optimization-audit--本篇优化点查漏"><h2 id="optimization-audit--本篇优化点查漏" class="section-h lv1">Optimization Audit · 本篇优化点查漏</h2><div class="table-scroll"><table class="data-table"><thead><tr><th>优化点</th><th>baseline 瓶颈</th><th>机制</th><th>边界条件</th></tr></thead><tbody><tr><td>HT dispatch</td><td>prefill 跨节点 payload 大</td><td>layout 计数 + 聚合发送 + FP8 payload</td><td>小 batch 下启动成本显眼</td></tr><tr><td>LL dispatch</td><td>decode RDMA per-op latency 暴露</td><td>固定 buffer/graph 与 cooperative kernel</td><td>需要固定 shape 和 CUDA Graph 约束</td></tr><tr><td>BF16 combine</td><td>top-k reduce 对误差敏感</td><td>combine 保留更高精度累加</td><td>通信量高于 FP8</td></tr><tr><td>Buffer protocol</td><td>host 动态路由太慢</td><td>rank+offset 地址协议下沉到 kernel</td><td>debug 难度提高</td></tr></tbody></table></div><section id="map--本篇图解索引"><h2 id="map--本篇图解索引" class="section-h lv1">Map · 本篇图解索引</h2>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F36.drawio</div>
+  </div>
+  <figcaption>优化索引：DeepEP 优化点清单</figcaption>
+</figure>
+<p class="zh">这张图把本篇的阅读路径压成一个索引：先确认问题边界，再看数据形状，
+接着进入 kernel 或调度机制，最后回到性能约束。正文里的每一张图都只承担一个
+视觉任务，细节留给相邻段落和优化点查漏表。</p></div></div><!-- /reader-inner -->
+</div><!-- /reader -->
+
+
+</body>
+</html>

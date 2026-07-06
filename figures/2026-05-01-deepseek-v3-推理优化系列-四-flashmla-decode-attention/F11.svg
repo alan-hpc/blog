@@ -1,0 +1,22 @@
+<svg viewBox="0 0 1000 380" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M 0 0 L 10 5 L 0 10 z" fill="#24292f"/>
+  </marker>
+</defs>
+<rect x="0" y="0" width="1000" height="380" fill="#ffffff"/>
+<text x="500.0" y="40" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="24" font-weight="750" fill="#24292f">寄存器约束决定调度形态</text>
+<text x="500.0" y="66" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="13" font-weight="400" fill="#57606a">The output tile must stay in registers, so FlashMLA splits the V side across two warp groups.</text>
+<rect x="80" y="102" width="360" height="104" rx="8" fill="#fff5f0" stroke="#b85450" stroke-width="2"/>
+<text x="260" y="132" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="16" font-weight="750" fill="#24292f">单个 warp group 持有完整 O</text>
+<text x="260" y="164" text-anchor="middle" font-family="&#x27;STIX Two Math&#x27;, &#x27;Cambria Math&#x27;, &#x27;Times New Roman&#x27;, serif" font-size="22" font-weight="600" fill="#b85450">O ∈ ℝ<tspan font-size="15.0" baseline-shift="super">64×512</tspan></text>
+<text x="260" y="190" text-anchor="middle" font-family="&#x27;STIX Two Math&#x27;, &#x27;Cambria Math&#x27;, &#x27;Times New Roman&#x27;, serif" font-size="15" font-weight="600" fill="#b85450">64×512 / 128 = 256 reg/thread &gt; 255</text>
+<rect x="560" y="102" width="360" height="104" rx="8" fill="#f4faf4" stroke="#5fa55f" stroke-width="2"/>
+<text x="740" y="132" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="16" font-weight="750" fill="#24292f">两个 warp groups 分摊 O</text>
+<text x="740" y="164" text-anchor="middle" font-family="&#x27;STIX Two Math&#x27;, &#x27;Cambria Math&#x27;, &#x27;Times New Roman&#x27;, serif" font-size="22" font-weight="600" fill="#5fa55f">O = [O<tspan font-size="15.0" baseline-shift="sub">L</tspan> | O<tspan font-size="15.0" baseline-shift="sub">R</tspan>]</text>
+<text x="740" y="190" text-anchor="middle" font-family="&#x27;STIX Two Math&#x27;, &#x27;Cambria Math&#x27;, &#x27;Times New Roman&#x27;, serif" font-size="15" font-weight="600" fill="#5fa55f">每组只持有 64×256 的半个输出</text>
+<line x1="440" y1="154" x2="560" y2="154" stroke="#57606a" stroke-width="1.8" marker-end="url(#arrow)"/>
+<rect x="120" y="260" width="760" height="82" rx="8" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.5"/>
+<text x="500" y="288" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="15" font-weight="750" fill="#24292f">SM register file: 65,536 × 32-bit</text>
+<text x="500" y="316" text-anchor="middle" font-family="&#x27;STIX Two Math&#x27;, &#x27;Cambria Math&#x27;, &#x27;Times New Roman&#x27;, serif" font-size="16" font-weight="500" fill="#57606a">完整 O 占 32,768 个 registers；两个完整 O 会吃掉整个 SM register file。</text>
+</svg>

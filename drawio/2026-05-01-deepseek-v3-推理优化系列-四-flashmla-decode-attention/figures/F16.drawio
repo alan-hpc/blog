@@ -1,0 +1,109 @@
+<mxfile host="app.diagrams.net" modified="2026-05-07T00:00:00.000Z" agent="Codex svg-to-drawio" version="24.7.17" type="device">
+  <diagram id="F16" name="F16">
+    <mxGraphModel dx="1000" dy="575" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1000" pageHeight="575" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="c2" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=none;strokeWidth=1;" parent="1" vertex="1">
+          <mxGeometry x="0" y="0" width="1000" height="575" as="geometry" />
+        </mxCell>
+        <mxCell id="c3" value="Shared memory budget: 225 KB leaves almost no slack" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=24;fontColor=#24292f;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="181.32" y="14.08" width="637.36" height="34.8" as="geometry" />
+        </mxCell>
+        <mxCell id="c4" value="The resource table explains why FlashMLA is designed as a one-block-per-SM persistent kernel." style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=13;fontColor=#57606a;fontStyle=0;" parent="1" vertex="1">
+          <mxGeometry x="185.21" y="51.96" width="629.58" height="18.85" as="geometry" />
+        </mxCell>
+        <mxCell id="c5" value="" style="rounded=1;whiteSpace=wrap;html=1;absoluteArcSize=1;arcSize=8;fillColor=#f6f8fa;strokeColor=#d0d7de;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="70" y="96" width="860" height="66" as="geometry" />
+        </mxCell>
+        <mxCell id="c6" value="H100 block-level shared memory budget" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=16;fontColor=#24292f;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="340.6" y="104.72" width="318.8" height="23.2" as="geometry" />
+        </mxCell>
+        <mxCell id="c7" value="MQ + 2MK + MP + Mscale ≈ 225 KB  &lt;  227 KB" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily='STIX Two Math', 'Cambria Math', 'Times New Roman', serif;fontSize=17;fontColor=#57606a;fontStyle=0;" parent="1" vertex="1">
+          <mxGeometry x="319.22" y="130.64" width="361.56" height="24.65" as="geometry" />
+        </mxCell>
+        <mxCell id="c8" value="sQ" style="text=1;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=13;fontColor=#24292f;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="105" y="213.96" width="30" height="18.85" as="geometry" />
+        </mxCell>
+        <mxCell id="c9" value="" style="rounded=1;whiteSpace=wrap;html=1;absoluteArcSize=1;arcSize=4;fillColor=#eef7ff;strokeColor=#4a6fd3;strokeWidth=1.4;" parent="1" vertex="1">
+          <mxGeometry x="195" y="205" width="365" height="38" as="geometry" />
+        </mxCell>
+        <mxCell id="c10" value="72 KB" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=12;fontColor=#24292f;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="366.2" y="216.04" width="43.6" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="c11" value="((_8,_8),(_64,_9))" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=11;fontColor=#57606a;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="680.94" y="208.12" width="108.12" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="c12" value="FP16" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=11;fontColor=#57606a;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="716.36" y="226.12" width="37.28" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="c13" value="sK ×2" style="text=1;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=13;fontColor=#24292f;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="105" y="265.96" width="44.32" height="18.85" as="geometry" />
+        </mxCell>
+        <mxCell id="c14" value="" style="rounded=1;whiteSpace=wrap;html=1;absoluteArcSize=1;arcSize=4;fillColor=#f4faf4;strokeColor=#5fa55f;strokeWidth=1.4;" parent="1" vertex="1">
+          <mxGeometry x="195" y="257" width="610" height="38" as="geometry" />
+        </mxCell>
+        <mxCell id="c15" value="144 KB" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=12;fontColor=#24292f;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="484.48" y="268.04" width="51.04" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="c16" value="2 × ((_8,_8),(_64,_9))" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=11;fontColor=#57606a;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="671.04" y="260.12" width="127.92" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="c17" value="FP16" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=11;fontColor=#57606a;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="716.36" y="278.12" width="37.28" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="c18" value="sP" style="text=1;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=13;fontColor=#24292f;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="105" y="317.96" width="30" height="18.85" as="geometry" />
+        </mxCell>
+        <mxCell id="c19" value="" style="rounded=1;whiteSpace=wrap;html=1;absoluteArcSize=1;arcSize=4;fillColor=#fff8e7;strokeColor=#e0b300;strokeWidth=1.4;" parent="1" vertex="1">
+          <mxGeometry x="195" y="309" width="147" height="38" as="geometry" />
+        </mxCell>
+        <mxCell id="c20" value="8 KB" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=12;fontColor=#24292f;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="260.92" y="320.04" width="36.16" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="c21" value="((_2,_2),_128,_1,_8)" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=11;fontColor=#57606a;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="673.46" y="312.12" width="123.08" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="c22" value="FP16" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=11;fontColor=#57606a;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="716.36" y="330.12" width="37.28" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="c23" value="sScale_o" style="text=1;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=13;fontColor=#24292f;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="105" y="369.96" width="65.64" height="18.85" as="geometry" />
+        </mxCell>
+        <mxCell id="c24" value="" style="rounded=1;whiteSpace=wrap;html=1;absoluteArcSize=1;arcSize=4;fillColor=#fbf0fb;strokeColor=#a33ea1;strokeWidth=1.4;" parent="1" vertex="1">
+          <mxGeometry x="195" y="361" width="123" height="38" as="geometry" />
+        </mxCell>
+        <mxCell id="c25" value="1 KB" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=12;fontColor=#24292f;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="248.92" y="372.04" width="36.16" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="c26" value="(_2,_128)" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=11;fontColor=#57606a;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="704.15" y="364.12" width="61.7" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="c27" value="FP32" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=11;fontColor=#57606a;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="716.36" y="382.12" width="37.28" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="c28" value="" style="rounded=1;whiteSpace=wrap;html=1;absoluteArcSize=1;arcSize=4;fillColor=#ffffff;strokeColor=#d0d7de;strokeWidth=1.2;" parent="1" vertex="1">
+          <mxGeometry x="195" y="410" width="675" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="c29" value="" style="rounded=1;whiteSpace=wrap;html=1;absoluteArcSize=1;arcSize=4;fillColor=#fff5f0;strokeColor=#b85450;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="195" y="410" width="668" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="c30" value="total ≈ 225 KB" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=15;fontColor=#b85450;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="470.25" y="423.8" width="119.5" height="21.75" as="geometry" />
+        </mxCell>
+        <mxCell id="c31" value="H100 limit 227 KB" style="text=1;html=1;strokeColor=none;fillColor=none;align=right;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=12;fontColor=#24292f;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="734.12" y="427.04" width="120.88" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="c32" value="" style="rounded=1;whiteSpace=wrap;html=1;absoluteArcSize=1;arcSize=8;fillColor=#fff8e7;strokeColor=#e0b300;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="170" y="492" width="660" height="54" as="geometry" />
+        </mxCell>
+        <mxCell id="c33" value="这解释了为什么 block 直接接管一个 SM：SHM 已接近上限，调度空间主要在 tile/warp-group 内。" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=12;fontColor=#b08900;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="237.96" y="503.04" width="524.08" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="c34" value="如果再加一份大 buffer，很容易把 occupancy 或 pipeline 推到不可用边界。" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=11;fontColor=#57606a;fontStyle=0;" parent="1" vertex="1">
+          <mxGeometry x="308.77" y="525.12" width="382.46" height="18" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

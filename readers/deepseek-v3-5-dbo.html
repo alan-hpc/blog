@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DeepSeek V3 推理系统深度解析（五）：DBO 与五段 Decode 流水，隐藏 DeepEP/DeepGEMM 等待</title>
+
+<!-- table-css-injected -->
+  <!-- Fonts: JetBrains Mono for code -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+  <!-- Highlight.js: Monokai Sublime theme -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/monokai-sublime.min.css">
+  <!-- KaTeX -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <!-- Shared reader styles -->
+  <link rel="stylesheet" href="/blog/readers/reader.css">
+</head>
+<body>
+
+<div id="lb" onclick="lbClose(event)">
+  <span id="lb-close" onclick="lbHide()">&#x2715;</span>
+  <img id="lb-img" src="" alt="">
+</div>
+
+<nav id="sb">
+  <div id="sb-title">
+    <p class="zh"><a href="https://alan-hpc.github.io/blog/" target="_blank">Yang Min · 技术博客</a></p>
+    <h2 class="section-h lv1" id="DeepSeek-V3-推理系统深度解析五DBO-与五段-Decode">DeepSeek V3 推理系统深度解析（五）：DBO 与五段 Decode…</h2>
+  </div>
+  <div class="ti tl1"><a href="#prologue--本篇问题与读法">Prologue · 本篇问题与读法</a></div>
+  <div class="ti tl1"><a href="#stage-1--dbo-解决什么问题">Stage 1 · DBO 解决什么问题</a></div>
+  <div class="ti tl1"><a href="#stage-2--decode-为什么需要更细的-5-stage">Stage 2 · Decode 为什么需要更细的 5-stage</a></div>
+  <div class="ti tl1"><a href="#stage-3--dualpipe-给-dbo-的思想来源">Stage 3 · DualPipe 给 DBO 的思想来源</a></div>
+  <div class="ti tl1"><a href="#stage-4--cuda-graphdecode-稳定性的底座">Stage 4 · CUDA Graph：Decode 稳定性的底座</a></div>
+  <div class="ti tl1"><a href="#stage-5--vllm-源码地图先看三段式-moe">Stage 5 · vLLM 源码地图：先看三段式 MoE</a></div>
+  <div class="ti tl1"><a href="#stage-6--prefill-路径ht--contiguous--dbo">Stage 6 · Prefill 路径：HT + Contiguous + DBO</a></div>
+  <div class="ti tl1"><a href="#stage-7--decode-路径ll--masked--cuda-graph">Stage 7 · Decode 路径：LL + Masked + CUDA Graph</a></div>
+  <div class="ti tl1"><a href="#stage-8--后端选择-oracle">Stage 8 · 后端选择 Oracle</a></div>
+  <div class="ti tl1"><a href="#stage-9--gapvllm-与官方系统差在哪">Stage 9 · Gap：vLLM 与官方系统差在哪</a></div>
+  <div class="ti tl1"><a href="#stage-10--调度边界overlap-成立才有端到端收益">Stage 10 · 调度边界：overlap 成立才有端到端收益</a></div>
+  <div class="ti tl1"><a href="#deep-dive--dualpipe-到-dbo-的调度展开">Deep Dive · DualPipe 到 DBO 的调度展开</a></div>
+  <div class="ti tl2"><a href="#8--dbo通信计算重叠">8 · DBO：通信计算重叠</a></div>
+  <div class="ti tl3"><a href="#81-dualpipe-思想">8.1 DualPipe 思想</a></div>
+  <div class="ti tl3"><a href="#82-prefill-双-micro-batch-alternating">8.2 Prefill 双 micro-batch alternating</a></div>
+  <div class="ti tl3"><a href="#83-decode-5-stage-流水官方独有">8.3 Decode 5-stage 流水（官方独有）</a></div>
+  <div class="ti tl3"><a href="#84-stream-编排">8.4 Stream 编排</a></div>
+  <div class="ti tl3"><a href="#85-cuda-graph-与动态形状">8.5 CUDA Graph 与动态形状</a></div>
+  <div class="ti tl2"><a href="#14--dualpipedbo-推理调度的训练原型">14 · DualPipe：DBO 推理调度的训练原型</a></div>
+  <div class="ti tl3"><a href="#141-计算与通信的双-stream-视角">14.1 计算与通信的双 stream 视角</a></div>
+  <div class="ti tl3"><a href="#142-反向参数梯度--激活梯度的拆分训练侧">14.2 反向参数梯度 / 激活梯度的拆分（训练侧）</a></div>
+  <div class="ti tl3"><a href="#143-pipeline-bubbles-与显存对比">14.3 Pipeline Bubbles 与显存对比</a></div>
+  <div class="ti tl3"><a href="#144-dualpipe-8-步调度全解">14.4 DualPipe 8 步调度全解</a></div>
+  <div class="ti tl3"><a href="#145-dualpipe--vllm-dbo-推理映射">14.5 DualPipe → vLLM DBO 推理映射</a></div>
+  <div class="ti tl3"><a href="#146-为什么官方-decode-是-5-stage-而-vllm-是-2-stage">14.6 为什么官方 Decode 是 5-stage 而 vLLM 是 2-stage？</a></div>
+  <div class="ti tl3"><a href="#147-dualpipe-与-two-overlap-scheduletos的概念关系">14.7 DualPipe 与 Two Overlap Schedule（TOS）的概念关系</a></div>
+  <div class="ti tl1"><a href="#optimization-audit--本篇优化点查漏">Optimization Audit · 本篇优化点查漏</a></div>
+  <div class="ti tl1"><a href="#map--本篇图解索引">Map · 本篇图解索引</a></div>
+</nav>
+
+<div id="reader">
+  <div id="reader-inner">
+
+    <header class="book-header">
+      <p class="kicker"><a href="https://alan-hpc.github.io/blog/" target="_blank">Yang Min · 技术博客</a> · 离线阅读版</p>
+      <h1>DeepSeek V3 推理系统深度解析（五）：DBO 与五段 Decode 流水，隐藏 DeepEP/DeepGEMM 等待</h1>
+      <p class="sub">2026-05-04</p>
+      <div style="margin-top:16px;padding:12px 16px;border:1px solid var(--rule);
+                  border-radius:4px;background:var(--paper);font-family:-apple-system,sans-serif;
+                  font-size:12.5px;line-height:2.0;color:var(--muted);">
+        <span style="font-size:10px;letter-spacing:.9px;text-transform:uppercase;
+                     color:#888;display:block;margin-bottom:6px;">原文来源</span>
+        <a href="https://alan-hpc.github.io/blog/posts/2026-05-01-deepseek-v3-推理优化系列-五-dbo-dualpipe-vllm-源码走读/" style="color:var(--accent);text-decoration:none;" target="_blank">DeepSeek V3 推理系统深度解析（五）：DBO 与五段 Decode 流水，隐藏 DeepEP/DeepGEMM 等待</a>
+        · Yang Min · 2026
+      </div>
+    </header>
+
+    <p class="zh">DBO 和 DualPipe 解决的是同一个问题的两个层面：<b>MoE decode 的五段流水中，bubble 时间占比过高</b>。单纯加深流水可以提高计算利用率，但会加大 KV cache 的分块压力（DBO）；单纯缩小 microbatch 可以降低 bubble，但会让通信粒度过小（DualPipe）。两者组合才能让 decode 的计算、通信和内存带宽同时跑满，而不是顾此失彼。</p><div class="callout"><p class="zh"><b>系列目录</b> ：1. DeepSeekV3 开篇、PD 分离与 Cross-node EP / 2. DeepEP HT/LL Dispatch 与 Buffer 协议 / 3. DeepGEMM Expert Compute 与 FP8 Layout / 4. MLA Prefill/Decode 分流与 FlashMLA Latent KV / 5. DBO 与五段 Decode 流水 / 6. MTP 投机采样 / 7. DSA 稀疏注意力 / 8. vLLM 源码全链路与 MoE Backend</p></div><section id="prologue--本篇问题与读法"><h2 id="prologue--本篇问题与读法" class="section-h lv1">Prologue · 本篇问题与读法</h2><p class="zh">这一篇讨论调度，而不是某个单 kernel。DeepEP、DeepGEMM 和 FlashMLA 各自变快以后，端到端收益还要靠 microbatch、CUDA Graph 与五段 decode 流水把等待藏进可重叠窗口。</p><p class="zh">单个 kernel 再快，如果 stream 编排错了，端到端吞吐还是会掉。DeepSeek V3/R1 的推理系统难点不只是 DeepEP、DeepGEMM、FlashMLA 各自优化，而是把通信、expert compute、shared expert、attention、CUDA Graph 与 load balancing 编织成一个稳定的 online service。</p><section id="stage-1--dbo-解决什么问题"><h2 id="stage-1--dbo-解决什么问题" class="section-h lv1">Stage 1 · DBO 解决什么问题</h2><p class="zh">MoE 层里最重的路径是：</p><div class=highlight><p class="zh"><code class=language-text data-lang=text><span class=line><span class=cl>router
+</span></span><span class=line><span class=cl>  -&gt; dispatch
+</span></span><span class=line><span class=cl>  -&gt; routed expert GEMM
+</span></span><span class=line><span class=cl>  -&gt; combine
+</span></span><span class=line><span class=cl>  -&gt; shared expert / residual
+</span></span></code></pre></div><p class="zh">如果这些步骤串行执行，RDMA 时间完整暴露。DBO 的核心思想是把 batch 拆成两个 micro-batch，让一个 micro-batch 通信时，另一个 micro-batch 在计算。</p><div class=highlight><p class="zh"><code class=language-text data-lang=text><span class=line><span class=cl>ubatch 0 dispatch  -&gt; ubatch 0 expert compute -&gt; ubatch 0 combine
+</span></span><span class=line><span class=cl>          ubatch 1 dispatch  -&gt; ubatch 1 expert compute -&gt; ubatch 1 combine
+</span></span></code></pre></div>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F1.drawio</div>
+  </div>
+  <figcaption>DBO 总图：组件变快以后还需要 stream 编排</figcaption>
+</figure>
+<p class="zh">Prefill 的 batch 足够大，dispatch / GEMM / combine 都有明显耗时，因此这种 alternating 很容易产生收益。原长稿里给出的直觉是：单层 MoE 从无 overlap 的约 20 ms 压到 DBO 后约 13 ms。</p><section id="stage-2--decode-为什么需要更细的-5-stage"><h2 id="stage-2--decode-为什么需要更细的-5-stage" class="section-h lv1">Stage 2 · Decode 为什么需要更细的 5-stage</h2><p class="zh">Decode 的问题和 prefill 不同。Decode 每一步 token 少，单个阶段都短，但尾延迟敏感。简单的双 micro-batch overlap 可能不够，因为 attention、MoE、通信的阶段时长不均衡。</p><p class="zh">DeepSeek Day 6 提到 decode 会把 attention layer 进一步切成两个步骤，用 5-stage pipeline 达到更细的 communication-computation overlap。vLLM 参照实现里能看到通用 DBO，但官方 5-stage decode pipeline 更接近生产系统能力。</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F2.drawio</div>
+  </div>
+  <figcaption>两段 DBO：通信与 compute microbatch 错位重叠</figcaption>
+</figure>
+
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F3.drawio</div>
+  </div>
+  <figcaption>DualPipe 直觉：阶段错位胜过串行 barrier</figcaption>
+</figure>
+<section id="stage-3--dualpipe-给-dbo-的思想来源"><h2 id="stage-3--dualpipe-给-dbo-的思想来源" class="section-h lv1">Stage 3 · DualPipe 给 DBO 的思想来源</h2><p class="zh">DualPipe 原本是训练侧 pipeline parallel 的调度设计。它把反向传播拆成 input-gradient 和 weight-gradient 两部分，让 weight-gradient 延后执行，用来填 pipeline bubble。</p><p class="zh">DualPipe PDF 里的对比表可以浓缩成：</p><div class="table-scroll"><table class="data-table"><thead><tr><th>方法</th><th>Bubble</th><th>参数副本</th><th>Activation</th></tr></thead><tbody><tr><td>1F1B</td><td><code class="ic">(PP-1)(F+B)</code></td><td>1x</td><td>PP</td></tr><tr><td>ZB1P</td><td><code class="ic">(PP-1)(F+B-2W)</code></td><td>1x</td><td>PP</td></tr><tr><td>DualPipe</td><td><code class="ic">(PP/2-1)(F&amp;B+B-3W)</code></td><td>2x</td><td>PP+1</td></tr></tbody></table></div><p class="zh">这里的关键不是公式本身，而是思维方式：把原本串行的 F/B/W 拆成更细粒度的阶段，再让不同 micro-batch 的阶段交错执行。</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F4.drawio</div>
+  </div>
+  <figcaption>五段 Decode：更多边界用于隐藏等待</figcaption>
+</figure>
+<p class="zh">推理侧没有 backward，但有 dispatch、combine、expert compute、shared expert、attention。DBO 借鉴的是“把长串行路径切成可重叠片段”的思想，而不是照搬训练侧的 F/B/W。</p><section id="stage-4--cuda-graphdecode-稳定性的底座"><h2 id="stage-4--cuda-graphdecode-稳定性的底座" class="section-h lv1">Stage 4 · CUDA Graph：Decode 稳定性的底座</h2><p class="zh">Decode 是最适合 CUDA Graph 的阶段：每一步都像重复执行同一个小程序。Graph 能降低 launch overhead 和 CPU 调度抖动，但前提是 shape 固定。</p><div class="table-scroll"><table class="data-table"><thead><tr><th>组件</th><th>Graph 友好设计</th></tr></thead><tbody><tr><td>DeepEP LL</td><td>fixed staging buffer</td></tr><tr><td>DeepGEMM Masked</td><td><code class="ic">(E, max_m, K)</code> 固定 shape</td></tr><tr><td>FlashMLA</td><td>persistent kernel + 固定 tile 组织</td></tr><tr><td>Scheduler</td><td>DP dummy batch 避免 rank 间 shape 不一致</td></tr></tbody></table></div><p class="zh">Prefill 不适合强行 Graph 化，因为 token 数和 sequence 长度波动大；decode 则必须尽量把所有动态信息挪到数据内容和指针里，而不是挪到 tensor shape 上。</p><section id="stage-5--vllm-源码地图先看三段式-moe"><h2 id="stage-5--vllm-源码地图先看三段式-moe" class="section-h lv1">Stage 5 · vLLM 源码地图：先看三段式 MoE</h2><p class="zh">读 vLLM 里 DeepSeek-V3 MoE 路径，不要从 kernel 入口开始。更好的顺序是先看 MoE modular kernel 的三段式：</p><div class=highlight><p class="zh"><code class=language-text data-lang=text><span class=line><span class=cl>_prepare        -&gt; 通信准备 / dispatch / layout
+</span></span><span class=line><span class=cl>_fused_experts  -&gt; routed expert compute
+</span></span><span class=line><span class=cl>_finalize       -&gt; combine / gather / shared output merge
+</span></span></code></pre></div><div class="table-scroll"><table class="data-table"><thead><tr><th>层级</th><th>关键模块</th><th>读代码时看什么</th></tr></thead><tbody><tr><td>调度</td><td><code class="ic">vllm/v1/engine/core.py</code></td><td>DP 调度、dummy batch、请求生命周期</td></tr><tr><td>执行</td><td><code class="ic">vllm/v1/worker/gpu/model_runner.py</code></td><td>CUDA Graph 捕获与 replay</td></tr><tr><td>MoE 编排</td><td><code class="ic">fused_moe/modular_kernel.py</code></td><td><code class="ic">_prepare</code>、<code class="ic">_fused_experts</code>、<code class="ic">_finalize</code> 三段式</td></tr><tr><td>DeepEP HT</td><td><code class="ic">deepep_ht_prepare_finalize.py</code></td><td>prefill dispatch / combine</td></tr><tr><td>DeepEP LL</td><td><code class="ic">deepep_ll_prepare_finalize.py</code></td><td>decode low-latency all2all</td></tr><tr><td>DeepGEMM Contiguous</td><td><code class="ic">deep_gemm_moe.py</code></td><td>prefill expert compute</td></tr><tr><td>DeepGEMM Masked</td><td><code class="ic">batched_deep_gemm_moe.py</code></td><td>decode expert compute</td></tr><tr><td>Layout 工具</td><td><code class="ic">deep_gemm_utils.py</code></td><td><code class="ic">ep_scatter</code>、<code class="ic">ep_gather</code></td></tr><tr><td>后端选择</td><td><code class="ic">oracle/fp8.py</code></td><td>FP8 MoE backend selection</td></tr><tr><td>通信管理</td><td><code class="ic">distributed/device_communicators/all2all.py</code></td><td>DeepEP manager 初始化</td></tr></tbody></table></div><aside class=cc-dd style="background:#eef7ee;border-left:4px solid #5fa55f;margin:16px 0;padding:14px 18px;border-radius:4px;color:#1a3d1a;line-height:1.75;font-size:14.2px"><div style="display:inline-block;background:#5fa55f;color:#fff;font-size:11.5px;font-weight:700;padding:2px 10px;border-radius:3px;letter-spacing:.5px;margin-bottom:8px">DEEP DIVE</div><div style="font-size:1.04em;color:#0f3d0f;margin:.2em 0 .6em;font-weight:700">读源码时最容易混淆的三组概念</div><div class=cc-dd-body><p class="zh">第一，EP group 和物理节点不是一回事；EP group 是 rank 组织方式，物理节点决定 NVLink / RDMA 路径。第二，Contiguous 和 Masked 不是两个 GEMM 算法，而是两套输入 layout。第三，DBO 不是某个 kernel，而是 scheduler、stream、通信库和 expert backend 一起配合出来的时序。</p></div></aside><section id="stage-6--prefill-路径ht--contiguous--dbo"><h2 id="stage-6--prefill-路径ht--contiguous--dbo" class="section-h lv1">Stage 6 · Prefill 路径：HT + Contiguous + DBO</h2><p class="zh">Prefill 的典型链路：</p><ol class="zh-list"><li>Router 产生 <code class="ic">topk_idx</code> / <code class="ic">topk_weights</code>。</li><li>DeepEP HT prepare 做 FP8 quant、layout 统计与 dispatch。</li><li><code class="ic">ep_scatter</code> 把 token 排成 contiguous grouped GEMM layout。</li><li>DeepGEMM 做 GEMM1、activation quant、GEMM2。</li><li><code class="ic">ep_gather</code> / DeepEP finalize 做 combine 与 weighted reduce。</li><li>Shared expert 在另一个 stream 上尽量覆盖 combine。</li></ol>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F5.drawio</div>
+  </div>
+  <figcaption>CUDA Graph：形状稳定性成为设计约束</figcaption>
+</figure>
+<p class="zh">这条路径的关键词是吞吐。动态 shape 没关系，关键是让 dispatch 和 combine 足够粗，让 DeepGEMM 拿到足够大的 grouped m。</p><section id="stage-7--decode-路径ll--masked--cuda-graph"><h2 id="stage-7--decode-路径ll--masked--cuda-graph" class="section-h lv1">Stage 7 · Decode 路径：LL + Masked + CUDA Graph</h2><p class="zh">Decode 的典型链路：</p><ol class="zh-list"><li>Scheduler 保持 batch / capture size 稳定。</li><li>DeepEP LL 用 fixed staging buffer 做 low-latency dispatch。</li><li>DeepGEMM Masked 读取 <code class="ic">(E, max_m, K)</code>，用 <code class="ic">expert_num_tokens</code> 判断有效行。</li><li>FlashMLA 做 absorbed MLA attention。</li><li>CUDA Graph replay 降低每步 launch 和 CPU overhead。</li></ol>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F6.drawio</div>
+  </div>
+  <figcaption>Shared Expert 重叠：dense expert 不能留在尾部</figcaption>
+</figure>
+<p class="zh">这条路径的关键词是稳定。哪怕多占 padding，哪怕 staging buffer 更大，只要 step time 可预测、Graph 可 replay，就能换来更好的 ITL。</p><section id="stage-8--后端选择-oracle"><h2 id="stage-8--后端选择-oracle" class="section-h lv1">Stage 8 · 后端选择 Oracle</h2><p class="zh">vLLM 的 FP8 MoE backend 不是无条件走 DeepGEMM。它会根据 dtype、shape、block size、环境变量等条件选择后端。</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F7.drawio</div>
+  </div>
+  <figcaption>Overlap 失败边界：compute 窗口必须盖住通信</figcaption>
+</figure>
+<p class="zh">典型环境变量：</p><div class=highlight><p class="zh"><code class=language-bash data-lang=bash><span class=line><span class=cl><span class=c1># DeepEP</span>
+</span></span><span class=line><span class=cl><span class=nv>VLLM_DEEPEP_BUFFER_SIZE_MB</span><span class=o>=</span><span class=m>1024</span>
+</span></span><span class=line><span class=cl><span class=nv>VLLM_DEEPEP_LOW_LATENCY_FORCE_INTRA_NODE</span><span class=o>=</span><span class=m>0</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># DeepGEMM</span>
+</span></span><span class=line><span class=cl><span class=nv>VLLM_USE_DEEP_GEMM</span><span class=o>=</span><span class=m>1</span>
+</span></span><span class=line><span class=cl><span class=nv>VLLM_MOE_USE_DEEP_GEMM</span><span class=o>=</span><span class=m>1</span>
+</span></span><span class=line><span class=cl><span class=nv>DG_JIT_CACHE_DIR</span><span class=o>=</span>~/.deep_gemm
+</span></span><span class=line><span class=cl><span class=nv>DG_PRINT_CONFIGS</span><span class=o>=</span><span class=m>1</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># CUDA Graph</span>
+</span></span><span class=line><span class=cl><span class=nv>VLLM_CUDAGRAPH_CAPTURE_SIZES</span><span class=o>=</span><span class=s2>&#34;1,2,4,8,16,32,64,128,256&#34;</span>
+</span></span></code></pre></div><p class="zh">读性能数据时必须确认实际 backend。否则以为自己在测 DeepGEMM，实际上可能已经 fallback 到 Triton 或 CUTLASS。</p><section id="stage-9--gapvllm-与官方系统差在哪"><h2 id="stage-9--gapvllm-与官方系统差在哪" class="section-h lv1">Stage 9 · Gap：vLLM 与官方系统差在哪</h2><div class="table-scroll"><table class="data-table"><thead><tr><th>层级</th><th>官方系统</th><th>vLLM 参照路径</th><th>Gap</th></tr></thead><tbody><tr><td>DBO</td><td>Prefill overlap + decode 5-stage</td><td>通用 DBO 可见</td><td>5-stage decode 是核心 gap</td></tr><tr><td>Load balancing</td><td>Prefill / Decode / EP 三层</td><td>部分策略 + 静态 EPLB</td><td>Online EPLB 是核心 gap</td></tr><tr><td>Decode Graph</td><td>强生产化固定 shape</td><td>Graph capture/replay 路径存在</td><td>需要更多场景稳定性</td></tr><tr><td>网络治理</td><td>在线服务级 tail latency 控制</td><td>依赖环境和配置</td><td>生产网络调优不同</td></tr><tr><td>容错</td><td>大规模集群治理</td><td>框架内表达有限</td><td>需要 serving system 补齐</td></tr></tbody></table></div><p class="zh">这也是本系列最重要的判断：开源 kernel 能解释“为什么可能快”，但官方在线系统的稳定吞吐还来自调度、负载均衡、网络治理和容错。</p><section id="stage-10--调度边界overlap-成立才有端到端收益"><h2 id="stage-10--调度边界overlap-成立才有端到端收益" class="section-h lv1">Stage 10 · 调度边界：overlap 成立才有端到端收益</h2><p class="zh">把前五篇串起来看，DeepSeek V3 推理系统已经形成一条自顶向下的主链：</p><ol class="zh-list"><li>系统层：PD 分离 + Cross-node EP 把 prefill 和 decode 拆开优化。</li><li>算法层：MLA 压 KV，MoE 压激活参数，MTP/DSA 继续压 decode 成本。</li><li>通信层：DeepEP 用 HT / LL 两张脸分别服务吞吐和延迟。</li><li>算子层：DeepGEMM 用 contiguous / masked 两套 layout 对接不同阶段。</li><li>Attention 层：FlashMLA 把 absorbed MLA decode 做成专用 kernel。</li><li>调度层：DBO、CUDA Graph、5-stage pipeline、load balancer 把单点优化变成在线服务吞吐。</li></ol><p class="zh">但这还不是完整覆盖。后面三篇继续补参考资料里被压缩掉的算法层 MTP/DSA、系统层性能建模/负载均衡，以及 vLLM 源码全链路。</p><section id="deep-dive--dualpipe-到-dbo-的调度展开"><h2 id="deep-dive--dualpipe-到-dbo-的调度展开" class="section-h lv1">Deep Dive · DualPipe 到 DBO 的调度展开</h2><h3 id="8--dbo通信计算重叠" class="section-h lv2">8 · DBO：通信计算重叠</h3><p class="zh"><em>60 层 × 14 ms combine → 60 层 × 6-7 ms 实际延迟</em></p><h4 id="81-dualpipe-思想" class="section-h lv3">8.1 DualPipe 思想</h4><p class="zh">DBO 的思路源自 DualPipe（DeepSeek 训练阶段同名的 pipeline parallelism 调度）：把 batch 切成两个 micro-batch，让<b>每个 MoE 阶段</b> 都有另一个 ubatch 在同时算或发。</p><h4 id="82-prefill-双-micro-batch-alternating" class="section-h lv3">8.2 Prefill 双 micro-batch alternating</h4>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F8.drawio</div>
+  </div>
+  <figcaption>S5-1  DBO 让 Compute 和 Comm 两条 stream 在两个 ubatch 上交错：RDMA 时间被 DeepGEMM 与 Shared MLP 吸收，单层 MoE 从 ~20 ms 压到 ~13 ms。</figcaption>
+</figure>
+<p class="zh"><code class="ic">self.handles = [None, None]</code> 是 DBO 的关键数据结构 — 两个 ubatch 的 dispatch handle 互相独立，finalize 时按 <code class="ic">dbo_current_ubatch_id()</code> 找对应的一个。否则两 micro-batch 的 combine 会共用同一 handle 导致竞争。</p><div class=highlight><p class="zh"><code class=language-python data-lang=python><span class=line><span class=cl><span class=c1># deepep_ht_prepare_finalize.py</span>
+</span></span><span class=line><span class=cl><span class=c1># Dispatch 前切换到 comm stream:</span>
+</span></span><span class=line><span class=cl><span class=k>with</span> <span class=n>set_stream</span><span class=p>(</span><span class=n>comm_stream</span><span class=p>):</span> <span class=n>dispatch</span><span class=p>(</span><span class=o>...</span><span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=c1># Dispatch 后切换回 compute:</span>
+</span></span><span class=line><span class=cl><span class=k>with</span> <span class=n>set_stream</span><span class=p>(</span><span class=n>compute_stream</span><span class=p>):</span> <span class=n>expert_compute</span><span class=p>(</span><span class=o>...</span><span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=c1># Finalize 前切换到 comm:</span>
+</span></span><span class=line><span class=cl><span class=k>with</span> <span class=n>set_stream</span><span class=p>(</span><span class=n>comm_stream</span><span class=p>):</span> <span class=n>finalize</span><span class=p>(</span><span class=o>...</span><span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=c1># Finalize 后切换回 compute:</span>
+</span></span><span class=line><span class=cl><span class=k>with</span> <span class=n>set_stream</span><span class=p>(</span><span class=n>compute_stream</span><span class=p>):</span> <span class=n>shared_expert</span><span class=p>(</span><span class=o>...</span><span class=p>)</span>
+</span></span></code></pre></div><h4 id="83-decode-5-stage-流水官方独有" class="section-h lv3">8.3 Decode 5-stage 流水（官方独有）</h4><p class="zh">官方文档明确说 Decode 用 <b>5-stage pipeline 把 attention 子层切分</b> ，比 vLLM 当前通用的 2-stage DBO 更细。这是当前 vLLM 距离官方蓝图最大的单点 gap：</p><div class="table-scroll"><table class="data-table"><tr><th>实现</th><th>切分粒度</th><th>典型 overlap 比例</th></tr><tr><td>vLLM DBO（2-stage）</td><td>整层 MoE 拆 2 micro-batch</td><td>~30%</td></tr><tr><td>官方 5-stage（attention 子层）</td><td>attention 拆 5 段子层流水</td><td>~50%+</td></tr></table></div><h4 id="84-stream-编排" class="section-h lv3">8.4 Stream 编排</h4><p class="zh">整条 Prefill MoE 的 5 段 kernel 在 compute / comm 两 stream 上的叠加：</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F9.drawio</div>
+  </div>
+  <figcaption>S5-2  Prefill MoE 宏观流程：5 段 kernel 与 DBO 在 compute / comm 两条 stream 上的叠加。</figcaption>
+</figure>
+<p class="zh">Decode 单步的时序：</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F10.drawio</div>
+  </div>
+  <figcaption>S5-3  Decode 单步的时序：计算和通信都小，但只要配合 DBO + Graph，端到端每层能稳定压到个位数毫秒。</figcaption>
+</figure>
+<h4 id="85-cuda-graph-与动态形状" class="section-h lv3">8.5 CUDA Graph 与动态形状</h4><p class="zh">DP 场景下 CUDA Graph 还有一个隐形约束：<b>所有 rank 必须都进 MoE 层</b> 。如果某个 rank 当前 batch 空，它仍要执行一次 dummy batch，否则其它 rank 的 All2All 会 hang。<code class="ic">DPEngineCoreProc.execute_dummy_batch()</code> 就是干这个的。</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F11.drawio</div>
+  </div>
+  <figcaption>S5-4  CUDA Graph 要求 Decode 每一步都在『形状固定』的轨道上跑。LL + Masked + 双 staging 把这条轨道铺好，Prefill 的 HT/Contiguous 走不了这条路。</figcaption>
+</figure>
+<h3 id="14--dualpipedbo-推理调度的训练原型" class="section-h lv2">14 · DualPipe：DBO 推理调度的训练原型</h3><p class="zh">前文提到的 DBO（Dual Batch Overlap）思想直接来自 DeepSeek 的 <b>DualPipe</b> 训练 pipeline 调度。本章把 DualPipe 的核心机制说透 — 然后明确指出它怎么被映射到推理 stack 上，以及为什么『反向参数梯度 / 激活梯度计算拆分』这个训练侧的核心 trick <b>不在推理路径上</b> ，但 stream / chunk 的编排思想完全适用。</p><div class="callout"><p class="zh">资料来源：DeepSeek 公开的 DualPipe 调度图与伪代码。</p></div><h4 id="141-计算与通信的双-stream-视角" class="section-h lv3">14.1 计算与通信的双 stream 视角</h4><p class="zh">DualPipe 把 H800 的 132 SM 分成两片：</p><p class="zh"><code class="ic">Computation: 112 SMs → MLP (B/W/F) + ATTN (B/W/F)   ← 真正算的部分
+Communication: 20 SMs → Dispatch (F/B) + Combine (F/B/PP F/PP B)   ← 跑通信
+</code></pre><p class="zh">每条流上的 chunk 有 forward / backward 两个方向（<code class="ic">Dispatch (F)</code> 是前向 dispatch，<code class="ic">Dispatch (B)</code> 是后向 dispatch 对应的 reduce）。所有 chunk 都同时存在于"计算"与"通信"两条 stream 上，让两条 stream 互相挡住彼此的空闲。</p><p class="zh">这与推理侧 DBO 的思路完全一致 — <b>compute stream 跑 GEMM、comm stream 跑 dispatch/combine，两个 micro-batch 在两条 stream 上交错驱动</b>（§8.2）。</p><h4 id="142-反向参数梯度--激活梯度的拆分训练侧" class="section-h lv3">14.2 反向参数梯度 / 激活梯度的拆分（训练侧）</h4><p class="zh">DualPipe 的关键技术之一是把 backward 拆成 <b>B（激活梯度）+ W（参数梯度）</b> ：</p><div class="callout"><p class="zh no-indent"><b>✅ MLP 计算图：前向 + 反向</b></p><p class="zh">Forward:
+W → Wx → σ(z) → y</p><p class="zh">Backward:
+∇_y L → dσ(z)/dz · ∇_y L = ∇_z L
+∇_z L → W^T ∇_z L = ∇_x L ← 激活梯度（B）
+∇_z L → ∇_z L · x^T = ∇_W L ← 参数梯度（W）</p></div><p class="zh"><code class="ic">F</code> (forward) → <code class="ic">B</code> (backward for activation) → <code class="ic">W</code> (backward for weights) 三阶段在 PyTorch 的 autograd.Function 里这样拆：</p><div class=highlight><p class="zh"><code class=language-python data-lang=python><span class=line><span class=cl><span class=k>class</span> <span class=nc>LinearFunc</span><span class=p>(</span><span class=n>torch</span><span class=o>.</span><span class=n>autograd</span><span class=o>.</span><span class=n>Function</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>    <span class=nd>@staticmethod</span>
+</span></span><span class=line><span class=cl>    <span class=k>def</span> <span class=nf>forward</span><span class=p>(</span><span class=n>ctx</span><span class=p>,</span> <span class=nb>input</span><span class=p>,</span> <span class=n>weight</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>        <span class=n>ctx</span><span class=o>.</span><span class=n>save_for_backward</span><span class=p>(</span><span class=nb>input</span><span class=p>,</span> <span class=n>weight</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>        <span class=n>output</span> <span class=o>=</span> <span class=n>F</span><span class=o>.</span><span class=n>linear</span><span class=p>(</span><span class=nb>input</span><span class=p>,</span> <span class=n>weight</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>        <span class=k>return</span> <span class=n>output</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=nd>@staticmethod</span>
+</span></span><span class=line><span class=cl>    <span class=k>def</span> <span class=nf>backward</span><span class=p>(</span><span class=n>ctx</span><span class=p>,</span> <span class=n>grad_output</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>        <span class=nb>input</span><span class=p>,</span> <span class=n>weight</span> <span class=o>=</span> <span class=n>ctx</span><span class=o>.</span><span class=n>saved_tensors</span>
+</span></span><span class=line><span class=cl>        <span class=k>if</span> <span class=n>weight</span><span class=o>.</span><span class=n>grad</span> <span class=ow>is</span> <span class=kc>None</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>            <span class=n>weight</span><span class=o>.</span><span class=n>grad</span> <span class=o>=</span> <span class=n>torch</span><span class=o>.</span><span class=n>zeros_like</span><span class=p>(</span><span class=n>weight</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>        <span class=k>def</span> <span class=nf>grad_weight_fn</span><span class=p>():</span>
+</span></span><span class=line><span class=cl>            <span class=n>weight</span><span class=o>.</span><span class=n>grad</span> <span class=o>+=</span> <span class=n>grad_output</span><span class=o>.</span><span class=n>flatten</span><span class=p>(</span><span class=mi>0</span><span class=p>,</span> <span class=o>-</span><span class=mi>2</span><span class=p>)</span><span class=o>.</span><span class=n>T</span> <span class=o>@</span> <span class=nb>input</span><span class=o>.</span><span class=n>flatten</span><span class=p>(</span><span class=mi>0</span><span class=p>,</span> <span class=o>-</span><span class=mi>2</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>        <span class=k>if</span> <span class=n>WeightGradStore</span><span class=o>.</span><span class=n>enabled</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>            <span class=n>WeightGradStore</span><span class=o>.</span><span class=n>put</span><span class=p>(</span><span class=n>grad_weight_fn</span><span class=p>)</span>   <span class=c1># ★ 把 W 计算延后入队</span>
+</span></span><span class=line><span class=cl>        <span class=k>else</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>            <span class=n>grad_weight_fn</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>        <span class=n>grad_input</span> <span class=o>=</span> <span class=n>grad_output</span> <span class=o>@</span> <span class=n>weight</span>          <span class=c1># B：激活梯度立刻算</span>
+</span></span><span class=line><span class=cl>        <span class=k>return</span> <span class=n>grad_input</span><span class=p>,</span> <span class=kc>None</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=k>class</span> <span class=nc>MyLinear</span><span class=p>(</span><span class=n>nn</span><span class=o>.</span><span class=n>Linear</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>    <span class=k>def</span> <span class=nf>forward</span><span class=p>(</span><span class=bp>self</span><span class=p>,</span> <span class=nb>input</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>        <span class=k>return</span> <span class=n>LinearFunc</span><span class=o>.</span><span class=n>apply</span><span class=p>(</span><span class=nb>input</span><span class=p>,</span> <span class=bp>self</span><span class=o>.</span><span class=n>weight</span><span class=p>)</span>
+</span></span></code></pre></div><p class="zh"><b>关键</b> ：<code class="ic">WeightGradStore.put(grad_weight_fn)</code> 把参数梯度计算 <code class="ic">∇_W L = ∇_z L · x^T</code> 延后入队，调度器在 zero bubble 阶段（<code class="ic">enable_zb=True</code>）才取出执行 <code class="ic">_weight_chunk()</code>。这就是 ZB1P / DualPipe 减小 bubble 的核心。</p><div class="callout"><p class="zh">推理路径<b>没有 backward</b> ，所以 W chunk 这个 trick 不直接复用。但下面 14.3 给出的 8 步调度框架，去掉 W 步骤后就是推理 DBO 的雏形。</p></div><h4 id="143-pipeline-bubbles-与显存对比" class="section-h lv3">14.3 Pipeline Bubbles 与显存对比</h4><div class="table-scroll"><table class="data-table"><tr><th>Method</th><th>Bubble</th><th>Parameter</th><th>Activation</th></tr><tr><td>1F1B</td><td>(PP-1)(F+B)</td><td>1×</td><td>PP</td></tr><tr><td>ZB1P</td><td>(PP-1)(F+B-2W)</td><td>1×</td><td>PP</td></tr><tr><td><b>DualPipe</b></td><td>(PP/2-1)(F&amp;B+B-3W)</td><td><b>2×</b></td><td>PP+1</td></tr></table></div><p class="zh">DualPipe 的代价是 <b>参数 2×</b>（双向 pipeline 各持一份完整模型），换来的是 bubble 量级从 <code class="ic">(PP-1)</code> 降到 <code class="ic">(PP/2-1)</code>，并且把 W 全部塞进 zero bubble 区。</p><p class="zh"><code class="ic">F&amp;B</code> 表示一对 chunk 同时做：micro-batch i 的 forward 与 micro-batch j 的 backward 共用一个 step 槽位 — 这个"在同一个槽位里塞两个方向的 chunk"是 DualPipe 区别于 ZB1P 的关键。</p><h4 id="144-dualpipe-8-步调度全解" class="section-h lv3">14.4 DualPipe 8 步调度全解</h4><p class="zh">DualPipe 一个 PP step 被切成 8 个子步骤，每步对一段 micro-batch 做特定组合：</p><h5 id=step-1nf0--前期填充>Step 1：nF0 — 前期填充</h5><div class=highlight><p class="zh"><code class=language-python data-lang=python><span class=line><span class=cl><span class=n>step_1</span> <span class=o>=</span> <span class=p>(</span><span class=n>num_half_ranks</span> <span class=o>-</span> <span class=n>half_rank</span> <span class=o>-</span> <span class=mi>1</span><span class=p>)</span> <span class=o>*</span> <span class=mi>2</span>
+</span></span><span class=line><span class=cl><span class=k>for</span> <span class=n>i</span> <span class=ow>in</span> <span class=nb>range</span><span class=p>(</span><span class=n>step_1</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>    <span class=bp>self</span><span class=o>.</span><span class=n>_forward_chunk</span><span class=p>(</span><span class=mi>0</span><span class=p>)</span>
+</span></span></code></pre></div><p class="zh">每个 rank 先做若干个纯 forward chunk（micro-batch 流 0），按 <code class="ic">half_rank</code> 错开启动时间 — 让 pipeline 头几行先填满。</p><h5 id=step-2nf0f1--双流前向交织>Step 2：nF0F1 — 双流前向交织</h5><div class=highlight><p class="zh"><code class=language-python data-lang=python><span class=line><span class=cl><span class=n>step_2</span> <span class=o>=</span> <span class=n>half_rank</span> <span class=o>+</span> <span class=mi>1</span>
+</span></span><span class=line><span class=cl><span class=bp>self</span><span class=o>.</span><span class=n>_recv_forward</span><span class=p>(</span><span class=mi>0</span><span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=k>for</span> <span class=n>i</span> <span class=ow>in</span> <span class=nb>range</span><span class=p>(</span><span class=n>step_2</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>    <span class=bp>self</span><span class=o>.</span><span class=n>_forward_chunk</span><span class=p>(</span><span class=mi>0</span><span class=p>,</span> <span class=n>recv</span><span class=o>=</span><span class=kc>False</span><span class=p>,</span> <span class=n>send</span><span class=o>=</span><span class=bp>self</span><span class=o>.</span><span class=n>is_middle_rank</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=bp>self</span><span class=o>.</span><span class=n>_recv_forward</span><span class=p>(</span><span class=mi>0</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=bp>self</span><span class=o>.</span><span class=n>_forward_chunk</span><span class=p>(</span><span class=mi>1</span><span class=p>,</span> <span class=n>send</span><span class=o>=</span><span class=p>(</span><span class=ow>not</span> <span class=bp>self</span><span class=o>.</span><span class=n>is_middle_rank</span><span class=p>)</span> <span class=ow>or</span> <span class=p>(</span><span class=n>i</span> <span class=o>&lt;</span> <span class=n>step_2</span> <span class=o>-</span> <span class=mi>1</span><span class=p>))</span>
+</span></span><span class=line><span class=cl>    <span class=k>if</span> <span class=ow>not</span> <span class=bp>self</span><span class=o>.</span><span class=n>is_middle_rank</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>        <span class=bp>self</span><span class=o>.</span><span class=n>_send_forward</span><span class=p>(</span><span class=mi>0</span><span class=p>)</span>
+</span></span></code></pre></div><p class="zh">引入 micro-batch 流 1（来自反向方向的 forward），与流 0 交织发送。<code class="ic">is_middle_rank</code> 是 PP 中部 rank 的特殊处理，避免重复 send / recv。</p><h5 id=step-3nb1w1f1--第一次启用-zero-bubble>Step 3：nB1W1F1 — 第一次启用 zero bubble</h5><div class=highlight><p class="zh"><code class=language-python data-lang=python><span class=line><span class=cl><span class=n>step_3</span> <span class=o>=</span> <span class=n>num_half_ranks</span> <span class=o>-</span> <span class=n>half_rank</span> <span class=o>-</span> <span class=mi>1</span>
+</span></span><span class=line><span class=cl><span class=k>for</span> <span class=n>i</span> <span class=ow>in</span> <span class=nb>range</span><span class=p>(</span><span class=n>step_3</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>    <span class=bp>self</span><span class=o>.</span><span class=n>_backward_chunk</span><span class=p>(</span><span class=mi>1</span><span class=p>,</span> <span class=n>enable_zb</span><span class=o>=</span><span class=kc>True</span><span class=p>)</span>   <span class=c1># B</span>
+</span></span><span class=line><span class=cl>    <span class=bp>self</span><span class=o>.</span><span class=n>_recv_forward</span><span class=p>(</span><span class=mi>1</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=bp>self</span><span class=o>.</span><span class=n>_weight_chunk</span><span class=p>()</span>                       <span class=c1># W （从 WeightGradStore 取出）</span>
+</span></span><span class=line><span class=cl>    <span class=bp>self</span><span class=o>.</span><span class=n>_forward_chunk</span><span class=p>(</span><span class=mi>1</span><span class=p>,</span> <span class=n>recv</span><span class=o>=</span><span class=kc>False</span><span class=p>)</span>
+</span></span></code></pre></div><p class="zh">这一步开始消化 backward。<code class="ic">enable_zb=True</code> 让 backward 仅做 B（激活梯度），把 W 推入 store；接着 <code class="ic">_weight_chunk()</code> 立刻把刚入队的 W 计算消费掉 — 把 backward 的两半在时间维度上拆开是 DualPipe 的核心。</p><h5 id=step-4nf0b1f1b0--主步骤fb-同槽位>Step 4：nF0B1F1B0 — 主步骤（F&amp;B 同槽位）</h5><div class=highlight><p class="zh"><code class=language-python data-lang=python><span class=line><span class=cl><span class=n>step_4</span> <span class=o>=</span> <span class=n>half_num_chunks</span> <span class=o>-</span> <span class=n>num_ranks</span> <span class=o>+</span> <span class=n>half_rank</span> <span class=o>+</span> <span class=mi>1</span>
+</span></span><span class=line><span class=cl><span class=k>for</span> <span class=n>i</span> <span class=ow>in</span> <span class=nb>range</span><span class=p>(</span><span class=n>step_4</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>    <span class=k>if</span> <span class=n>i</span> <span class=o>==</span> <span class=mi>0</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>        <span class=k>if</span> <span class=bp>self</span><span class=o>.</span><span class=n>is_middle_rank</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>            <span class=c1># NOTE: We don&#39;t overlap these two chunks to further reduce bubble size.</span>
+</span></span><span class=line><span class=cl>            <span class=bp>self</span><span class=o>.</span><span class=n>_forward_chunk</span><span class=p>(</span><span class=mi>0</span><span class=p>,</span> <span class=n>recv</span><span class=o>=</span><span class=kc>False</span><span class=p>,</span> <span class=n>send</span><span class=o>=</span><span class=kc>False</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>            <span class=bp>self</span><span class=o>.</span><span class=n>_send_forward</span><span class=p>(</span><span class=mi>1</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>            <span class=bp>self</span><span class=o>.</span><span class=n>_backward_chunk</span><span class=p>(</span><span class=mi>1</span><span class=p>,</span> <span class=n>send</span><span class=o>=</span><span class=kc>False</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>            <span class=bp>self</span><span class=o>.</span><span class=n>_send_forward</span><span class=p>(</span><span class=mi>0</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>            <span class=bp>self</span><span class=o>.</span><span class=n>_send_backward</span><span class=p>(</span><span class=mi>1</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>        <span class=k>else</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>            <span class=bp>self</span><span class=o>.</span><span class=n>_forward_backward_chunk</span><span class=p>(</span><span class=mi>0</span><span class=p>,</span> <span class=mi>1</span><span class=p>,</span> <span class=n>recv0</span><span class=o>=</span><span class=kc>False</span><span class=p>)</span>   <span class=c1># ★ F&amp;B 同槽</span>
+</span></span><span class=line><span class=cl>    <span class=k>else</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>        <span class=bp>self</span><span class=o>.</span><span class=n>_forward_backward_chunk</span><span class=p>(</span><span class=mi>0</span><span class=p>,</span> <span class=mi>1</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=bp>self</span><span class=o>.</span><span class=n>_forward_backward_chunk</span><span class=p>(</span><span class=mi>1</span><span class=p>,</span> <span class=mi>0</span><span class=p>)</span>
+</span></span></code></pre></div><p class="zh"><code class="ic">_forward_backward_chunk(0, 1)</code> 就是"同时跑流 0 的 forward 与流 1 的 backward"— 即 <code class="ic">F&amp;B</code> 槽位。这个槽位让 compute stream 与 comm stream 都被填满（F 的 dispatch + B 的 combine 同时进行）。</p><h5 id=step-58尾期清理>Step 5–8：尾期清理</h5><div class=highlight><p class="zh"><code class=language-python data-lang=python><span class=line><span class=cl><span class=c1># Step 5: nB1F1B0 — 收尾的 F&amp;B 交织</span>
+</span></span><span class=line><span class=cl><span class=n>step_5</span> <span class=o>=</span> <span class=n>num_half_ranks</span> <span class=o>-</span> <span class=n>half_rank</span> <span class=o>-</span> <span class=mi>1</span>
+</span></span><span class=line><span class=cl><span class=k>for</span> <span class=n>i</span> <span class=ow>in</span> <span class=nb>range</span><span class=p>(</span><span class=n>step_5</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>    <span class=bp>self</span><span class=o>.</span><span class=n>_backward_chunk</span><span class=p>(</span><span class=mi>1</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=bp>self</span><span class=o>.</span><span class=n>_forward_backward_chunk</span><span class=p>(</span><span class=mi>1</span><span class=p>,</span> <span class=mi>0</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Step 6: nB1B0 — 双流 backward 启用 zero bubble</span>
+</span></span><span class=line><span class=cl><span class=n>step_6</span> <span class=o>=</span> <span class=n>half_rank</span> <span class=o>+</span> <span class=mi>1</span>
+</span></span><span class=line><span class=cl><span class=n>enable_zb</span> <span class=o>=</span> <span class=kc>False</span>
+</span></span><span class=line><span class=cl><span class=k>for</span> <span class=n>i</span> <span class=ow>in</span> <span class=nb>range</span><span class=p>(</span><span class=n>step_6</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>    <span class=k>if</span> <span class=n>i</span> <span class=o>==</span> <span class=n>step_6</span> <span class=o>//</span> <span class=mi>2</span> <span class=ow>and</span> <span class=n>half_rank</span> <span class=o>%</span> <span class=mi>2</span> <span class=o>==</span> <span class=mi>1</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>        <span class=n>enable_zb</span> <span class=o>=</span> <span class=kc>True</span>
+</span></span><span class=line><span class=cl>    <span class=bp>self</span><span class=o>.</span><span class=n>_backward_chunk</span><span class=p>(</span><span class=mi>1</span><span class=p>,</span> <span class=n>enable_zb</span><span class=o>=</span><span class=n>enable_zb</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=k>if</span> <span class=n>i</span> <span class=o>==</span> <span class=n>step_6</span> <span class=o>//</span> <span class=mi>2</span> <span class=ow>and</span> <span class=n>half_rank</span> <span class=o>%</span> <span class=mi>2</span> <span class=o>==</span> <span class=mi>0</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>        <span class=n>enable_zb</span> <span class=o>=</span> <span class=kc>True</span>
+</span></span><span class=line><span class=cl>    <span class=bp>self</span><span class=o>.</span><span class=n>_backward_chunk</span><span class=p>(</span><span class=mi>0</span><span class=p>,</span> <span class=n>enable_zb</span><span class=o>=</span><span class=n>enable_zb</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Step 7: nWB0 — 把延后的 W 全部清完</span>
+</span></span><span class=line><span class=cl><span class=n>step_7</span> <span class=o>=</span> <span class=n>num_half_ranks</span> <span class=o>-</span> <span class=n>half_rank</span> <span class=o>-</span> <span class=mi>1</span>
+</span></span><span class=line><span class=cl><span class=k>for</span> <span class=n>i</span> <span class=ow>in</span> <span class=nb>range</span><span class=p>(</span><span class=n>step_7</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>    <span class=bp>self</span><span class=o>.</span><span class=n>_weight_chunk</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>    <span class=bp>self</span><span class=o>.</span><span class=n>_backward_chunk</span><span class=p>(</span><span class=mi>0</span><span class=p>,</span> <span class=n>enable_zb</span><span class=o>=</span><span class=kc>True</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1># Step 8: nW — 收尾 W</span>
+</span></span><span class=line><span class=cl><span class=n>step_8</span> <span class=o>=</span> <span class=n>half_rank</span> <span class=o>+</span> <span class=mi>1</span>
+</span></span><span class=line><span class=cl><span class=k>for</span> <span class=n>i</span> <span class=ow>in</span> <span class=nb>range</span><span class=p>(</span><span class=n>step_8</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>    <span class=bp>self</span><span class=o>.</span><span class=n>_weight_chunk</span><span class=p>()</span>
+</span></span><span class=line><span class=cl><span class=k>assert</span> <span class=n>WeightGradStore</span><span class=o>.</span><span class=n>funcs_queue</span><span class=o>.</span><span class=n>empty</span><span class=p>()</span>
+</span></span></code></pre></div><div class="callout"><p class="zh">关键不变量：Step 8 结束时 <code class="ic">WeightGradStore.funcs_queue</code> 必须为空 — 所有延后的参数梯度必须在该 step 内全部 flush，否则下一个迭代的 W 会与未消费的旧 W 冲突。</p></div><h4 id="145-dualpipe--vllm-dbo-推理映射" class="section-h lv3">14.5 DualPipe → vLLM DBO 推理映射</h4><div class="table-scroll"><table class="data-table"><thead><tr><th>DualPipe（训练）</th><th>vLLM DBO（推理）</th></tr></thead><tbody><tr><td>forward chunk 0 / 1（双向 pipeline 双流）</td><td>micro-batch 0 / 1（单向，但同样双流）</td></tr><tr><td>compute stream（112 SM, MLP/ATTN F-B-W）</td><td>compute stream（DeepGEMM、Shared MLP、量化 kernel）</td></tr><tr><td>comm stream（20 SM, Dispatch/Combine F-B）</td><td>comm stream（DeepEP HT/LL Dispatch/Combine）</td></tr><tr><td><code class="ic">_forward_chunk(stream_id)</code></td><td><code class="ic">prepare_finalize.prepare_async(...)</code> 与 <code class="ic">expert_compute(...)</code> 在不同 ubatch 下交错</td></tr><tr><td><code class="ic">_send_forward / _recv_forward</code></td><td><code class="ic">dbo_yield_and_switch_from_compute_to_comm()</code></td></tr><tr><td>WeightGradStore（W chunk 延后）</td><td><b>不需要</b>（推理无 backward）</td></tr><tr><td>8 步调度</td><td>推理简化为 2-stage（vLLM 当前）/ 5-stage（官方 Decode）</td></tr></tbody></table></div><p class="zh">vLLM 当前的 DBO 实现就是 DualPipe step 4 主步骤的"无 W"版本：每个 MoE 层的 dispatch / GEMM / combine 在两个 micro-batch 上交错。<code class="ic">self.handles = [None, None]</code> 这两个 handle 槽位对应 DualPipe 的 stream 0 / 1。</p><h4 id="146-为什么官方-decode-是-5-stage-而-vllm-是-2-stage" class="section-h lv3">14.6 为什么官方 Decode 是 5-stage 而 vLLM 是 2-stage？</h4><p class="zh">官方 Decode 的 5-stage attention 子层流水（§8.3）实际上是把 DualPipe step 4 的 <code class="ic">_forward_backward_chunk(0, 1)</code> 进一步细化成 5 个子层级槽位：</p><p class="zh"><code class="ic">DualPipe step 4 (训练):  F&amp;B 同槽位
+官方 Decode (推理):      attention_pre / mla_compute / dispatch / expert_gemm / combine
+                         5 个子段在两 micro-batch 上滚动
+</code></pre><p class="zh">vLLM 当前只把"整层 MoE"作为一个 chunk，所以只有 dispatch ↔ GEMM ↔ combine 三段；要再细化成 5 段需要把 attention 内部也拆成子层 — 这部分在 <a href="https://github.com/vllm-project/vllm">vLLM PR #..</a> 还在开发中，是当前距离官方蓝图最大的单点 gap。</p><h4 id="147-dualpipe-与-two-overlap-scheduletos的概念关系" class="section-h lv3">14.7 DualPipe 与 Two Overlap Schedule（TOS）的概念关系</h4><p class="zh">V3 推理生态里几个相关名词常被混用，先理清：</p><div class="table-scroll"><table class="data-table"><tr><th>名词</th><th>层级</th><th>对应实现</th></tr><tr><td>DualPipe</td><td>训练 pipeline 调度</td><td>DeepSeek 训练框架；含 W chunk 延后</td></tr><tr><td>Two Overlap Schedule (TOS)</td><td>推理调度抽象</td><td>官方 V3 推理 paper 用语</td></tr><tr><td>Dual Batch Overlap (DBO)</td><td>vLLM 推理实现</td><td>self.handles = [None, None] + dbo_yield()</td></tr><tr><td>Two-Batch Overlap (TBO)</td><td>SGLang 推理实现</td><td>SGLang 在 DeepEP 之上的封装</td></tr></table></div><p class="zh">四者本质同源 — 都是"双 micro-batch 在双 stream 上交错"，只是粒度与具体实现不同。</p><section id="optimization-audit--本篇优化点查漏"><h2 id="optimization-audit--本篇优化点查漏" class="section-h lv1">Optimization Audit · 本篇优化点查漏</h2><div class="table-scroll"><table class="data-table"><thead><tr><th>优化点</th><th>baseline 瓶颈</th><th>机制</th><th>边界条件</th></tr></thead><tbody><tr><td>DBO</td><td>通信与计算串行</td><td>microbatch 错位重叠</td><td>batch 太小时切分开销显眼</td></tr><tr><td>五段 decode</td><td>两段流水隐藏不完 RDMA/compute/reduce</td><td>更细 stage 调度</td><td>实现需要严格形状和同步</td></tr><tr><td>CUDA Graph</td><td>decode launch overhead 大</td><td>固定 shape replay</td><td>动态路由需 masked/buffer 协议</td></tr><tr><td>Shared expert overlap</td><td>DP expert 阻塞关键路径</td><td>与 routed path 等待窗口重叠</td><td>资源争抢可能反噬</td></tr></tbody></table></div><section id="map--本篇图解索引"><h2 id="map--本篇图解索引" class="section-h lv1">Map · 本篇图解索引</h2>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F12.drawio</div>
+  </div>
+  <figcaption>优化索引：调度优化清单</figcaption>
+</figure>
+<p class="zh">这张图把本篇的阅读路径压成一个索引：先确认问题边界，再看数据形状，
+接着进入 kernel 或调度机制，最后回到性能约束。正文里的每一张图都只承担一个
+视觉任务，细节留给相邻段落和优化点查漏表。</p></div></div><!-- /reader-inner -->
+</div><!-- /reader -->
+
+
+</body>
+</html>

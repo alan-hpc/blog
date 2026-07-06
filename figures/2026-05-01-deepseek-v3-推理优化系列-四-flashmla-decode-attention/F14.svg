@@ -1,0 +1,42 @@
+<svg viewBox="0 0 1000 410" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M 0 0 L 10 5 L 0 10 z" fill="#24292f"/>
+  </marker>
+</defs>
+<rect x="0" y="0" width="1000" height="410" fill="#ffffff"/>
+<text x="500" y="38" text-anchor="middle" font-family="sans-serif" font-size="24" font-weight="700" fill="#24292f">细粒度 copy 与 GEMM pipelining</text>
+<text x="500" y="64" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="400" fill="#57606a">A 64×576 K block becomes nine smaller copies; GEMM can start before the whole block arrives.</text>
+<rect x="90" y="100" width="330" height="210" rx="8" fill="#eef7ff" stroke="#4a6fd3" stroke-width="2"/>
+<text x="255" y="128" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="700" fill="#24292f">K block: 64 × 576</text>
+<rect x="115" y="160" width="28" height="95" rx="2" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1"/>
+<text x="129" y="278" text-anchor="middle" font-family="sans-serif" font-size="10" font-weight="600" fill="#57606a">0</text>
+<rect x="147" y="160" width="28" height="95" rx="2" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
+<text x="161" y="278" text-anchor="middle" font-family="sans-serif" font-size="10" font-weight="600" fill="#57606a">1</text>
+<rect x="179" y="160" width="28" height="95" rx="2" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1"/>
+<text x="193" y="278" text-anchor="middle" font-family="sans-serif" font-size="10" font-weight="600" fill="#57606a">2</text>
+<rect x="211" y="160" width="28" height="95" rx="2" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
+<text x="225" y="278" text-anchor="middle" font-family="sans-serif" font-size="10" font-weight="600" fill="#57606a">3</text>
+<rect x="243" y="160" width="28" height="95" rx="2" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1"/>
+<text x="257" y="278" text-anchor="middle" font-family="sans-serif" font-size="10" font-weight="600" fill="#57606a">4</text>
+<rect x="275" y="160" width="28" height="95" rx="2" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
+<text x="289" y="278" text-anchor="middle" font-family="sans-serif" font-size="10" font-weight="600" fill="#57606a">5</text>
+<rect x="307" y="160" width="28" height="95" rx="2" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1"/>
+<text x="321" y="278" text-anchor="middle" font-family="sans-serif" font-size="10" font-weight="600" fill="#57606a">6</text>
+<rect x="339" y="160" width="28" height="95" rx="2" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
+<text x="353" y="278" text-anchor="middle" font-family="sans-serif" font-size="10" font-weight="600" fill="#57606a">7</text>
+<rect x="371" y="160" width="28" height="95" rx="2" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1"/>
+<text x="385" y="278" text-anchor="middle" font-family="sans-serif" font-size="10" font-weight="600" fill="#57606a">8</text>
+<text x="255" y="300" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="700" fill="#4a6fd3">9 × copy(64×64)</text>
+<rect x="565" y="95" width="300" height="42" rx="8" fill="#f6f8fa" stroke="#d0d7de" stroke-width="2"/>
+<text x="715" y="121" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="700" fill="#24292f">copy0 copy1 copy2 ... copy8</text>
+<rect x="565" y="160" width="300" height="42" rx="8" fill="#f4faf4" stroke="#5fa55f" stroke-width="2"/>
+<text x="715" y="186" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="700" fill="#24292f">gemm0 starts after copy0</text>
+<rect x="615" y="210" width="300" height="42" rx="8" fill="#f4faf4" stroke="#5fa55f" stroke-width="2"/>
+<text x="765" y="236" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="700" fill="#24292f">gemm1 starts after copy1</text>
+<rect x="665" y="260" width="250" height="42" rx="8" fill="#f4faf4" stroke="#5fa55f" stroke-width="2"/>
+<text x="790" y="286" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="700" fill="#24292f">pipeline continues</text>
+<line x1="420" y1="205" x2="560" y2="178" stroke="#57606a" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="190" y="340" width="620" height="42" rx="8" fill="#fff8e7" stroke="#e0b300" stroke-width="1.5"/>
+<text x="500" y="366" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="700" fill="#e0b300">粒度从 64×576 降到 64×64，内存延迟更容易被 GEMM 吃掉。</text>
+</svg>

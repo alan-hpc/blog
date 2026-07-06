@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html xmlns:MadCap="http://www.madcapsoftware.com/Schemas/MadCap.xsd" lang="en-us" xml:lang="en-us" data-mc-search-type="Stem" data-mc-help-system-file-name="index.xml" data-mc-path-to-help-system="../../../../../../../" data-mc-target-type="WebHelp2" data-mc-runtime-file-type="Topic" data-mc-preload-images="false" data-mc-in-preview-mode="false" data-mc-toc-path="Developer Tools|Desktop Developer Tools|NVIDIA Nsight Visual Studio Edition|NVIDIA Nsight Visual Studio Edition 4.7|Analysis Tools|CUDA Experiments|Kernel-Level Experiments|Memory Statistics">
+    <!-- saved from url=(0016)http://localhost -->
+    <head>
+        <meta charset="utf-8" />
+        <meta name="googlebot" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><title>内存统计 — 本地内存</title>
+        <link rel="shortcut icon" href="../../../../../../Resources/MasterPages/nvidia.ico" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/Slideshow.css" rel="stylesheet" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/TextEffects.css" rel="stylesheet" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/Topic.css" rel="stylesheet" />
+        <link href="../../../../../../resources/stylesheets/style.css" rel="stylesheet" />
+        <style>/*&lt;meta /&gt;*/
+
+.button.previous-topic-button
+{
+	-pie-background: url('../../../../../../../Skins/Default/Stylesheets/Images/navigate-previous.png') no-repeat center center, linear-gradient(#ffffff, #ececec);
+}
+
+.button.current-topic-index-button
+{
+	-pie-background: linear-gradient(#ffffff, #ececec);
+}
+
+.button.next-topic-button
+{
+	-pie-background: url('../../../../../../../Skins/Default/Stylesheets/Images/navigate-next.png') no-repeat center center, linear-gradient(#ffffff, #ececec);
+}
+
+.needs-pie
+{
+	behavior: url('../../../../../../../Resources/Scripts/PIE.htc');
+}
+
+</style>
+        <script src="../../../../../../../Resources/Scripts/custom.modernizr.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/jquery.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/foundation.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/plugins.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/require.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/require.config.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/MadCapAll.js">
+        </script>
+        <script src="../../../../../../../Skins/Default/Scripts/Toolbar.js">
+        </script>
+    </head>
+    <body>
+        <p class="MCWebHelpFramesetLink MCWebHelpFramesetLinkTop"><a href="../../../../../../../index.html#developertools/desktop/analysis/report/cudaexperiments/kernellevel/memorystatisticslocal.htm">打开带导航的主题视图</a>
+        </p>
+        <div class="MCBreadcrumbsBox_site.css_0"><span class="MCBreadcrumbsPrefix">当前位置： </span><a class="MCBreadcrumbsLink" href="../../../../../developer_tools.htm">开发者工具</a><span class="MCBreadcrumbsDivider"> &gt; </span><a class="MCBreadcrumbsLink" href="../../../../../desktop_devtools.htm">桌面开发者工具</a><span class="MCBreadcrumbsDivider"> &gt; </span><a class="MCBreadcrumbsLink" href="../../../../nvidia_nsight.htm">NVIDIA Nsight Visual Studio Edition</a><span class="MCBreadcrumbsDivider"> &gt; </span><span class="MCBreadcrumbs">内存统计 — 本地内存</span>
+        </div><a name="kanchor142"></a>
+        <div id="pageheader">
+            <h1><span class="SystemTitle">内存统计 — 本地内存</span>
+            </h1>
+            <p style="font-size: 8pt; color: #a9a9a9;"><span style="font-weight: normal; color: #808080;" class="MyVariablesNsightVSEMainHeader"></span>
+                <br /><span id="feedbacklink" style="font-size: 8pt; font-weight: normal;"><a href="mailto:devtools-support@nvidia.com?subject=Documentation Feedback: Parallel Nsight User Guide">发送反馈</a></span>
+                <br />
+            </p>
+            <hr width="100%" size="0" align="center" />
+        </div>
+        <h3><a id="Overview"></a>概述</h3>
+        <p>
+          本地内存空间位于设备内存中，因此本地内存访问与全局内存访问一样具有高延迟和低带宽，并且适用于在 <a href="memorystatisticsglobal.htm">内存统计 — 全局内存</a> 实验中讨论过的相同合并访问要求。然而，本地内存的组织方式使得连续的 32 位字由连续的线程 ID 访问。因此，只要 warp 中所有线程访问相同的相对地址（例如，数组变量中的同一索引、结构体变量中的同一成员），访问就是完全合并的。
+        </p>
+        <p>
+          本地内存访问仅针对某些自动变量发生，详细说明见 CUDA C Programming Guide 的 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#variable-type-qualifiers">Variable Type Qualifiers</a> 章节。编译器可能放置在本地内存中的自动变量包括：
+          <ul style="list-style-type: square;"><li value="1">
+              无法确定是否使用常量索引访问的数组；
+            </li><li value="2">
+              占用过多寄存器空间的大型结构体或数组；
+            </li><li value="3">
+              当 kernel 使用的寄存器超过可用数量时的任何变量（也称为寄存器溢出）。
+            </li></ul></p>
+        <p> 此外，某些数学函数的实现路径也可能访问本地内存。运行 <a href="../sourcelevel/memorytransactions.htm">内存事务</a> 实验可以告知哪些 SASS 指令引起了本地内存事务。在内存事务实验结果上使用 <a href="../../../../analysis_source_code_correlation.htm#SourceView">Source View</a> 的代码关联功能，可以精确定位某个变量在 kernel 编译期间是否被放入了本地内存。另外，使用 <code>--ptxas-options=-v</code> 选项编译时，编译器会报告每个 kernel 的本地内存总用量（<code>lmem</code>）。
+        </p>
+        <p>
+          在计算能力 2.x 及以上的设备上，所有本地内存访问都始终在 L1 和 L2 中缓存。本实验的输出展示了 kernel 执行期间产生的所有本地内存流量。
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h3><a id="Chart"></a>图表</h3>
+                    <img src="memorystatisticslocalchart.png" style="float: right;mc-thumbnail-max-width: 700px;mc-thumbnail: none;" />
+                    <p>
+          Load/Store <b>Requests</b>（请求数）等于执行的本地内存指令数量。当一个 warp 执行一条访问本地内存的指令时，它会根据每个线程访问的字大小以及线程间内存地址的分布，将 warp 内各线程的内存访问合并为一个或多个 <b>Memory Transactions</b>（内存事务）。一般而言，需要的事务越多，除了线程访问的字以外还要额外传输的未使用字也越多，相应地降低了指令吞吐量。此外，每个内存事务都要求该汇编指令被重复发射；如果完成一个 warp 的请求需要多于一个事务，就会导致指令重放。关于指令重放及其性能影响的更多细节，可参阅 <a href="instructionstatistics.htm">指令统计</a> 实验中的相关介绍。
+        </p>
+                    <p>
+          <b>Transactions Per Request</b>（每请求事务数）图表分别针对加载和存储操作，显示每条执行的本地内存指令所需的平均 L1 事务数。数值越低越好；对于一个完整 warp 的单次本地内存操作，目标是 4 字节访问 1 个事务、8 字节访问 2 个事务、16 字节访问 4 个事务。warp 与 L1 缓存之间本地内存流量的 <b>Transaction Size</b>（事务大小）等于一整条 L1 缓存行的大小；一条 L1 缓存行为 128 字节。注意，无论 warp 中的线程是请求了缓存行中的全部数据还是仅请求了其子集，都会传输一整条缓存行。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <h3><a id="Analysis"></a>分析</h3>
+        <ul style="list-style-type:none">
+            <li value="1">
+            如果 <b>Load/Store Requests</b>（加载/存储请求数）较高……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……运行 <a href="../sourcelevel/memorytransactions.htm">内存事务</a> 实验，定位触发本地内存操作的源代码行。尝试调查前述哪些原因导致编译器使用了本地数据访问。
+              </li><li style="text-indent:-20px;" value="2">
+                ……前往 <a href="achievedoccupancy.htm">实际占用率</a> 实验，检查该 kernel 是否受寄存器限制和/或使用了非常多的寄存器。使用 <code>--ptxas-options=-v</code> 选项编译 kernel，并重点关注有多少寄存器需要被溢出。尽量减少溢出的寄存器数量，以减少本地内存操作的总数。
+              </li><li style="text-indent:-20px;" value="3">
+                ……运行 <a href="issueefficiency.htm">发射效率</a> 实验，调查运行时合格 warp 的数量是否超过了隐藏该 kernel 指令/数据延迟所必需的数量。如果是，可以考虑减少活跃 warp 数，以便每个 block 有更多可用资源 —— 即便这可能会降低 kernel 的占用率。
+              </li></ul></li>
+            <li value="2">
+            如果 <b>Transactions Per Request</b>（每请求事务数）较高……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……检查使用的内存访问模式，并尝试针对目标计算设备的合并访问规则优化数据访问（更多细节见 CUDA C Programming Guide 的 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#global-memory-3-0">Global Memory</a> 章节）。请记住，本地内存的组织方式使得连续的 32 位字由连续的线程 ID 访问。换句话说：理想的本地内存访问是每个线程在其本地内存窗口中使用完全相同的偏移；这样，warp 中的所有线程访问的数据就在设备内存中是连续存储的。若 warp 中线程使用不同的偏移，总会导致每个请求产生多个事务。
+              </li></ul></li>
+        </ul>
+        <div id="pagefooter">
+            <br />
+        </div>
+        <hr style="height: 1px;" width="100%" size="0" align="center" />
+        <script type="text/javascript" src="../../../../../../resources/stylesheets/run_prettify.js?lang=vb" autoload="true">
+        </script>
+        <p>
+        </p>
+        <div class="buttons inline-buttons clearfix topicToolbarProxy topicToolbarProxysite.css" style="mc-topic-toolbar-items: ;">
+            <div class="button-group-container-left">
+                <button class="button needs-pie previous-topic-button" type="button" title="导航到上一篇">
+                    <img src="../../../../../../../Skins/Default/Stylesheets/Images/transparent.gif" alt="上一主题" />
+                </button>
+                <div class="button current-topic-index-button disabled"><span class="sequence-index"></span> / <span class="sequence-total"></span></div>
+                <button class="button needs-pie next-topic-button" type="button" title="导航到下一篇">
+                    <img src="../../../../../../../Skins/Default/Stylesheets/Images/transparent.gif" alt="下一主题" />
+                </button>
+            </div>
+        </div>
+        <p> <![CDATA[ ]]></p>
+        <p><span style="color: #696969; font-size: 8pt;">NVIDIA GameWorks Documentation Rev. 1.0.150630 ©2015. NVIDIA Corporation. All Rights Reserved.</span>
+        </p>
+    </body>
+</html>

@@ -1,0 +1,28 @@
+<mxfile host="app.diagrams.net" modified="2026-05-18T03:11:55Z" agent="Codex native-redraw" version="24.7.17" type="device">
+  <diagram id="F18" name="F18">
+    <mxGraphModel dx="1140" dy="480" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1020" pageHeight="360" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+<mxCell id="t2" value="FA4 的动机：Hopper → Blackwell 是非对称硬件升级" style="text;html=1;strokeColor=none;fillColor=none;rounded=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontSize=15;fontColor=#1f2328;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="308.35" y="10" width="403.3" height="27" as="geometry"/></mxCell>
+<mxCell id="t3" value="BF16 Tensor Core" style="text;html=1;strokeColor=none;fillColor=none;rounded=0;whiteSpace=wrap;overflow=visible;align=left;verticalAlign=middle;fontSize=12;fontColor=#222;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="90" y="60.6" width="128.56" height="21.6" as="geometry"/></mxCell>
+<mxCell id="r4" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e0b300;strokeColor=none;strokeWidth=1;opacity=55;" vertex="1" parent="1"><mxGeometry x="250" y="62" width="200" height="24" as="geometry"/></mxCell>
+<mxCell id="t5" value="1.0 PFLOPS (H100)" style="text;html=1;strokeColor=none;fillColor=none;rounded=0;whiteSpace=wrap;overflow=visible;align=left;verticalAlign=middle;fontSize=11;fontColor=#222;fontStyle=0;" vertex="1" parent="1"><mxGeometry x="460" y="66.8" width="126" height="20" as="geometry"/></mxCell>
+<mxCell id="r6" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#5fa55f;strokeColor=none;strokeWidth=1;opacity=65;" vertex="1" parent="1"><mxGeometry x="250" y="95" width="450" height="24" as="geometry"/></mxCell>
+<mxCell id="t7" value="2.25 PFLOPS (B200) · +125%" style="text;html=1;strokeColor=none;fillColor=none;rounded=0;whiteSpace=wrap;overflow=visible;align=left;verticalAlign=middle;fontSize=11;fontColor=#222;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="710" y="99.8" width="185.84" height="20" as="geometry"/></mxCell>
+<mxCell id="t8" value="SFU (exp/log/sin)" style="text;html=1;strokeColor=none;fillColor=none;rounded=0;whiteSpace=wrap;overflow=visible;align=left;verticalAlign=middle;fontSize=12;fontColor=#222;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="90" y="145.6" width="139.24" height="21.6" as="geometry"/></mxCell>
+<mxCell id="r9" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e0b300;strokeColor=none;strokeWidth=1;opacity=55;" vertex="1" parent="1"><mxGeometry x="250" y="147" width="160" height="24" as="geometry"/></mxCell>
+<mxCell id="t10" value="16 ops/cycle/SM" style="text;html=1;strokeColor=none;fillColor=none;rounded=0;whiteSpace=wrap;overflow=visible;align=left;verticalAlign=middle;fontSize=11;fontColor=#222;fontStyle=0;" vertex="1" parent="1"><mxGeometry x="420" y="151.8" width="115.33" height="20" as="geometry"/></mxCell>
+<mxCell id="r11" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#b85450;strokeColor=none;strokeWidth=1;opacity=55;" vertex="1" parent="1"><mxGeometry x="250" y="180" width="160" height="24" as="geometry"/></mxCell>
+<mxCell id="t12" value="16 ops/cycle/SM · 完全没动" style="text;html=1;strokeColor=none;fillColor=none;rounded=0;whiteSpace=wrap;overflow=visible;align=left;verticalAlign=middle;fontSize=11;fontColor=#b85450;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="420" y="184.8" width="179.13" height="20" as="geometry"/></mxCell>
+<mxCell id="t13" value="SMEM 带宽" style="text;html=1;strokeColor=none;fillColor=none;rounded=0;whiteSpace=wrap;overflow=visible;align=left;verticalAlign=middle;fontSize=12;fontColor=#222;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="90" y="230.6" width="74.44" height="21.6" as="geometry"/></mxCell>
+<mxCell id="r14" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e0b300;strokeColor=none;strokeWidth=1;opacity=55;" vertex="1" parent="1"><mxGeometry x="250" y="232" width="180" height="24" as="geometry"/></mxCell>
+<mxCell id="t15" value="baseline" style="text;html=1;strokeColor=none;fillColor=none;rounded=0;whiteSpace=wrap;overflow=visible;align=left;verticalAlign=middle;fontSize=11;fontColor=#222;fontStyle=0;" vertex="1" parent="1"><mxGeometry x="440" y="236.8" width="70.56" height="20" as="geometry"/></mxCell>
+<mxCell id="r16" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#b85450;strokeColor=none;strokeWidth=1;opacity=55;" vertex="1" parent="1"><mxGeometry x="250" y="265" width="180" height="24" as="geometry"/></mxCell>
+<mxCell id="t17" value="baseline · 完全没动" style="text;html=1;strokeColor=none;fillColor=none;rounded=0;whiteSpace=wrap;overflow=visible;align=left;verticalAlign=middle;fontSize=11;fontColor=#b85450;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="440" y="269.8" width="134.36" height="20" as="geometry"/></mxCell>
+<mxCell id="r18" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff4e0;strokeColor=#e0b300;strokeWidth=1;arcSize=8;" vertex="1" parent="1"><mxGeometry x="40" y="305" width="960" height="40" as="geometry"/></mxCell>
+<mxCell id="t19" value="结论：FA3 假设“softmax exp 不会成为瓶颈”在 B200 上不成立 — 必须算法-硬件协同设计" style="text;html=1;strokeColor=none;fillColor=none;rounded=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontSize=12;fontColor=#5a3500;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="252.86" y="313.6" width="534.28" height="21.6" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html xmlns:MadCap="http://www.madcapsoftware.com/Schemas/MadCap.xsd" lang="en-us" xml:lang="en-us" data-mc-search-type="Stem" data-mc-help-system-file-name="index.xml" data-mc-path-to-help-system="../../../../../../../" data-mc-target-type="WebHelp2" data-mc-runtime-file-type="Topic" data-mc-preload-images="false" data-mc-in-preview-mode="false" data-mc-toc-path="Developer Tools|Desktop Developer Tools|NVIDIA Nsight Visual Studio Edition|NVIDIA Nsight Visual Studio Edition 4.7|Analysis Tools|CUDA Experiments|Kernel-Level Experiments|Memory Statistics">
+    <!-- saved from url=(0016)http://localhost -->
+    <head>
+        <meta charset="utf-8" />
+        <meta name="googlebot" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><title>内存统计 — 共享内存</title>
+        <link rel="shortcut icon" href="../../../../../../Resources/MasterPages/nvidia.ico" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/Slideshow.css" rel="stylesheet" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/TextEffects.css" rel="stylesheet" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/Topic.css" rel="stylesheet" />
+        <link href="../../../../../../resources/stylesheets/style.css" rel="stylesheet" />
+        <style>/*&lt;meta /&gt;*/
+
+.button.previous-topic-button
+{
+	-pie-background: url('../../../../../../../Skins/Default/Stylesheets/Images/navigate-previous.png') no-repeat center center, linear-gradient(#ffffff, #ececec);
+}
+
+.button.current-topic-index-button
+{
+	-pie-background: linear-gradient(#ffffff, #ececec);
+}
+
+.button.next-topic-button
+{
+	-pie-background: url('../../../../../../../Skins/Default/Stylesheets/Images/navigate-next.png') no-repeat center center, linear-gradient(#ffffff, #ececec);
+}
+
+.needs-pie
+{
+	behavior: url('../../../../../../../Resources/Scripts/PIE.htc');
+}
+
+</style>
+        <script src="../../../../../../../Resources/Scripts/custom.modernizr.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/jquery.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/foundation.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/plugins.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/require.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/require.config.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/MadCapAll.js">
+        </script>
+        <script src="../../../../../../../Skins/Default/Scripts/Toolbar.js">
+        </script>
+    </head>
+    <body>
+        <p class="MCWebHelpFramesetLink MCWebHelpFramesetLinkTop"><a href="../../../../../../../index.html#developertools/desktop/analysis/report/cudaexperiments/kernellevel/memorystatisticsshared.htm">打开带导航的主题视图</a>
+        </p>
+        <div class="MCBreadcrumbsBox_site.css_0"><span class="MCBreadcrumbsPrefix">当前位置： </span><a class="MCBreadcrumbsLink" href="../../../../../developer_tools.htm">开发者工具</a><span class="MCBreadcrumbsDivider"> &gt; </span><a class="MCBreadcrumbsLink" href="../../../../../desktop_devtools.htm">桌面开发者工具</a><span class="MCBreadcrumbsDivider"> &gt; </span><a class="MCBreadcrumbsLink" href="../../../../nvidia_nsight.htm">NVIDIA Nsight Visual Studio Edition</a><span class="MCBreadcrumbsDivider"> &gt; </span><span class="MCBreadcrumbs">内存统计 — 共享内存</span>
+        </div><a name="kanchor144"></a>
+        <div id="pageheader">
+            <h1><span class="SystemTitle">内存统计 — 共享内存</span>
+            </h1>
+            <p style="font-size: 8pt;"><span style="color: #696969;">NVIDIA® Nsight™ Development Platform, Visual Studio Edition 4.7 用户指南</span>
+                <br /><span id="feedbacklink" style="font-size: 8pt; font-weight: normal;"><a href="mailto:devtools-support@nvidia.com?subject=Documentation Feedback: Nsight Visual Studio Edition User Guide">发送反馈</a></span>
+                <br />
+            </p>
+            <hr width="100%" size="0" align="center" />
+        </div>
+        <h3><a id="Overview"></a>概述</h3>
+        <p>
+          block 内的线程可以通过共享内存共享数据来协作，并通过同步执行来协调内存访问。由于位于片上，共享内存的带宽远高于本地或全局内存，延迟也低得多。在这一点上，共享内存相当于一个用户管理的缓存：由应用程序显式分配并访问。一种典型的编程模式是：将来自设备内存的数据暂存到共享内存中，在共享内存中处理数据并在 block 的各线程之间共享数据视图，然后将结果写回设备内存。
+        </p>
+        <p>
+          为了实现高带宽，共享内存被划分为大小相等的内存模块（称为 bank），可以同时访问。任意由 <i>n</i> 个地址组成、分别落在 <i>n</i> 个不同 bank 上的内存读或写请求，因而可以被同时服务，整体带宽为单个模块带宽的 <i>n</i> 倍。但是，如果一个内存请求的两个地址落在同一个 bank 中，就会产生 bank 冲突，访问必须被串行化。硬件会把一个存在 bank 冲突的内存请求拆分为所需数量的多个互不冲突的独立请求，吞吐量也按拆分后的请求数下降同样倍数。若拆分后的独立内存请求数为 <i>n</i>，则称该初始内存请求引发了 <i>n</i> 路 bank 冲突。为获得最佳性能，理解内存地址如何映射到 bank、以便调度访问以最小化 bank 冲突非常重要。
+        </p>
+        <p>
+          对于计算能力 2.x 的设备，共享内存有 32 个 bank，其组织方式是连续的 32 位字映射到连续的 bank 上。每个 bank 的带宽为每两个时钟周期 32 位。当 warp 中两个线程访问同一个 32 位字内的任意地址时，共享内存请求不会在它们之间产生 bank 冲突（即便两个地址落在同一 bank 中）。关于常见访问模式的更多细节和示例，参见 CUDA C Programming Guide 中针对计算能力 2.x 的 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#shared-memory-3-0">Shared Memory</a> 章节。
+        </p>
+        <p>
+          对于计算能力 3.x 的设备，共享内存有 32 个 bank，并提供两种可通过 <code>cudaDeviceSetSharedMemConfig()</code> 配置的寻址模式。每个 bank 的带宽为每个时钟周期 64 位。在 64 位模式下，连续的 64 位字映射到连续的 bank 上。当 warp 中两个线程访问同一个 64 位字内的任意子字时，共享内存请求不会在它们之间产生 bank 冲突（即便这两个子字的地址落在同一 bank 中）。在 32 位模式（默认）下，连续的 32 位字映射到连续的 bank 上。当 warp 中两个线程访问同一个 32 位字内的任意子字，或访问处于同一 64 字对齐段（即首索引为 64 的倍数的段）内、且索引 <i>i</i> 和 <i>j</i> 满足 <i>j=i+32</i> 的两个 32 位字内的任意子字时，共享内存请求不会在它们之间产生 bank 冲突（即便这两个子字的地址落在同一 bank 中）。关于常见访问模式的更多细节和示例，参见 CUDA C Programming Guide 中针对计算能力 3.x 的 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#shared-memory-3-0">Shared Memory</a> 章节。
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h3><a id="Chart"></a>图表</h3>
+                    <img src="memorystatisticssharedchart.png" style="float: right;mc-thumbnail: none;" />
+                    <p>
+          Load/Store <b>Requests</b>（请求数）等于执行的共享内存指令数量。当 warp 执行一条访问共享内存的指令时，会按前述方式解决 bank 冲突。每次 bank 冲突都会强制产生一次新的内存事务。需要的事务越多，除了线程访问的字以外还要额外传输的未使用字也越多，相应地降低了指令吞吐量。每个内存事务都要求该汇编指令再次发射；如果完成一个 warp 的请求需要多于一个事务，就会导致指令重放。关于指令重放及其性能影响的更多细节，可参阅 <a href="instructionstatistics.htm">指令统计</a> 实验中的相关介绍。
+        </p>
+                    <p>
+          <b>Transactions Per Request</b>（每请求事务数）图表分别针对加载和存储操作，显示每条执行的共享内存指令所需的平均共享内存事务数。数值越低越好；对于一个完整 warp 的单次共享内存操作，目标是 4 字节访问和 8 字节访问都为 1 个事务，16 字节访问为 2 个事务。注意，对于给定的访问模式，理想事务数取决于访问宽度、所配置的地址模式（如果可用）以及目标计算能力。可参考 <a href="../sourcelevel/memorytransactions.htm">内存事务</a> 实验中的 <i>Ideal Shared Memory Transactions</i>，以了解某条指令可能的最低传输次数。共享内存流量的 <b>Transaction Size</b>（事务大小）在计算能力 2.x 上为 128 字节，在计算能力 3.x 上为 256 字节。对于这两类设备，带宽都相当于每个 SM 每时钟周期一个事务。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <h3><a id="Analysis"></a>分析</h3>
+        <ul style="list-style-type:none">
+            <li value="1">
+            如果 <b>Transactions Per Request</b>（每请求事务数）较高……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……运行 <a href="../sourcelevel/memorytransactions.htm">内存事务</a> 实验，定位触发共享内存操作的源代码行。检查使用的内存访问模式，并尝试以避免 bank 冲突为目标优化数据访问（更多细节见 CUDA C Programming Guide 的 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#shared-memory-3-0">Shared Memory</a> 章节）。
+              </li><li style="text-indent:-20px;" value="2">
+                ……如果目标设备支持配置共享内存寻址模式，尝试切换配置并重新运行实验。CUDA Launches 页面会在 <i>Shared Memory Configuration Executed</i> 列中报告所选择的寻址模式配置。一般来说，64 字节访问模式对所有 8 字节访问都有利。但是，某些针对 32 字节模式优化的访问模式在 64 字节模式下会引入额外的 bank 冲突；因此，选择最佳寻址模式需要理解所有执行的共享内存指令的数量、宽度和访问模式。
+              </li></ul></li>
+            <li value="2">
+            如果 <b>Load/Store Requests</b>（加载/存储请求数）较高……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……且目标设备为计算能力 3.x，请研究能否用 <i>shuffle</i> 操作替代共享内存访问。这一新的 warp 级 intrinsic 允许 warp 内的线程直接相互交换数据，无需经过共享内存（或全局内存）。shuffle 指令的延迟也比共享内存访问更低，且不消耗共享内存空间用于数据交换，因此对于在线程间快速交换数据的应用而言，它可以是一种颇具吸引力的方式。
+              </li></ul></li>
+        </ul>
+        <div id="pagefooter">
+            <br />
+        </div>
+        <hr style="height: 1px;" width="100%" size="0" align="center" />
+        <script type="text/javascript" src="../../../../../../resources/stylesheets/run_prettify.js?lang=vb" autoload="true">
+        </script>
+        <p>
+        </p>
+        <div class="buttons inline-buttons clearfix topicToolbarProxy topicToolbarProxysite.css" style="mc-topic-toolbar-items: ;">
+            <div class="button-group-container-left">
+                <button class="button needs-pie previous-topic-button" type="button" title="导航到上一篇">
+                    <img src="../../../../../../../Skins/Default/Stylesheets/Images/transparent.gif" alt="上一主题" />
+                </button>
+                <div class="button current-topic-index-button disabled"><span class="sequence-index"></span> / <span class="sequence-total"></span></div>
+                <button class="button needs-pie next-topic-button" type="button" title="导航到下一篇">
+                    <img src="../../../../../../../Skins/Default/Stylesheets/Images/transparent.gif" alt="下一主题" />
+                </button>
+            </div>
+        </div>
+        <p> <![CDATA[ ]]></p>
+        <p><span style="color: #696969; font-size: 8pt;">NVIDIA GameWorks Documentation Rev. 1.0.150630 ©2015. NVIDIA Corporation. All Rights Reserved.</span>
+        </p>
+    </body>
+</html>

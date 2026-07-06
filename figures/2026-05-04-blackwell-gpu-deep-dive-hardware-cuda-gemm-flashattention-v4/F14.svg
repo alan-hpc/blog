@@ -1,0 +1,59 @@
+<svg viewBox='0 0 1020 360' xmlns='http://www.w3.org/2000/svg' font-family='sans-serif'>
+<defs>
+<marker id='ar' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='8' markerHeight='8' orient='auto'>
+<path d='M0,0 L10,5 L0,10 z' fill='#333'/></marker>
+<marker id='arR' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='8' markerHeight='8' orient='auto'>
+<path d='M0,0 L10,5 L0,10 z' fill='#b85450'/></marker>
+<marker id='arG' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='8' markerHeight='8' orient='auto'>
+<path d='M0,0 L10,5 L0,10 z' fill='#5fa55f'/></marker>
+<marker id='arB' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='8' markerHeight='8' orient='auto'>
+<path d='M0,0 L10,5 L0,10 z' fill='#4a6fd3'/></marker>
+</defs>
+<text x='510' y='28' font-size='15' font-weight='700' text-anchor='middle' fill='#1f2328'>Dense GEMM mainloop · 3 角色 4 stage 软件流水时间线</text>
+<!-- axes -->
+<line x1='160' y1='60' x2='160' y2='280' stroke='#888' stroke-width='1.2'/>
+<line x1='160' y1='280' x2='980' y2='280' stroke='#888' stroke-width='1.2'/>
+<text x='980' y='298' font-size='11' text-anchor='end' fill='#666'>time →</text>
+<!-- rows -->
+<text x='150' y='95' font-size='12' text-anchor='end' fill='#222' font-weight='700'>TMA warp</text>
+<text x='150' y='160' font-size='12' text-anchor='end' fill='#222' font-weight='700'>MMA dispatcher</text>
+<text x='150' y='225' font-size='12' text-anchor='end' fill='#222' font-weight='700'>Epilogue WG</text>
+<!-- dashed lane separators -->
+<line x1='160' y1='110' x2='980' y2='110' stroke='#ddd' stroke-dasharray='3 3'/>
+<line x1='160' y1='175' x2='980' y2='175' stroke='#ddd' stroke-dasharray='3 3'/>
+<line x1='160' y1='240' x2='980' y2='240' stroke='#ddd' stroke-dasharray='3 3'/>
+<!-- TMA: 5 stages -->
+<rect x='180' y='75' width='120' height='30' fill='#4a6fd3' opacity='0.50'/>
+<text x='240' y='95' font-size='11' text-anchor='middle' fill='#fff' font-weight='700'>load k=0</text>
+<rect x='320' y='75' width='120' height='30' fill='#4a6fd3' opacity='0.50'/>
+<text x='380' y='95' font-size='11' text-anchor='middle' fill='#fff' font-weight='700'>load k=1</text>
+<rect x='460' y='75' width='120' height='30' fill='#4a6fd3' opacity='0.50'/>
+<text x='520' y='95' font-size='11' text-anchor='middle' fill='#fff' font-weight='700'>load k=2</text>
+<rect x='600' y='75' width='120' height='30' fill='#4a6fd3' opacity='0.50'/>
+<text x='660' y='95' font-size='11' text-anchor='middle' fill='#fff' font-weight='700'>load k=3</text>
+<rect x='740' y='75' width='120' height='30' fill='#4a6fd3' opacity='0.30'/>
+<text x='800' y='95' font-size='11' text-anchor='middle' fill='#1a3055'>(idle)</text>
+<!-- MMA dispatcher -->
+<rect x='320' y='140' width='120' height='30' fill='#5fa55f' opacity='0.55'/>
+<text x='380' y='160' font-size='11' text-anchor='middle' fill='#fff' font-weight='700'>mma k=0</text>
+<rect x='460' y='140' width='120' height='30' fill='#5fa55f' opacity='0.55'/>
+<text x='520' y='160' font-size='11' text-anchor='middle' fill='#fff' font-weight='700'>mma k=1</text>
+<rect x='600' y='140' width='120' height='30' fill='#5fa55f' opacity='0.55'/>
+<text x='660' y='160' font-size='11' text-anchor='middle' fill='#fff' font-weight='700'>mma k=2</text>
+<rect x='740' y='140' width='120' height='30' fill='#5fa55f' opacity='0.55'/>
+<text x='800' y='160' font-size='11' text-anchor='middle' fill='#fff' font-weight='700'>mma k=3</text>
+<!-- Epilogue overlap with last MMA -->
+<rect x='740' y='205' width='220' height='30' fill='#a33ea1' opacity='0.55'/>
+<text x='850' y='225' font-size='11' text-anchor='middle' fill='#fff' font-weight='700'>tcgen05.ld + 后处理 + store</text>
+<!-- arrows showing dependencies -->
+<line x1='300' y1='105' x2='320' y2='140' stroke='#999' marker-end='url(#ar)'/>
+<line x1='440' y1='105' x2='460' y2='140' stroke='#999' marker-end='url(#ar)'/>
+<line x1='580' y1='105' x2='600' y2='140' stroke='#999' marker-end='url(#ar)'/>
+<line x1='720' y1='105' x2='740' y2='140' stroke='#999' marker-end='url(#ar)'/>
+<line x1='860' y1='170' x2='860' y2='205' stroke='#a33ea1' marker-end='url(#ar)'/>
+<!-- pipeline depth annotation -->
+<rect x='180' y='75' width='720' height='160' fill='none' stroke='#e0b300' stroke-width='1.5' stroke-dasharray='5 3' rx='3'/>
+<text x='540' y='258' font-size='11' text-anchor='middle' fill='#e0b300' font-weight='700'>3-stage software pipeline · TMA k+2 与 MMA k 同时进行</text>
+<rect x='160' y='305' width='820' height='40' fill='#efe' stroke='#5fa55f'/>
+<text x='570' y='327' font-size='11' text-anchor='middle' fill='#1a5a1a'>关键差异 vs Hopper：MMA dispatcher 是 <tspan font-weight='700'>1 thread</tspan>；累加器在 TMEM，SMEM 在 mma 完成后立即可被下一轮 TMA 覆盖</text>
+</svg>

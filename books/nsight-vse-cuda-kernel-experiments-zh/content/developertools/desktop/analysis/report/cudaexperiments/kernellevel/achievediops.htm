@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html xmlns:MadCap="http://www.madcapsoftware.com/Schemas/MadCap.xsd" lang="en-us" xml:lang="en-us" data-mc-search-type="Stem" data-mc-help-system-file-name="index.xml" data-mc-path-to-help-system="../../../../../../../" data-mc-target-type="WebHelp2" data-mc-runtime-file-type="Topic" data-mc-preload-images="false" data-mc-in-preview-mode="false" data-mc-toc-path="Developer Tools|Desktop Developer Tools|NVIDIA Nsight Visual Studio Edition|NVIDIA Nsight Visual Studio Edition 4.7|Analysis Tools|CUDA Experiments|Kernel-Level Experiments">
+    <!-- saved from url=(0016)http://localhost -->
+    <head>
+        <meta charset="utf-8" />
+        <meta name="googlebot" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><title>实际 IOPS</title>
+        <link rel="shortcut icon" href="../../../../../../Resources/MasterPages/nvidia.ico" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/Slideshow.css" rel="stylesheet" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/TextEffects.css" rel="stylesheet" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/Topic.css" rel="stylesheet" />
+        <link href="../../../../../../resources/stylesheets/style.css" rel="stylesheet" />
+        <style>/*&lt;meta /&gt;*/
+
+.button.previous-topic-button
+{
+	-pie-background: url('../../../../../../../Skins/Default/Stylesheets/Images/navigate-previous.png') no-repeat center center, linear-gradient(#ffffff, #ececec);
+}
+
+.button.current-topic-index-button
+{
+	-pie-background: linear-gradient(#ffffff, #ececec);
+}
+
+.button.next-topic-button
+{
+	-pie-background: url('../../../../../../../Skins/Default/Stylesheets/Images/navigate-next.png') no-repeat center center, linear-gradient(#ffffff, #ececec);
+}
+
+.needs-pie
+{
+	behavior: url('../../../../../../../Resources/Scripts/PIE.htc');
+}
+
+</style>
+        <script src="../../../../../../../Resources/Scripts/custom.modernizr.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/jquery.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/foundation.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/plugins.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/require.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/require.config.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/MadCapAll.js">
+        </script>
+        <script src="../../../../../../../Skins/Default/Scripts/Toolbar.js">
+        </script>
+    </head>
+    <body>
+        <p class="MCWebHelpFramesetLink MCWebHelpFramesetLinkTop"><a href="../../../../../../../index.html#developertools/desktop/analysis/report/cudaexperiments/kernellevel/achievediops.htm">打开带导航的主题视图</a>
+        </p>
+        <div class="MCBreadcrumbsBox_site.css_0"><span class="MCBreadcrumbsPrefix">当前位置： </span><a class="MCBreadcrumbsLink" href="../../../../../developer_tools.htm">开发者工具</a><span class="MCBreadcrumbsDivider"> &gt; </span><a class="MCBreadcrumbsLink" href="../../../../../desktop_devtools.htm">桌面开发者工具</a><span class="MCBreadcrumbsDivider"> &gt; </span><a class="MCBreadcrumbsLink" href="../../../../nvidia_nsight.htm">NVIDIA Nsight Visual Studio Edition</a><span class="MCBreadcrumbsDivider"> &gt; </span><span class="MCBreadcrumbs">实际 IOPS</span>
+        </div><a name="kanchor136"></a>
+        <div id="pageheader">
+            <h1><span class="SystemTitle">实际 IOPS</span>
+            </h1>
+            <p style="font-size: 8pt;"><span style="color: #696969;">NVIDIA® Nsight™ Development Platform, Visual Studio Edition 4.7 用户指南</span>
+                <br /><span id="feedbacklink" style="font-size: 8pt; font-weight: normal;"><a href="mailto:devtools-support@nvidia.com?subject=Documentation Feedback: Nsight Visual Studio Edition User Guide">发送反馈</a></span>
+                <br />
+            </p>
+            <hr width="100%" size="0" align="center" />
+        </div>
+        <h3><a id="Overview"></a>概述</h3>
+        <p>
+          了解已执行的整数运算数量和指令构成，对于为 kernel 给出合理的性能预期估计是一项有用的输入。同时它也是更好地理解许多其他指标和实验的基础。与 <a href="achievedflops.htm">实际 FLOPS</a> 实验类似，它的主要价值在于跟踪并评估代码改动带来的性能差异，而不是推导性能受限的真正原因。
+        </p>
+        <h5><a id="Background"></a>背景</h5>
+        <p>
+          在计算能力 1.x 的设备上，32 位整数乘法由于不被原生支持，因此使用多条指令实现。然而 24 位整数乘法通过 <code>__[u]mul24</code> 内建函数得到原生支持。对于受指令限制的 kernel，在可能的情况下使用 <code>__[u]mul24</code> 替代 32 位乘法运算符通常可以提升性能。但在使用 <code>__[u]mul24</code> 反而抑制了编译器优化的情况下，效果可能相反。
+        </p>
+        <p>
+          在计算能力 2.x 及以上的设备上，32 位整数乘法被原生支持，而 24 位整数乘法则不被原生支持。因此 <code>__[u]mul24</code> 会使用多条指令实现，应避免使用。
+        </p>
+        <p>
+          整数除法和模运算代价高昂：在计算能力 1.x 的设备上需要数十条指令，在计算能力 2.x 及以上的设备上需要不到 20 条指令。在某些情况下它们可以用位运算替代：如果 <code>n</code> 是 2 的幂，<code>(i/n)</code> 等价于 <code>(i&gt;&gt;log2(n))</code>，<code>(i%n)</code> 等价于 <code>(i&amp;(n-1))</code>；如果 <code>n</code> 是字面常量，编译器会自动完成这些转换。
+        </p>
+        <p>
+          本文档中对具体汇编指令的引用，指的是硬件的实际指令集架构（ISA），称为 SASS。关于不同 CUDA 计算架构 SASS 汇编指令的描述和完整列表，请参阅 NVIDIA CUDA 工具 <a href="http://docs.nvidia.com/cuda/pdf/cuobjdump.pdf">cuobjdump</a> 的文档。
+        </p>
+        <h3><a id="Charts"></a>图表</h3>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="IntegerOperations"></a>整数运算</h4>
+                    <img src="achievediopschartintegeroperations.png" style="float: right;mc-thumbnail: none;" alt="整数运算" />
+                    <p>
+          报告按指令类别分组的已执行整数指令命中数的加权和。所应用的权重可以在数据收集前通过 Activity 页面上的 <a href="../../../activity/activitytype/profilesettings/experimentconfiguration/experimentconfiguration.htm">实验配置</a> 自定义。
+        </p>
+                    <p style="padding:10px;background-color:#eaefe0">
+          根据实际操作和所使用的编译器选项不同，CUDA C 中一条整数指令在汇编代码中可能对应多条指令。所报告的数值是基于已执行的汇编指令，因此数字可能与仅从 CUDA C 代码推断出的预期不一致。可使用 <a href="../../../../analysis_source_code_correlation.htm#SourceView">源码视图</a> 页面研究高级代码与汇编代码之间的映射关系。
+        </p>
+                    <h5>指标</h5>
+                    <p><b>ADD</b>
+          所有已执行的整数加法（<code>IADD</code>）的加权和。默认权重为 1。
+        </p>
+                    <p><b>MUL</b>
+          所有已执行的整数乘法（<code>IMUL</code>）的加权和。默认权重为 1。
+        </p>
+                    <p><b>MAD</b>
+          所有已执行的整数乘加（<code>IMAD</code>）指令的加权和。默认权重为 2。
+        </p>
+                    <p><b>SAD</b>
+          所有已执行的绝对差之和（<code>ISAD</code>）指令的加权和。默认权重为 1。
+        </p>
+                    <p><b>SCADD</b>
+          所有已执行的移位加（<code>ISCADD</code>）指令的加权和。默认权重为 2。
+        </p>
+                    <p><b>Shifts</b>
+          所有已执行的移位指令的加权和，涵盖右移（<code>SHR</code>）、左移（<code>SHL</code>）和漏斗移位（<code>SHF</code>）操作。默认权重为 1。
+        </p>
+                    <p><b>Bit Ops</b>
+          所有已执行的整数位运算的加权和。具体包括位域提取（<code>BFE</code>）、位域插入（<code>BFI</code>）以及查找首个 1 位（<code>FLO</code>）操作。默认权重为 1。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <p>
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="IntegerOperationsPerSecond"></a>每秒整数运算次数</h4>
+                    <img src="achievediopschartintegeroperationspersecond.png" style="float: right;mc-thumbnail: none;" alt="每秒整数运算次数" />
+                    <p>
+          报告每秒已执行整数指令命中数的加权和。该图表是一个堆叠柱状图，所使用的指令类别与 <a href="#IntegerOperations">整数运算</a> 图表完全相同。
+        </p>
+                    <h5>指标</h5>
+                    <p><b>Math</b>
+          所有已执行的整数算术指令每秒的加权和。汇总了 <a href="#IntegerOperations">整数运算</a> 图表中 ADD、MUL、MAD、SAD 和 SCADD 的各自贡献。
+        </p>
+                    <p><b>Other</b>
+          移位指令和位运算每秒的加权和。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <h3><a id="Analysis"></a>分析</h3>
+        <p>
+          CUDA C Best Practices Guide 给出了若干优化整数 <a href="http://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#arithmetic-instructions">算术指令</a> 的通用建议：
+          <ul style="list-style-type:none"><li value="1"><a href="http://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#division-and-modulo-operations">除法与模运算</a>：使用移位操作来避免昂贵的除法和模运算。
+            </li></ul></p>
+        <p>
+          同时也尽量减少所执行的低吞吐量算术指令数量。CUDA C Programming Guide 给出了各计算能力下所有原生 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#arithmetic-instructions">算术指令</a> 的预期吞吐量列表。
+        </p>
+        <div id="pagefooter">
+            <br />
+        </div>
+        <hr style="height: 1px;" width="100%" size="0" align="center" />
+        <script type="text/javascript" src="../../../../../../resources/stylesheets/run_prettify.js?lang=vb" autoload="true">
+        </script>
+        <p>
+        </p>
+        <div class="buttons inline-buttons clearfix topicToolbarProxy topicToolbarProxysite.css" style="mc-topic-toolbar-items: ;">
+            <div class="button-group-container-left">
+                <button class="button needs-pie previous-topic-button" type="button" title="导航到上一主题">
+                    <img src="../../../../../../../Skins/Default/Stylesheets/Images/transparent.gif" alt="上一主题" />
+                </button>
+                <div class="button current-topic-index-button disabled"><span class="sequence-index"></span> / <span class="sequence-total"></span></div>
+                <button class="button needs-pie next-topic-button" type="button" title="导航到下一主题">
+                    <img src="../../../../../../../Skins/Default/Stylesheets/Images/transparent.gif" alt="下一主题" />
+                </button>
+            </div>
+        </div>
+        <p> <![CDATA[ ]]></p>
+        <p><span style="color: #696969; font-size: 8pt;">NVIDIA GameWorks Documentation Rev. 1.0.150630 ©2015. NVIDIA Corporation. All Rights Reserved.</span>
+        </p>
+    </body>
+</html>

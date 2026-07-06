@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html xmlns:MadCap="http://www.madcapsoftware.com/Schemas/MadCap.xsd" lang="en-us" xml:lang="en-us" data-mc-search-type="Stem" data-mc-help-system-file-name="index.xml" data-mc-path-to-help-system="../../../../../../../" data-mc-target-type="WebHelp2" data-mc-runtime-file-type="Topic" data-mc-preload-images="false" data-mc-in-preview-mode="false" data-mc-toc-path="Developer Tools|Desktop Developer Tools|NVIDIA Nsight Visual Studio Edition|NVIDIA Nsight Visual Studio Edition 4.7|Analysis Tools|CUDA Experiments|Kernel-Level Experiments|Memory Statistics">
+    <!-- saved from url=(0016)http://localhost -->
+    <head>
+        <meta charset="utf-8" />
+        <meta name="googlebot" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><title>内存统计 — 缓存</title>
+        <link rel="shortcut icon" href="../../../../../../Resources/MasterPages/nvidia.ico" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/Slideshow.css" rel="stylesheet" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/TextEffects.css" rel="stylesheet" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/Topic.css" rel="stylesheet" />
+        <link href="../../../../../../resources/stylesheets/style.css" rel="stylesheet" />
+        <style>/*&lt;meta /&gt;*/
+
+.button.previous-topic-button
+{
+	-pie-background: url('../../../../../../../Skins/Default/Stylesheets/Images/navigate-previous.png') no-repeat center center, linear-gradient(#ffffff, #ececec);
+}
+
+.button.current-topic-index-button
+{
+	-pie-background: linear-gradient(#ffffff, #ececec);
+}
+
+.button.next-topic-button
+{
+	-pie-background: url('../../../../../../../Skins/Default/Stylesheets/Images/navigate-next.png') no-repeat center center, linear-gradient(#ffffff, #ececec);
+}
+
+.needs-pie
+{
+	behavior: url('../../../../../../../Resources/Scripts/PIE.htc');
+}
+
+</style>
+        <script src="../../../../../../../Resources/Scripts/custom.modernizr.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/jquery.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/foundation.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/plugins.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/require.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/require.config.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/MadCapAll.js">
+        </script>
+        <script src="../../../../../../../Skins/Default/Scripts/Toolbar.js">
+        </script>
+    </head>
+    <body>
+        <p class="MCWebHelpFramesetLink MCWebHelpFramesetLinkTop"><a href="../../../../../../../index.html#developertools/desktop/analysis/report/cudaexperiments/kernellevel/memorystatisticscaches.htm">打开带导航的主题视图</a>
+        </p>
+        <div class="MCBreadcrumbsBox_site.css_0"><span class="MCBreadcrumbsPrefix">当前位置： </span><a class="MCBreadcrumbsLink" href="../../../../../developer_tools.htm">开发者工具</a><span class="MCBreadcrumbsDivider"> &gt; </span><a class="MCBreadcrumbsLink" href="../../../../../desktop_devtools.htm">桌面开发者工具</a><span class="MCBreadcrumbsDivider"> &gt; </span><a class="MCBreadcrumbsLink" href="../../../../nvidia_nsight.htm">NVIDIA Nsight Visual Studio Edition</a><span class="MCBreadcrumbsDivider"> &gt; </span><span class="MCBreadcrumbs">内存统计 — 缓存</span>
+        </div><a name="kanchor146"></a>
+        <div id="pageheader">
+            <h1><span class="SystemTitle">内存统计 — 缓存</span>
+            </h1>
+            <p style="font-size: 8pt; color: #a9a9a9;"><span style="font-weight: normal; color: #808080;" class="MyVariablesNsightVSEMainHeader"></span>
+                <br /><span id="feedbacklink" style="font-size: 8pt; font-weight: normal;"><a href="mailto:devtools-support@nvidia.com?subject=Documentation Feedback: Parallel Nsight User Guide">发送反馈</a></span>
+                <br />
+            </p>
+            <hr width="100%" size="0" align="center" />
+        </div>
+        <h3><a id="Overview"></a>概述</h3>
+        <p>
+          CUDA 设备的数据缓存层次结构在 Programming Guide 的各计算能力章节中均有描述，例如 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#architecture-2-x">2.x</a> 与 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#architecture-3-0">3.x</a>。一般而言，存在三类数据缓存：L1、L2 和纹理缓存。从缓存中加载数据是通过固定大小的事务完成的。L1 事务为 128 字节，L2 和纹理事务为 32 字节。优化内存使用的一项重要策略，是将加载和存储成组进行，以尽可能少的缓存事务访问所需的数据。对于同时被 L1 和 L2 缓存的内存，若一个 warp 中的每个线程都从分散位置加载一个 4 字节值，并且这些访问都在 L1 缓存中未命中，则每个线程都会产生一次 128 字节的 L1 事务以及四次 32 字节的 L2 事务。这将导致加载指令的重新发射次数比这些值相邻且按缓存对齐时多 32 倍。如果缓存之间的带宽成为瓶颈，可以通过重排数据或调整算法以更均匀地访问数据来缓解该问题。更多详情参见 Programming Guide 的<a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#global-memory-3-0">全局内存</a>章节。
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h3><a id="Chart"></a>图表</h3>
+                    <img src="memorystatisticscacheschart.png" style="float: right;mc-thumbnail: none;" alt="内存统计 — 缓存图表" />
+                    <p>
+                    </p>
+                    <h5>缓存</h5>
+                    <p>
+          全局内存访问要么经过 L1 和 L2 缓存，要么仅经过 L2 缓存，具体取决于架构和所使用的指令类型。全局只读内存访问经过纹理缓存和 L2 缓存。关于如何控制全局访问是否绕过 L1，请参见<a href="memorystatisticsglobal.htm">内存统计 — 全局内存</a>实验。本地内存访问经过 L1 和 L2 缓存；关于本地内存访问的更多信息，请参见<a href="memorystatisticslocal.htm">内存统计 — 本地内存</a>实验。纹理内存是只读的设备内存，访问经过纹理缓存和 L2 缓存；关于纹理访问的详情，请参见<a href="memorystatisticstexture.htm">内存统计 — 纹理内存</a>实验。共享内存访问不经过任何缓存。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <h3><a id="Analysis"></a>分析</h3>
+        <ul style="list-style-type:none">
+            <li value="1">
+            如果 L1 缓存命中率偏低 ……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                …… 首先检查是否使用了 L1 缓存。某些设备和某些类型的内存指令会绕过 L1 缓存。
+              </li><li style="text-indent:-20px;" value="2">
+                …… 检查缓存模式是否为 PREFER_L1。若不是，增大 L1 缓存容量有助于提高命中率。请注意，增大 L1 缓存容量需要减小共享内存容量，因此仅当 kernel 不需要额外的共享内存时，这才是一个可行的选择。
+              </li><li style="text-indent:-20px;" value="3">
+                …… 访问模式与 L1 缓存针对线性局部性的优化不匹配。尝试修改访问模式，让访问在空间上更靠近。或者，对于二维访问模式，纹理内存可能比全局内存更高效。
+              </li><li style="text-indent:-20px;" value="4">
+                …… 如果 L1 与 L2 之间的带宽是瓶颈，且每次请求对应的 L1 事务比偏高，可以考虑改为让访问绕过 L1 直接到 L2。由于每次 L1 未命中都会引发四次 L2 事务，直接访问 L2 最多可使访问数据所需的 L2 带宽减少 75%。关于如何更改读取以绕过 L1，请参见<a href="memorystatisticsglobal.htm">内存统计 — 全局内存</a>实验的概述章节。
+              </li><li style="text-indent:-20px;" value="5">
+                …… 尝试通过增加每线程寄存器数量来减少寄存器溢出。
+              </li></ul></li>
+        </ul>
+        <div id="pagefooter">
+            <br />
+        </div>
+        <hr style="height: 1px;" width="100%" size="0" align="center" />
+        <script type="text/javascript" src="../../../../../../resources/stylesheets/run_prettify.js?lang=vb" autoload="true">
+        </script>
+        <p>
+        </p>
+        <div class="buttons inline-buttons clearfix topicToolbarProxy topicToolbarProxysite.css" style="mc-topic-toolbar-items: ;">
+            <div class="button-group-container-left">
+                <button class="button needs-pie previous-topic-button" type="button" title="上一主题">
+                    <img src="../../../../../../../Skins/Default/Stylesheets/Images/transparent.gif" alt="上一主题" />
+                </button>
+                <div class="button current-topic-index-button disabled"><span class="sequence-index"></span> / <span class="sequence-total"></span></div>
+                <button class="button needs-pie next-topic-button" type="button" title="下一主题">
+                    <img src="../../../../../../../Skins/Default/Stylesheets/Images/transparent.gif" alt="下一主题" />
+                </button>
+            </div>
+        </div>
+        <p> <![CDATA[ ]]></p>
+        <p><span style="color: #696969; font-size: 8pt;">NVIDIA GameWorks Documentation Rev. 1.0.150630 ©2015. NVIDIA Corporation. All Rights Reserved.</span>
+        </p>
+    </body>
+</html>

@@ -1,0 +1,45 @@
+<svg viewBox="0 0 1000 360" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M 0 0 L 10 5 L 0 10 z" fill="#24292f"/>
+  </marker>
+  <style>
+    .title{font:700 24px sans-serif;fill:#24292f}
+    .sub{font:400 13px sans-serif;fill:#57606a}
+    .mono{font:500 13px ui-monospace,Menlo,monospace;fill:#24292f}
+  </style>
+</defs>
+<text x="500" y="38" text-anchor="middle" font-family="sans-serif" font-size="24" font-weight="700" fill="#24292f">Memory flow: make intermediates short-lived</text>
+<rect x="35" y="92" width="120" height="70" rx="8" fill="#fff5f0" stroke="#b85450" stroke-width="2"/>
+<text x="95.0" y="116" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#24292f">HBM</text>
+<text x="95.0" y="134" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#24292f">Wfp4, Xfp8, Ybf16</text>
+<line x1="163" y1="127.0" x2="167" y2="127.0" stroke="#24292f" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="175" y="92" width="120" height="70" rx="8" fill="#fff8e7" stroke="#e0b300" stroke-width="2"/>
+<text x="235.0" y="116" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#24292f">L2</text>
+<text x="235.0" y="134" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#24292f">reuse</text>
+<line x1="303" y1="127.0" x2="307" y2="127.0" stroke="#24292f" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="315" y="92" width="120" height="70" rx="8" fill="#eef7ff" stroke="#4a6fd3" stroke-width="2"/>
+<text x="375.0" y="116" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#24292f">SMEM</text>
+<text x="375.0" y="134" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#24292f">TMA tiles</text>
+<line x1="443" y1="127.0" x2="447" y2="127.0" stroke="#24292f" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="455" y="92" width="120" height="70" rx="8" fill="#fbf0fb" stroke="#a33ea1" stroke-width="2"/>
+<text x="515.0" y="116" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#24292f">TMEM</text>
+<text x="515.0" y="134" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#24292f">FP32 acc</text>
+<line x1="583" y1="127.0" x2="587" y2="127.0" stroke="#24292f" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="595" y="92" width="120" height="70" rx="8" fill="#f4faf4" stroke="#5fa55f" stroke-width="2"/>
+<text x="655.0" y="116" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#24292f">Register</text>
+<text x="655.0" y="134" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#24292f">φ, amax</text>
+<line x1="723" y1="127.0" x2="727" y2="127.0" stroke="#24292f" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="735" y="92" width="120" height="70" rx="8" fill="#eef7ff" stroke="#4a6fd3" stroke-width="2"/>
+<text x="795.0" y="116" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#24292f">SMEM</text>
+<text x="795.0" y="134" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#24292f">store tile</text>
+<line x1="863" y1="127.0" x2="867" y2="127.0" stroke="#24292f" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="875" y="92" width="120" height="70" rx="8" fill="#f4faf4" stroke="#5fa55f" stroke-width="2"/>
+<text x="935.0" y="116" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#24292f">HBM</text>
+<text x="935.0" y="134" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#24292f">Y only</text>
+<rect x="205" y="212" width="590" height="72" rx="8" fill="#fff5f0" stroke="#b85450" stroke-width="2" stroke-dasharray="7 6"/>
+<text x="500" y="240" text-anchor="middle" font-family="sans-serif" font-size="18" font-weight="700" fill="#b85450">removed HBM round trips</text>
+<text x="500" y="264" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#57606a">Xrecv / H / A / Ye are no longer long-lived global tensors</text>
+<path d="M230 180 C300 205, 700 205, 770 180" fill="none" stroke="#b85450" stroke-width="2" stroke-dasharray="7 6"/>
+<text x="500" y="330" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#57606a">Goal: HBM carries inputs, weights, final output; intermediate states stay short-lived.</text>
+</svg>

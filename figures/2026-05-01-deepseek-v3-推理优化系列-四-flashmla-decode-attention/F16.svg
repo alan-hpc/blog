@@ -1,0 +1,40 @@
+<svg viewBox="0 0 1000 575" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M 0 0 L 10 5 L 0 10 z" fill="#24292f"/>
+  </marker>
+</defs>
+<rect x="0" y="0" width="1000" height="575" fill="#ffffff"/>
+<text x="500.0" y="40" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="24" font-weight="750" fill="#24292f">Shared memory budget: 225 KB leaves almost no slack</text>
+<text x="500.0" y="66" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="13" font-weight="400" fill="#57606a">The resource table explains why FlashMLA is designed as a one-block-per-SM persistent kernel.</text>
+<rect x="70" y="96" width="860" height="66" rx="8" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.5"/>
+<text x="500" y="122" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="16" font-weight="750" fill="#24292f">H100 block-level shared memory budget</text>
+<text x="500" y="149" text-anchor="middle" font-family="&#x27;STIX Two Math&#x27;, &#x27;Cambria Math&#x27;, &#x27;Times New Roman&#x27;, serif" font-size="17" font-weight="500" fill="#57606a">M<tspan font-size="11.6" baseline-shift="sub">Q</tspan> + 2M<tspan font-size="11.6" baseline-shift="sub">K</tspan> + M<tspan font-size="11.6" baseline-shift="sub">P</tspan> + M<tspan font-size="11.6" baseline-shift="sub">scale</tspan> ≈ 225 KB  &lt;  227 KB</text>
+<text x="105" y="228" text-anchor="start" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="13" font-weight="750" fill="#24292f">sQ</text>
+<rect x="195" y="205" width="365" height="38" rx="4" fill="#eef7ff" stroke="#4a6fd3" stroke-width="1.4"/>
+<text x="388" y="229" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="12" font-weight="750" fill="#24292f">72 KB</text>
+<text x="735" y="220" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="11" font-weight="600" fill="#57606a">((_8,_8),(_64,_9))</text>
+<text x="735" y="238" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="11" font-weight="600" fill="#57606a">FP16</text>
+<text x="105" y="280" text-anchor="start" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="13" font-weight="750" fill="#24292f">sK ×2</text>
+<rect x="195" y="257" width="610" height="38" rx="4" fill="#f4faf4" stroke="#5fa55f" stroke-width="1.4"/>
+<text x="510" y="281" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="12" font-weight="750" fill="#24292f">144 KB</text>
+<text x="735" y="272" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="11" font-weight="600" fill="#57606a">2 × ((_8,_8),(_64,_9))</text>
+<text x="735" y="290" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="11" font-weight="600" fill="#57606a">FP16</text>
+<text x="105" y="332" text-anchor="start" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="13" font-weight="750" fill="#24292f">sP</text>
+<rect x="195" y="309" width="147" height="38" rx="4" fill="#fff8e7" stroke="#e0b300" stroke-width="1.4"/>
+<text x="279" y="333" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="12" font-weight="750" fill="#24292f">8 KB</text>
+<text x="735" y="324" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="11" font-weight="600" fill="#57606a">((_2,_2),_128,_1,_8)</text>
+<text x="735" y="342" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="11" font-weight="600" fill="#57606a">FP16</text>
+<text x="105" y="384" text-anchor="start" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="13" font-weight="750" fill="#24292f">sScale_o</text>
+<rect x="195" y="361" width="123" height="38" rx="4" fill="#fbf0fb" stroke="#a33ea1" stroke-width="1.4"/>
+<text x="267" y="385" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="12" font-weight="750" fill="#24292f">1 KB</text>
+<text x="735" y="376" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="11" font-weight="600" fill="#57606a">(_2,_128)</text>
+<text x="735" y="394" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="11" font-weight="600" fill="#57606a">FP32</text>
+<rect x="195" y="410" width="675" height="50" rx="4" fill="#ffffff" stroke="#d0d7de" stroke-width="1.2"/>
+<rect x="195" y="410" width="668" height="50" rx="4" fill="#fff5f0" stroke="#b85450" stroke-width="1.5"/>
+<text x="530" y="440" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="15" font-weight="750" fill="#b85450">total ≈ 225 KB</text>
+<text x="855" y="440" text-anchor="end" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="12" font-weight="750" fill="#24292f">H100 limit 227 KB</text>
+<rect x="170" y="492" width="660" height="54" rx="8" fill="#fff8e7" stroke="#e0b300" stroke-width="1.5"/>
+<text x="500" y="516" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="12" font-weight="750" fill="#b08900">这解释了为什么 block 直接接管一个 SM：SHM 已接近上限，调度空间主要在 tile/warp-group 内。</text>
+<text x="500" y="537" text-anchor="middle" font-family="Inter, -apple-system, BlinkMacSystemFont, &#x27;Segoe UI&#x27;, sans-serif" font-size="11" font-weight="500" fill="#57606a">如果再加一份大 buffer，很容易把 occupancy 或 pipeline 推到不可用边界。</text>
+</svg>

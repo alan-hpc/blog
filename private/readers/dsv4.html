@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DeepSeek-V4 技术报告</title>
+  <!-- Fonts: JetBrains Mono for code -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+  <!-- Highlight.js: Monokai Sublime theme -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/monokai-sublime.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <!-- KaTeX -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+  <!-- Shared reader styles -->
+  <link rel="stylesheet" href="/blog/readers/reader.css">
+</head>
+<body>
+
+<div id="lb" onclick="lbClose(event)">
+  <span id="lb-close" onclick="lbHide()">&#x2715;</span>
+  <img id="lb-img" src="" alt="">
+</div>
+
+<nav id="sb">
+  <div id="sb-title">
+    <p>DeepSeek-AI · 2026</p>
+    <h2>DeepSeek-V4<br>技术报告</h2>
+  </div>
+
+  <div class="ti tl1"><a href="#s-abstract">摘要</a></div>
+  <div class="ti tl1"><a href="#s1">1. 引言</a></div>
+
+  <div class="ti tl1"><a href="#s2">2. 模型架构</a></div>
+  <div class="ti tl2"><a href="#s2-1">2.1 流形约束超连接 mHC</a></div>
+  <div class="ti tl2"><a href="#s2-2">2.2 混合稀疏注意力</a></div>
+  <div class="ti tl3"><a href="#s2-2-1">2.2.1 压缩稀疏注意力 CSA</a></div>
+  <div class="ti tl3"><a href="#s2-2-2">2.2.2 重度压缩注意力 HCA</a></div>
+  <div class="ti tl3"><a href="#s2-2-3">2.2.3 其他注意力细节</a></div>
+  <div class="ti tl2"><a href="#s2-3">2.3 Muon 优化器</a></div>
+  <div class="ti tl2"><a href="#s2-4">2.4 DeepSeekMoE</a></div>
+
+  <div class="ti tl1"><a href="#s3">3. 支撑基础设施</a></div>
+  <div class="ti tl2"><a href="#s3-1">3.1 MegaMoE EP</a></div>
+  <div class="ti tl2"><a href="#s3-2">3.2 TileLang DSL</a></div>
+  <div class="ti tl2"><a href="#s3-3">3.3 批不变推理内核</a></div>
+  <div class="ti tl2"><a href="#s3-4">3.4 FP4 量化感知训练</a></div>
+  <div class="ti tl2"><a href="#s3-5">3.5 训练基础设施</a></div>
+  <div class="ti tl2"><a href="#s3-6">3.6 推理架构</a></div>
+
+  <div class="ti tl1"><a href="#s4">4. 预训练</a></div>
+  <div class="ti tl2"><a href="#s4-1">4.1 数据与上下文扩展</a></div>
+  <div class="ti tl2"><a href="#s4-2">4.2 训练稳定性</a></div>
+
+  <div class="ti tl1"><a href="#s5">5. 后训练</a></div>
+  <div class="ti tl2"><a href="#s5-1">5.1 专家训练</a></div>
+  <div class="ti tl3"><a href="#s5-1-1">5.1.1 思维管理</a></div>
+  <div class="ti tl3"><a href="#s5-1-2">5.1.2 On-Policy 蒸馏</a></div>
+  <div class="ti tl2"><a href="#s5-2">5.2 RL 与 OPD 基础设施</a></div>
+  <div class="ti tl3"><a href="#s5-2-1">5.2.1 FP4 量化集成</a></div>
+  <div class="ti tl3"><a href="#s5-2-2">5.2.2 高效教师调度</a></div>
+  <div class="ti tl3"><a href="#s5-2-3">5.2.3 可抢占容错 Rollout</a></div>
+  <div class="ti tl3"><a href="#s5-2-4">5.2.4 百万 Token RL 扩展</a></div>
+  <div class="ti tl3"><a href="#s5-2-5">5.2.5 DSec 沙箱平台</a></div>
+  <div class="ti tl2"><a href="#s5-3">5.3 标准基准评测</a></div>
+  <div class="ti tl2"><a href="#s5-4">5.4 真实场景评测</a></div>
+
+  <div class="ti tl1"><a href="#s6">6. 结论与展望</a></div>
+</nav>
+
+<div id="reader">
+<div id="reader-inner">
+
+<header class="book-header">
+  <p class="kicker">DeepSeek-AI · 技术报告 · 2026</p>
+  <h1>DeepSeek-V4 技术报告</h1>
+  <p class="sub">DeepSeek-V4 Technical Report · arXiv:2505.09343 · April 2026</p>
+  <div style="margin-top:16px;padding:12px 16px;border:1px solid var(--rule);border-radius:4px;background:var(--paper);font-family:-apple-system,sans-serif;font-size:12.5px;line-height:2.0;color:var(--muted);">
+    <span style="font-size:10px;letter-spacing:.9px;text-transform:uppercase;color:#888;display:block;margin-bottom:6px;">原文来源</span>
+    <a href="https://arxiv.org/abs/2505.09343" style="color:var(--accent);text-decoration:none;" target="_blank">DeepSeek-V4 Technical Report</a> · DeepSeek-AI · arXiv:2505.09343 · 2026
+  </div>
+</header>
+
+<!-- ─── 摘要 ─────────────────────────────────────────────────────── -->
+<h2 id="s-abstract" class="section-h lv1">摘要</h2>
+
+<p class="zh">本报告介绍了 DeepSeek-V4 系列，这是我们面向下一代大语言模型的最新研究成果，旨在突破超长上下文处理的效率瓶颈。DeepSeek-V4 系列包含两个变体：<b>DeepSeek-V4-Pro</b>（1.6T 总参数，49B 激活参数）和 <b>DeepSeek-V4-Flash</b>（284B 总参数，13B 激活参数），两者均原生支持 <b>1M token</b> 上下文窗口。</p>
+
+<p class="zh">在架构层面，我们提出了三项核心创新：（1）<b>流形约束超连接（mHC）</b>，通过将通道混合矩阵约束在 Birkhoff 多面体上，实现更稳健的层间信息流；（2）<b>混合稀疏注意力</b>，由压缩稀疏注意力（CSA）和重度压缩注意力（HCA）构成，仅需 V3.2 约 73% 的注意力 FLOPs 和 90% 的 KV Cache 开销；（3）将 <b>Muon 优化器</b>成功应用于超大规模语言模型训练，并针对分布式设置进行了系统性适配。</p>
+
+<p class="zh">在系统层面，我们开发了 <b>MegaMoE EP</b>（基于波形重叠的专家并行流水线）、<b>TileLang</b>（面向神经网络内核的领域特定语言）、批不变推理内核，以及 <b>MXFP4 量化感知训练</b>框架。推理侧引入了异构 KV Cache 架构（状态缓存 + 分页缓存）和三种磁盘 KV Cache 策略。</p>
+
+<p class="zh">评测结果表明，DeepSeek-V4-Pro-Max（最高推理模式）在开源模型中取得了新的最优性能，在代码竞赛（Codeforces 评分 3206，人类前 23 名）、长上下文检索（MRCR 1M 83.5%）、形式化数学（PutnamBench 120/120）等方面可与前沿闭源模型媲美，同时具备高度竞争力的 Agent 能力。</p>
+
+<figure>
+  <img src="/blog/readers/figs/fig1_benchmark_flops.png" alt="Figure 1：benchmark 性能对比与推理效率" onclick="lbShow(this.src)">
+  <figcaption>图 1 | 左：DeepSeek-V4-Pro-Max 与主流模型的 benchmark 性能对比（知识推理与 Agent 能力）；右：DeepSeek-V4 系列与 DeepSeek-V3.2 的单 token 推理 FLOPs 和累积 KV Cache 大小对比（Pro 降低 3.7×/9.5×，Flash 降低 9.8×/13.7×）</figcaption>
+</figure>
+
+<!-- ─── 1. 引言 ────────────────────────────────────────────────────── -->
+<h2 id="s1" class="section-h lv1">1. 引言</h2>
+
+<p class="zh">近年来，大语言模型（LLM）在推理、编程、数学等各类任务上取得了显著进展。随着智能体（Agent）系统、长文档分析、代码库级别理解等应用场景的涌现，对超长上下文（百万 token 级别）的高效处理成为下一代 LLM 的核心挑战。</p>
+
+<p class="zh">现有的长上下文方案面临两个根本性困境：（1）<b>计算开销</b>：标准注意力的 FLOPs 随序列长度平方增长；（2）<b>KV Cache 开销</b>：所有 token 的 KV 需要驻留显存，百万 token 场景下超出单机 GPU 显存上限。虽然滑动窗口注意力（SWA）、线性注意力等方法缓解了部分问题，但往往以牺牲全局信息感知为代价。</p>
+
+<p class="zh">DeepSeek-V4 系列提出了系统性解决方案：通过 CSA + HCA 的混合稀疏注意力架构，在保留完整全局信息感知的前提下，将注意力 FLOPs 降低约 27%，KV Cache 减少约 10%。结合 mHC 超连接对层间信息流的优化、Muon 优化器对矩阵参数训练的改进，以及 MegaMoE EP 等系统优化，DeepSeek-V4 系列在百万 token 场景下实现了效率与性能的同步提升。</p>
+
+<!-- ─── 2. 模型架构 ────────────────────────────────────────────────── -->
+<h2 id="s2" class="section-h lv1">2. 模型架构</h2>
+
+<figure>
+  <img src="/blog/readers/figs/fig2_arch_overview.png" alt="DeepSeek-V4 整体架构图" onclick="lbShow(this.src)">
+  <figcaption>图 2：DeepSeek-V4 整体架构，展示 mHC 超连接层、CSA/HCA 混合稀疏注意力、DeepSeekMoE 和 MTP 多 Token 预测各模块的组织关系</figcaption>
+</figure>
+
+<h3 id="s2-1" class="section-h lv2">2.1 流形约束超连接（Manifold-Constrained Hyper-Connections，mHC）</h3>
+
+<p class="zh">标准残差连接的形式为 $x_{l+1} = x_l + f_l(x_l)$，信息流动路径单一，限制了层间信息的灵活传递。Zhu 等（2025）提出的超连接（Hyper-Connections，HC）将残差扩展为 $n_{\text{hc}}$ 路通道，允许不同层的输出按可学习的权重矩阵混合传递。</p>
+
+<p class="zh">DeepSeek-V4 在 HC 的基础上引入<b>流形约束</b>：要求通道混合矩阵 $B_l$ 必须属于 <b>Birkhoff 多面体</b> $\mathcal{M}$（所有双随机矩阵的集合）：</p>
+
+<div class="math-block">$$\mathcal{M} = \left\{X \in \mathbb{R}^{n_{\text{hc}} \times n_{\text{hc}}} \;\middle|\; X_{ij} \ge 0,\; \sum_j X_{ij} = 1,\; \sum_i X_{ij} = 1\right\}$$</div>
+
+<p class="zh">双随机约束保证了每路通道的权重之和为 1（行归一化）且每路通道被各层的贡献之和也为 1（列归一化），相当于层间信息流动的一种"保总量软排列"。其极点恰好是排列矩阵，因此 mHC 的通道混合可以理解为各置换矩阵的凸组合。</p>
+
+<p class="zh">具体参数化方式为：令 $\tilde{A}_l$、$\tilde{C}_l$ 为可训练参数，则：</p>
+
+<div class="math-block">$$A_l = \sigma(\tilde{A}_l), \quad C_l = 2\,\sigma(\tilde{C}_l)$$</div>
+
+<p class="zh no-indent">其中 $\sigma$ 为 sigmoid 函数，$A_l$ 为残差强度矩阵，$C_l$ 为输入缩放矩阵（系数 2 使期望值为 1）。随后通过 <b>Sinkhorn-Knopp 迭代</b>（交替行归一化和列归一化，共 20 次）将 $A_l$ 投影到 Birkhoff 多面体上，得到 $B_l$。</p>
+
+<p class="zh">DeepSeek-V4 设置 $n_{\text{hc}} = 4$，mHC 为训练带来约 <b>6.7% 的额外开销</b>，但显著提升了模型性能和训练稳定性。</p>
+
+<h3 id="s2-2" class="section-h lv2">2.2 混合稀疏注意力（Hybrid Sparse Attention）</h3>
+
+<h4 id="s2-2-1" class="section-h lv3">2.2.1 压缩稀疏注意力（Compressed Sparse Attention，CSA）</h4>
+
+<p class="zh">CSA 的目标是以低于全量注意力的代价捕获长程稀疏依赖。其核心设计包括两个组件：</p>
+
+<p class="zh"><b>Token 级压缩器</b>：对输入序列应用压缩比为 $m=4$ 的 token 级压缩，将 $n$ 个 token 压缩为 $n/m$ 个压缩 token。压缩器通过可学习的线性变换实现，在降低后续注意力计算量的同时，尽量保留每组 token 的语义信息。</p>
+
+<p class="zh"><b>Lightning Indexer</b>：在压缩 token 上使用 <b>FP4 低精度</b> QK 内积快速计算 attention score，并选出每个 query 最相关的 top-$k$ 压缩 token。FP4 精度足以保证 top-k 排序的准确性，计算开销仅为全精度的 1/8。被选中的 top-$k$ token 随后参与完整精度的稀疏 MQA（多查询注意力）计算。</p>
+
+<p class="zh">CSA 在每层同时包含一个<b>滑动窗口注意力（SWA）</b>分支（窗口大小 $n_{\text{win}}=128$），保证对近邻 token 的完整覆盖。因此 CSA 的 KV Cache 由两部分构成：固定大小的 SWA 窗口 KV + top-$k$ 压缩 token 的稀疏 KV，两者合计远小于全量 KV。</p>
+
+<figure>
+  <img src="/blog/readers/figs/fig1a_csa_arch.png" alt="CSA 压缩稀疏注意力架构" onclick="lbShow(this.src)">
+  <figcaption>图 1a：CSA（Compressed Sparse Attention）架构示意图——Token 级压缩器（压缩比 m=4）将序列压缩，Lightning Indexer 以 FP4 低精度快速定位 top-k 相关压缩 token，随后进行稀疏 MQA 计算；同层另设 SWA 分支覆盖近邻 token</figcaption>
+</figure>
+
+<h4 id="s2-2-2" class="section-h lv3">2.2.2 重度压缩注意力（Heavily Compressed Attention，HCA）</h4>
+
+<p class="zh">HCA 采用比 CSA 更激进的<b>序列级压缩</b>，压缩比为 $m'=128$：将连续 128 个 token 聚合为一个"摘要 KV 向量"，整个序列压缩为 $n/128$ 个摘要 token，然后对这 $n/128$ 个摘要 token 做<b>完整（dense）MQA</b>。</p>
+
+<p class="zh">HCA 不使用 RoPE 位置编码（位置信息已隐含在压缩过程中），因此每个 query 可以无差别地关注所有 $n/128$ 个摘要 token，获得整个百万 token 序列的全局上下文摘要。HCA 的 KV Cache 大小为 $O(n/128)$，相比全量 KV 节省了 128 倍。</p>
+
+<p class="zh">CSA 提供"精准定位"（通过稀疏 top-k），HCA 提供"全局鸟瞰"（通过密集压缩摘要），两者互补：CSA 覆盖局部精细依赖，HCA 覆盖长程粗粒度依赖，共同为每个 token 提供完整的上下文感知。</p>
+
+<figure>
+  <img src="/blog/readers/figs/fig1b_hca_arch.png" alt="HCA 重度压缩注意力架构" onclick="lbShow(this.src)">
+  <figcaption>图 1b：HCA（Heavily Compressed Attention）架构示意图——序列级压缩器将连续 128 个 token 聚合为一个摘要 KV 向量（压缩比 m′=128），随后对全部 n/128 个摘要 token 进行密集 MQA，无 RoPE 位置编码，提供全局长程上下文感知</figcaption>
+</figure>
+
+<h4 id="s2-2-3" class="section-h lv3">2.2.3 其他注意力实现细节</h4>
+
+<ul class="zh-list">
+  <li><b>QK RMSNorm</b>：对 Q 和 K 分别应用 RMSNorm，稳定注意力 logit 的量级，防止长序列下 attention score 出现极端值。</li>
+  <li><b>Partial RoPE</b>：仅对 Q/K 向量的<b>后 64 维</b>应用 RoPE 位置编码，其余维度不加位置信息，在保留位置感知的同时提升模型对绝对位置的泛化能力。</li>
+  <li><b>Attention Sink</b>：在 HCA 的压缩序列头部保留若干"汇聚 token"（attention sink），防止注意力权重分布退化。</li>
+  <li><b>注意力头数</b>：CSA 使用 16 个 query head，HCA 使用若干 query head（论文未披露确切数量）。</li>
+</ul>
+
+<h3 id="s2-3" class="section-h lv2">2.3 Muon 优化器</h3>
+
+<p class="zh">Muon（Jordan et al., 2024）是一种专为矩阵参数设计的优化器，核心思想是将梯度矩阵 $G$ 投影到其<b>正交 Polar 因子</b>（即对 $G$ 做 SVD，取正交部分 $U$，使 $G=U\Sigma V^T$），然后用 $U$ 代替归一化梯度做参数更新。这等价于以矩阵谱范数归一化梯度，保留了梯度的全局方向信息，而 Adam 的逐元素归一化则会破坏这一结构。</p>
+
+<p class="zh">直接 SVD 计算代价高昂，Muon 用 <b>Newton-Schulz 迭代</b>数值逼近正交因子：</p>
+
+<div class="math-block">$$X_{k+1} = a\,X_k + b\,X_k(X_k^T X_k) + c\,X_k(X_k^T X_k)^2$$</div>
+
+<p class="zh no-indent">其中系数 $(a,b,c)$ 使多项式在奇异值区间 $[0,1]$ 内快速收敛至 1（对应正交矩阵）。DeepSeek-V4 使用 <b>10 次迭代</b>（8 次固定系数 + 2 次精调系数），可将正交化误差压缩至 $10^{-7}$ 量级。</p>
+
+<p class="zh">Muon 与 <b>ZeRO 参数分片</b>结合使用：每个 GPU 在本地梯度分片上执行 Newton-Schulz 迭代，通过 All-Reduce 聚合正交化后的更新。Muon 仅应用于线性层权重矩阵（注意力 QKV/Output 投影和 FFN 权重），嵌入层和 LayerNorm 仍使用 AdamW。据论文报告，Muon 在长上下文扩展阶段（128K→1M token）相比 AdamW 展现出更好的收敛稳定性。</p>
+
+<h3 id="s2-4" class="section-h lv2">2.4 DeepSeekMoE 架构</h3>
+
+<p class="zh">V4 沿用 DeepSeek 系列的 MoE（Mixture-of-Experts）架构，每个 FFN 层由多个专家网络构成，每个 token 只激活其中少数专家。V4-Pro 使用 <b>256 个专家</b>（8 个共享专家 + 248 个路由专家），每个 token 激活 <b>top-8</b> 路由专家 + 全部 8 个共享专家，共激活 16 个专家的 FFN，大幅降低推理时的实际计算量。</p>
+
+<!-- ─── 3. 支撑基础设施 ────────────────────────────────────────────── -->
+<h2 id="s3" class="section-h lv1">3. 支撑基础设施</h2>
+
+<h3 id="s3-1" class="section-h lv2">3.1 MegaMoE EP：波形细粒度重叠流水线</h3>
+
+<p class="zh">MoE 的 Expert Parallel（EP）分组需要两次 All-to-All 通信：Dispatch（将 token 路由到对应专家 GPU）和 Combine（汇总专家输出）。传统 EP 中这两次通信是阻塞的，GPU 在通信期间空闲。</p>
+
+<p class="zh"><b>MegaMoE EP</b> 将一批 token 切分为若干 <b>wave（波）</b>，令不同 wave 的 Dispatch / 线性层 L1 / SwiGLU / 线性层 L2 / Combine 操作在时间上流水线重叠执行：当 Wave $i$ 在做 L1 GEMM 时，Wave $i+1$ 的 Dispatch 通信同步进行，Wave $i-1$ 的 SwiGLU 激活也在运行，使 All-to-All 通信完全隐藏在计算中。端到端测试表明，MegaMoE EP 相比朴素 EP 实现了 <b>1.50–1.73× 的吞吐量提升</b>（随 token 数和专家分布而异）。</p>
+
+<figure>
+  <img src="/blog/readers/figs/fig3_megamoe_pipeline.png" alt="MegaMoE EP 波形流水线" onclick="lbShow(this.src)">
+  <figcaption>图 5：MegaMoE EP 波形细粒度重叠流水线——将 token batch 切分为多个 wave，5 阶段（Dispatch → L1 GEMM → SwiGLU → L2 GEMM → Combine）在时间轴上错开重叠，All-to-All 通信完全隐藏在计算中，标注了不同配置下的理论加速比</figcaption>
+</figure>
+
+<h3 id="s3-2" class="section-h lv2">3.2 TileLang DSL</h3>
+
+<p class="zh"><b>TileLang</b>（Wang et al., ICLR 2026）是 DeepSeek 内部开发的深度学习内核编程 DSL，用 Python 语法描述 tile 级别的 CUDA 操作，编译器自动生成优化的设备代码和主机调用接口。主要特性：</p>
+<ul class="zh-list">
+  <li><b>主机代码自动生成</b>：从 kernel 描述自动生成 Python/C++ 调用接口，无需手写 launch 逻辑。</li>
+  <li><b>Z3 SMT 整数分析</b>：编译期静态检查 tile 参数合法性，提前发现越界、对齐错误。</li>
+  <li><b>IEEE-754 确定性</b>：保证相同输入产生完全相同的浮点输出，便于分布式一致性验证。</li>
+</ul>
+<p class="zh">V4 的多个核心内核（MegaMoE 专家 GEMM、Lightning Indexer、OPD 的 KL 散度计算）均使用 TileLang 实现。</p>
+
+<h3 id="s3-3" class="section-h lv2">3.3 批不变推理内核（Batch-Invariant Kernels）</h3>
+
+<p class="zh">推理时 prefill 阶段和 decode 阶段的 batch size 差异极大，单一内核难以同时优化两种场景。V4 采用<b>双内核策略</b>：<b>Single-SM 内核</b>（每序列一个 SM，适合 decode 小 batch）和 <b>Multi-SM 内核</b>（每序列跨多 SM，适合 prefill 大 batch），运行时动态选择。同时，V4 以 <b>DeepGEMM</b> 替代 cuBLAS 作为标准 GEMM 后端，DeepGEMM 专为 MoE 的 Fine-Grained Scaling GEMM 优化，在非规则 tile 形状下性能显著优于 cuBLAS。</p>
+
+<h3 id="s3-4" class="section-h lv2">3.4 FP4 量化感知训练（MXFP4 QAT）</h3>
+
+<p class="zh">V4 对 <b>MoE 专家权重</b> 和 <b>CSA Lightning Indexer 的 QK 投影权重</b> 应用 MXFP4（MicroScaling FP4）量化感知训练。MXFP4 在 4 位精度下引入 group-wise 共享指数，扩展了数值表达范围。</p>
+
+<p class="zh">关键技巧是 <b>FP4 与 FP8 的无损互转</b>：FP8（E4M3）的动态范围足以覆盖 MXFP4 的所有可表示值，因此 FP4 权重可无损表示为 FP8，与现有 FP8 混合精度框架（FP32 主权重 + FP8 梯度）无缝兼容，无需修改反向传播流水线。推理时直接使用原生 FP4 权重，利用 Blackwell 架构 Tensor Core 的原生 FP4 GEMM 支持，降低显存占用和带宽需求。</p>
+
+<h3 id="s3-5" class="section-h lv2">3.5 训练基础设施</h3>
+
+<p class="zh"><b>Muon ZeRO 混合</b>：Muon 优化器与 ZeRO 参数分片深度集成，Newton-Schulz 正交化在本地分片上执行，通过 All-Reduce 聚合更新，与 ZeRO-3 的通信模式兼容。</p>
+
+<p class="zh"><b>长上下文 Context Parallel</b>：百万 token 训练采用两阶段 Context Parallel（CP）：第一阶段在序列维度切分（序列并行），第二阶段在注意力头维度切分，充分利用 MegaMoE EP 的通信拓扑。</p>
+
+<p class="zh"><b>TorchFX 张量级 Checkpointing</b>：利用 TorchFX 程序捕获框架，在张量粒度上精确控制梯度检查点（gradient checkpointing），仅保存反向传播必需的中间激活值，大幅降低峰值显存占用，同时减少不必要的重计算开销。</p>
+
+<h3 id="s3-6" class="section-h lv2">3.6 推理架构：异构 KV Cache 与磁盘卸载</h3>
+
+<p class="zh"><b>异构 KV Cache</b>：V4 的三流注意力对 KV Cache 的需求各不相同，采用分类管理：</p>
+<ul class="zh-list">
+  <li><b>状态缓存（State Cache）</b>：管理 SWA 的固定大小滑动窗口 KV（$n_{\text{win}}=128$），以环形缓冲区预分配，无动态分页开销。</li>
+  <li><b>分页缓存（Paged Cache）</b>：管理 CSA 稀疏全局 KV 和 HCA 压缩 KV，按需动态分配和释放，支持不同序列长度和路由结果。</li>
+</ul>
+
+<p class="zh"><b>磁盘 KV Cache</b>：支持将 KV Cache 卸载到 NVMe SSD，提供三种策略：</p>
+<ul class="zh-list">
+  <li><b>Full 策略</b>：全量缓存所有层的 SWA KV 到磁盘，最大化 GPU 显存节省，适合极长序列低频访问。</li>
+  <li><b>Periodic 策略</b>：每隔 $k$ 层缓存一次，灵活平衡显存与 I/O 开销。</li>
+  <li><b>Zero 策略</b>：不卸载 SWA KV，仅将已大幅压缩的 CSA/HCA KV 保留在显存，延迟最低，适合中等长度场景。</li>
+</ul>
+<p class="zh">磁盘 KV Cache 通过异步预取和 ping-pong 缓冲区实现 I/O 与计算的重叠，避免 SSD 带宽成为推理瓶颈。</p>
+
+<figure>
+  <img src="/blog/readers/figs/fig4_kv_cache.png" alt="异构 KV Cache 架构" onclick="lbShow(this.src)">
+  <figcaption>图 4：异构 KV Cache 架构——State Cache（SWA 环形缓冲区，固定大小，预分配）管理近邻 KV；Paged Cache（动态分页）管理 CSA 稀疏全局 KV 和 HCA 压缩 KV；磁盘卸载层提供 Full / Periodic / Zero 三种策略</figcaption>
+</figure>
+
+<!-- ─── 4. 预训练 ──────────────────────────────────────────────────── -->
+<h2 id="s4" class="section-h lv1">4. 预训练</h2>
+
+<h3 id="s4-1" class="section-h lv2">4.1 数据与上下文扩展课程</h3>
+
+<p class="zh">V4 系列的预训练数据总量超过 <b>32T tokens</b>，覆盖多语言文本、代码、数学、科学论文等高质量语料。训练采用多阶段上下文扩展课程：</p>
+<ul class="zh-list">
+  <li><b>主训练阶段</b>：在 4K token 上下文长度下完成大部分预训练，建立核心语言理解和生成能力。</li>
+  <li><b>中等上下文扩展</b>：逐步引入 8K → 32K → 128K 长上下文数据（长文档、代码库、多轮对话等），配合 RoPE 频率参数调整渐进扩展。</li>
+  <li><b>长上下文扩展至 1M</b>：最终阶段使用百万 token 合成数据（超长文档拼接、大型代码仓库等），配合两阶段 CP 策略完成 1M token 原生支持。</li>
+</ul>
+
+<h3 id="s4-2" class="section-h lv2">4.2 训练稳定性技术</h3>
+
+<p class="zh"><b>Anticipatory Routing（预期路由）</b>：标准 token-choice 路由在做路由决策时，仅依赖当前 token 的隐藏状态，不感知其他 token 的路由偏好，易导致热门专家过载、训练损失震荡。Anticipatory Routing 引入对同批次其他 token 路由结果的轻量预期估计，使路由决策考虑全局负载，从而平滑训练曲线。</p>
+
+<p class="zh"><b>SwiGLU Clamping（SwiGLU 截断）</b>：SwiGLU 激活函数 $f(x,y)=x\cdot\sigma(y)\cdot y$ 在 $y$ 极大时可产生异常激活值，引发数值不稳定（NaN/Inf）。V4 对 SwiGLU 输出施加软截断（soft clamp），将超出阈值的激活值平滑压缩，在正常范围内保持梯度不变。</p>
+
+<div class="callout">
+  <p class="zh no-indent">论文在结论中坦承，Anticipatory Routing 和 SwiGLU Clamping 虽然实践中有效，但数学原理尚未完全清晰，属于"工程实验有效、理论待深入研究"的状态，未来将通过更系统的消融实验加以理解。</p>
+</div>
+
+<!-- ─── 5. 后训练 ──────────────────────────────────────────────────── -->
+<h2 id="s5" class="section-h lv1">5. 后训练</h2>
+
+<h3 id="s5-1" class="section-h lv2">5.1 专家训练（Specialist Training）</h3>
+
+<p class="zh">V4 的后训练分为两个主要阶段：<b>专家训练</b>和 <b>On-Policy 蒸馏（OPD）</b>。专家训练阶段为不同领域（数学、代码、创意写作、搜索等）分别训练专门的"领域专家"模型，训练方法为 <b>SFT + GRPO + GRM</b> 的组合：</p>
+<ul class="zh-list">
+  <li><b>SFT（Supervised Fine-Tuning）</b>：在高质量领域数据上做监督微调，建立基础能力。</li>
+  <li><b>GRPO（Group Relative Policy Optimization）</b>：通过对比同一 prompt 下多个生成结果的相对奖励优化策略，无需额外 critic 网络。</li>
+  <li><b>GRM（Generative Reward Model）</b>：使用生成式 LLM 作为奖励模型，提供细粒度过程奖励，替代传统判别式打分器。</li>
+</ul>
+
+<h4 id="s5-1-1" class="section-h lv3">5.1.1 思维管理（Thinking Management）</h4>
+
+<p class="zh">V4 提供三种推理模式：<b>Non-Think</b>（快速直接响应）、<b>Think High</b>（中等深度推理链，8K 上下文）、<b>Think Max</b>（最深度推理，384K 上下文，更低长度惩罚）。不同模式在评测和产品中对应不同的计算预算。</p>
+
+<p class="zh">在 agentic（多工具调用）场景中，V4 对 thinking trace 的管理策略做了区分：</p>
+<ul class="zh-list">
+  <li><b>工具调用场景</b>：完整保留所有轮次的 thinking trace（包括跨用户消息边界），模型可在多轮工具调用中积累推理历史（Cumulative Chain of Thought），支持长程复杂任务。</li>
+  <li><b>普通对话场景</b>：新用户消息到来时丢弃上一轮的 thinking trace，仅保留最终答案，保持上下文简洁，避免无效 thinking 占用 KV Cache。</li>
+</ul>
+
+<p class="zh"><b>Quick Instruction</b>：chatbot 场景中通常需要在生成响应前先判断是否触发搜索、识别用户意图等辅助任务，传统做法需要额外小模型处理（额外 prefill）。Quick Instruction 将这些辅助任务编码为专用特殊 token（如 <code class="ic">&lt;|action|&gt;</code>、<code class="ic">&lt;|query|&gt;</code>、<code class="ic">&lt;|title|&gt;</code> 等），直接追加在已生成序列末尾，<b>完全复用已有 KV Cache</b>，多个辅助任务可并行生成，显著降低 TTFT（首 token 生成延迟），并消除维护独立小模型的工程开销。</p>
+
+<figure>
+  <img src="/blog/readers/figs/fig7_thinking_mgmt.png" alt="思维管理策略对比" onclick="lbShow(this.src)">
+  <figcaption>图 7：思维管理策略对比——工具调用（Agentic）场景跨用户消息完整保留 thinking trace，形成累积推理链（Cumulative CoT）；普通对话场景新消息到来时丢弃上一轮 thinking，保持上下文简洁</figcaption>
+</figure>
+
+<h4 id="s5-1-2" class="section-h lv3">5.1.2 On-Policy Distillation（OPD）</h4>
+
+<p class="zh">专家训练产生 10 余个领域专家模型，OPD 将所有专家知识蒸馏进统一学生模型 $\pi_\theta$。OPD 的目标函数为各专家的反向 KL 散度加权求和：</p>
+
+<div class="math-block">$$\mathcal{L}_{\text{OPD}}(\theta) = \sum_{i=1}^{N} w_i \cdot D_{\text{KL}}\!\left(\pi_\theta \,\|\, \pi_{E_i}\right)$$</div>
+
+<p class="zh no-indent">其中 $N$ 为教师专家数量（V4 使用 10+），$w_i$ 为各专家的重要性权重，$\pi_{E_i}$ 为第 $i$ 个专家的输出分布。</p>
+
+<p class="zh">V4 的 OPD 采用<b>全词表 logit 蒸馏</b>：完整计算所有 $|V|>100{,}000$ 词表位置的真实 KL 散度，而非以 token-level 优势估计近似（此类近似方差大、训练不稳定）。全词表蒸馏提供更稳定的梯度估计，但也带来显著的内存挑战（需要具体的工程设计缓解，见 §5.2）。</p>
+
+<p class="zh">OPD 使用学生模型的<b>在线（on-policy）生成轨迹</b>作为训练样本：学生在各领域 prompt 上生成候选答案，教师为这些轨迹提供 logit 分布，学生据此优化。这确保了学生在自身分布下的对齐，避免了离线蒸馏中的分布偏移问题。</p>
+
+<h3 id="s5-2" class="section-h lv2">5.2 RL 与 OPD 基础设施</h3>
+
+<p class="zh">V4 的后训练基础设施在 DeepSeek-V3.2 分布式训练框架和推理引擎的基础上，引入以下重要改进：</p>
+
+<h4 id="s5-2-1" class="section-h lv3">5.2.1 FP4 量化集成</h4>
+
+<p class="zh">将 MXFP4 量化应用于 rollout 和所有推理前向传播（包括教师模型和参考模型），显著降低内存带宽消耗和采样延迟。训练步骤中，FP4 量化通过无损 FP4→FP8 反量化模拟，与现有 FP8 混合精度框架（FP32 主权重）无缝兼容，无需修改反向传播流水线。</p>
+
+<h4 id="s5-2-2" class="section-h lv3">5.2.2 高效教师调度（Efficient Teacher Scheduling）</h4>
+
+<p class="zh">全词表 OPD 面临的核心挑战：教师模型参数可能达到万亿级，多个教师模型不可能同时全量驻留显存；词表大小 $|V|>100{,}000$ 时，直接物化完整 logit 矩阵会超出显存。</p>
+
+<p class="zh">V4 的解决方案：（1）所有教师权重卸载到集中式分布式存储，按需通过 ZeRO-like 参数分片加载；（2）前向传播时只缓存<b>最后一层的隐藏状态</b>（而非完整 logit），训练时通过对应预测头即时重建 logit，规避了显存瓶颈；（3）训练样本按教师 GPU 索引排序，确保每个独立教师头在设备内存中同一时刻只驻留一份，最大化内存复用；（4）所有参数和隐藏状态的加载/卸载在后台异步进行，不阻塞计算关键路径；（5）KL 散度计算使用专用 TileLang 内核加速并避免动态内存分配。</p>
+
+<h4 id="s5-2-3" class="section-h lv3">5.2.3 可抢占容错 Rollout</h4>
+
+<p class="zh">V4 的 GPU 集群实行全集群任务抢占调度，任何运行中的任务随时可能被中断。为保证 RL/OPD rollout 的正确性，V4 为每个生成请求实现了 <b>token 粒度的 WAL（Write-Ahead Log）</b>：每生成一个 token 立即追加到该请求的 WAL，同时保存 KV Cache 快照。</p>
+<ul class="zh-list">
+  <li><b>抢占时</b>：暂停推理引擎并持久化当前状态（WAL + KV Cache）。</li>
+  <li><b>恢复时</b>：直接从 WAL 继续解码，无需从头重新生成。</li>
+</ul>
+<p class="zh">重要：重新生成会引入<b>长度偏差</b>——较短响应更易在抢占中存活，导致模型偏向生成短序列。token 粒度 WAL 从根本上消除了这一偏差，保证了 RL 训练的数学正确性。若遇到硬件故障，可通过 WAL 中的 token 重新 prefill 重建 KV Cache，完全恢复生成状态。</p>
+
+<h4 id="s5-2-4" class="section-h lv3">5.2.4 百万 Token 上下文 RL 扩展</h4>
+
+<p class="zh">1M token 序列的 RL/OPD 数据带来极大的内存和 I/O 压力。V4 将 rollout 数据结构分为两类：</p>
+<ul class="zh-list">
+  <li><b>轻量元数据</b>：可完整加载到内存，用于全局 shuffling 和 packing 布局计算。</li>
+  <li><b>重量 per-token 字段</b>：通过共享内存数据加载器延迟加载，在 mini-batch 粒度即用即释放，避免长序列数据全量驻留 CPU/GPU 内存。</li>
+</ul>
+<p class="zh">每个 mini-batch 的数量根据计算吞吐量和 I/O 重叠情况动态确定，在实际运行中实现高效的计算-I/O 流水线。</p>
+
+<h4 id="s5-2-5" class="section-h lv3">5.2.5 DeepSeek Elastic Compute（DSec）沙箱平台</h4>
+
+<p class="zh">为支持 agentic AI 的 post-training 和评测（代码执行、工具调用、web 搜索等），V4 开发了生产级弹性计算沙箱平台 <b>DSec</b>。DSec 由三个 Rust 组件构成：</p>
+<ul class="zh-list">
+  <li><code class="ic">Apiserver</code>（API 网关）：接收任务请求，分发给 Edge。</li>
+  <li><code class="ic">Edge</code>（per-host 代理）：管理本机沙箱实例生命周期。</li>
+  <li><code class="ic">Watcher</code>（集群监控）：协调全集群调度。</li>
+</ul>
+<p class="zh">DSec 通过统一 Python SDK（<code class="ic">libdsec</code>）暴露四种执行基底：<b>Function Call</b>（预热容器池，最低冷启动延迟）、<b>Container</b>（Docker 兼容，基于 EROFS 的按需分层存储）、<b>microVM</b>（Firecracker，VM 级隔离，毫秒级启动）、<b>fullVM</b>（QEMU，支持任意 Guest OS）。生产环境中，单个 DSec 集群管理数十万并发沙箱实例，基于 DeepSeek 3FS 分布式文件系统横向扩展。</p>
+
+<p class="zh">DSec 的核心设计原则：（1）<b>快速镜像加载</b>：通过 EROFS 只读层 + overlayfs 写时拷贝层，容器基础镜像按需从 3FS 加载，实现快速启动；（2）<b>高密度并发</b>：消除页缓存重复、减少 spinlock 争用，使单主机沙箱密度最大化；（3）<b>抢占安全恢复</b>：全局有序的 trajectory log 记录每个沙箱的命令调用及结果，支持客户端快速恢复、细粒度溯源和确定性重放。</p>
+
+<h3 id="s5-3" class="section-h lv2">5.3 标准基准评测</h3>
+
+<p class="zh"><b>评测设置：</b>知识与推理类基准包括 MMLU-Pro、GPQA Diamond、HLE、LiveCodeBench、Codeforces（内部基准，14 场 Division 1 竞赛）、HMMT 2026、IMOAnswerBench、Apex Shortlist 等；长上下文基准包括 MRCR 1M 和 CorpusQA 1M；Agent 类基准包括 Terminal Bench 2.0、SWE-Verified、SWE Pro、SWE Multilingual、BrowseComp、HLE w/ tools、GDPval-AA、MCPAtlas Public 和 Toolathlon。形式化数学评测在 Lean 4.28.0-rc1 环境下进行，配置语义搜索引擎，允许最多 500 次工具调用。</p>
+
+<p class="zh"><b>关键评测结果（DS-V4-Pro-Max vs 主流模型）：</b></p>
+
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>基准</th>
+      <th>Opus-4.6 Max</th>
+      <th>GPT-5.4 xHigh</th>
+      <th>Gemini-3.1-Pro High</th>
+      <th>GLM-5.1 Thinking</th>
+      <th class="best">DS-V4-Pro Max</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>LiveCodeBench</td><td>88.8</td><td>—</td><td>91.7</td><td>—</td><td class="best">93.5</td></tr>
+    <tr><td>Codeforces Rating</td><td>—</td><td>3168</td><td>3052</td><td>—</td><td class="best">3206</td></tr>
+    <tr><td>HMMT 2026</td><td>96.2</td><td class="best">97.7</td><td>94.7</td><td>89.4</td><td>95.2</td></tr>
+    <tr><td>IMOAnswerBench</td><td>75.3</td><td class="best">91.4</td><td>81.0</td><td>83.8</td><td>89.8</td></tr>
+    <tr><td>Apex Shortlist</td><td>85.9</td><td>78.1</td><td class="best">89.1</td><td>72.4</td><td>90.2</td></tr>
+    <tr><td>MRCR 1M (MMR)</td><td class="best">92.9</td><td>—</td><td>76.3</td><td>—</td><td>83.5</td></tr>
+    <tr><td>CorpusQA 1M (Acc)</td><td class="best">71.7</td><td>—</td><td>53.8</td><td>—</td><td>62.0</td></tr>
+    <tr><td>SWE-Verified</td><td class="best">80.8</td><td>—</td><td>80.6</td><td>—</td><td>80.6</td></tr>
+    <tr><td>MCPAtlas Public</td><td>73.8</td><td>67.2</td><td>69.2</td><td>71.8</td><td class="best">73.6</td></tr>
+    <tr><td>Toolathlon</td><td>47.2</td><td class="best">54.6</td><td>48.8</td><td>40.7</td><td>51.8</td></tr>
+  </tbody>
+</table>
+
+<figure>
+  <img src="/blog/readers/figs/fig10_hle_terminal.png" alt="HLE 与 TerminalBench 评测散点图" onclick="lbShow(this.src)">
+  <figcaption>图 10：HLE（Humanity's Last Exam）与 TerminalBench 2.0 评测散点图，各模型在两个 Agent 综合能力基准上的得分分布</figcaption>
+</figure>
+
+<p class="zh"><b>代码推理</b>：Codeforces Rating 3206（当前人类选手排行第 23 名），LiveCodeBench 93.5，均为开源模型最优，首次在代码竞赛上可与顶级闭源模型媲美。</p>
+
+<p class="zh"><b>推理能力</b>：在 Apex Shortlist 和 IMOAnswerBench 等高难度数学竞赛基准上，DS-V4-Pro-Max 接近 GPT-5.4 并超越 Gemini-3.1-Pro。形式化数学方面，在 PutnamBench（120 道普特南竞赛题）上达到 <b>120/120 满分</b>，超越 Aristotle 等专用定理证明系统，实现了普特南题级别的完美证明。</p>
+
+<figure>
+  <img src="/blog/readers/figs/fig8_formal_math.png" alt="PutnamBench 形式化数学评测结果" onclick="lbShow(this.src)">
+  <figcaption>图 8：PutnamBench 评测结果——DeepSeek-V4-Pro-Max 在 120 道普特南竞赛题上达到满分 120/120，超越 Aristotle 等专用定理证明系统</figcaption>
+</figure>
+
+<figure>
+  <img src="/blog/readers/figs/fig9_mrcr.png" alt="MRCR 1M 长上下文检索评测" onclick="lbShow(this.src)">
+  <figcaption>图 9：MRCR 1M（百万 token 多针多轮检索）评测结果——MMR 指标下各模型在超长上下文检索任务上的性能对比</figcaption>
+</figure>
+
+<p class="zh"><b>推理能力 vs 推理开销</b>：Max 模式（更长上下文 + 更低长度惩罚）比 High 模式在 HLE、HMMT 等高难度任务上有显著提升；Flash 系列在知识类任务上略逊于 Pro 系列（更多参数有利于知识记忆），但在推理类任务上，Flash-Max 已超越 K2.6-Thinking 等同类开源模型。</p>
+
+<h3 id="s5-4" class="section-h lv2">5.4 真实场景评测</h3>
+
+<p class="zh">标准基准往往无法完整反映真实用户体验，V4 构建了针对 DeepSeek API 和 Chatbot 主要使用场景的专有内部评测框架。</p>
+
+<p class="zh"><b>中文写作（5.4.1）：</b>以 Gemini-3.1-Pro 为基线，在 3170 条功能写作（商务文档、媒体文案、公文等）任务上，DS-V4-Pro 整体胜率 <b>62.65% vs 34.10%</b>；在 2837 条创意写作（小说、诗歌、散文等）的写作质量维度胜率 <b>77.5%</b>。主要优势来自 DS-V4-Pro 能主动满足隐性用户意图、提供自我核查，并生成深度连贯的长篇内容，而非浅显的 bullet point 列表。在复杂约束跟随和多轮写作场景中，Claude Opus 4.5 仍保持优势（52% vs 45.9%）。</p>
+
+<p class="zh"><b>搜索增强（5.4.2）：</b>在 DeepSeek 产品的搜索场景中，Non-Think 模式使用 RAG，Think 模式使用 Agentic Search（模型主动迭代调用搜索和工具）。在 869 条主客观混合评测中，Agentic Search 的整体胜率 <b>61.7%</b>，远优于 RAG（18.3%），但成本仅略高（平均 16.2 次工具调用，prefill token 增加约 30%）。主要优势集中在单值信息检索和规划策略类任务，比较推荐类主观任务仍有提升空间。</p>
+
+<p class="zh"><b>白领专业任务（5.4.3）：</b>构建涵盖金融、教育、法律、技术等 13 个行业的 30 项高认知需求中文专业任务，与 Claude Opus 4.6-Max 做人工盲测对比，从任务完成度、指令遵循、内容质量、格式美观四个维度评分。DS-V4-Pro-Max 的总体<b>不败率达 63%</b>（53% Win + 10% Tie），在任务完成和内容质量维度得分最高，但格式美观（幻灯片排版设计）仍有较大提升空间。</p>
+
+<figure>
+  <img src="/blog/readers/figs/fig11_12_white_collar.png" alt="白领专业任务胜负率与维度评分" onclick="lbShow(this.src)">
+  <figcaption>图 11–12：白领专业任务评测——左：DS-V4-Pro-Max vs Claude Opus 4.6-Max 总体胜负平分布；右：任务完成度、指令遵循、内容质量、格式美观四维度得分对比（13 个行业 30 项专业任务）</figcaption>
+</figure>
+
+<p class="zh"><b>代码 Agent（5.4.4）：</b>从约 200 个真实内部研发工作负载（PyTorch、CUDA、Rust、C++ 等多种技术栈，含功能开发、Bug 修复、重构、诊断等类型）中经质量筛选后保留 30 个任务。DS-V4-Pro-Max 通过率 <b>67%</b>，接近 Claude Opus 4.5（70%），大幅超越 Claude Sonnet 4.5（47%）。内部调研显示，52% 的 DeepSeek 研究人员已将 DS-V4-Pro 作为首选日常编程助手，最主要的批评是偶尔出现的细节错误、对模糊 prompt 的误解以及过度思考（over-thinking）。</p>
+
+<!-- ─── 6. 结论与展望 ───────────────────────────────────────────────── -->
+<h2 id="s6" class="section-h lv1">6. 结论与局限性</h2>
+
+<p class="zh">本文介绍了 DeepSeek-V4 系列，这是一系列面向下一代大语言模型的预览版本，旨在突破超长上下文高效处理的效率瓶颈。通过整合 CSA 和 HCA 的混合注意力架构，DeepSeek-V4 系列在长序列效率方面实现了重大突破。架构创新配合广泛的基础设施优化，有效支持了百万 token 上下文的原生处理，并为未来的测试时计算扩展（Test-Time Scaling）、长程 agentic 任务以及在线学习等新兴范式建立了必要的技术基础。</p>
+
+<p class="zh">评测结果表明，DeepSeek-V4-Pro-Max 在开源模型中重新定义了最优性能，在知识基准上显著超越已有开源模型，在推理性能上接近前沿闭源模型，并具备强竞争力的 Agent 能力。与此同时，DeepSeek-V4-Flash 在维持高度成本效益架构的同时，实现了与领先闭源模型可比的推理性能。我们相信，DeepSeek-V4 系列将为开源模型和 AI 社区开启百万 token 时代的全新可能。</p>
+
+<p class="zh">在追求极致长上下文效率的过程中，DeepSeek-V4 系列采用了相对大胆的架构设计，为控制风险，保留了大量经初步验证有效的组件和技巧，这也使架构相对复杂。在未来的迭代中，我们将开展更全面、更系统的研究，将架构精炼为最本质的设计，在不牺牲性能的前提下追求更高的优雅性。与此同时，尽管 Anticipatory Routing 和 SwiGLU Clamping 已在实践中被证明有效，其底层原理仍有待深入理解。我们将积极研究训练稳定性的基础性问题，建立更完善的内部监控指标体系，力求在大规模训练中实现更有原则性、更可预测的稳定性。</p>
+
+<p class="zh">此外，超越 MoE 和稀疏注意力架构之外，我们也将主动探索模型在新维度上的稀疏化可能——例如更稀疏的嵌入模块——以进一步提升计算和内存效率而不损害模型能力。我们还将持续研究低延迟的长上下文交互架构与系统技术，使百万 token 的长上下文部署和用户交互更加高效响应。同时，我们认识到长程多轮 agentic 任务的重要性和实践价值，将继续在这一方向深入探索。最后，我们还将推进多模态能力的研究，并持续改进数据策划与合成策略，在更广泛的任务场景和用户需求上提升模型的智能性、鲁棒性和实际可用性。</p>
+
+<div style="margin-top:40px;padding-top:20px;border-top:1px solid var(--rule);font-family:-apple-system,sans-serif;font-size:12px;color:var(--muted);line-height:2.0;">
+  <div style="font-size:10px;letter-spacing:.9px;text-transform:uppercase;color:#888;margin-bottom:6px;">原文来源</div>
+  <a href="https://arxiv.org/abs/2505.09343" style="color:var(--accent);text-decoration:none;" target="_blank">DeepSeek-V4 Technical Report</a> · DeepSeek-AI · arXiv:2505.09343 · April 2026
+</div>
+
+</div><!-- /reader-inner -->
+</div><!-- /reader -->
+
+
+  <script src="/blog/readers/reader.js"></script>
+</body>
+</html>

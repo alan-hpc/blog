@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DeepSeek V3 推理系统深度解析（三）：DeepGEMM Expert Compute，从 FP8 Grouped GEMM 到两套 MoE Layout</title>
+
+<!-- table-css-injected -->
+  <!-- Fonts: JetBrains Mono for code -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+  <!-- Highlight.js: Monokai Sublime theme -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/monokai-sublime.min.css">
+  <!-- KaTeX -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <!-- Shared reader styles -->
+  <link rel="stylesheet" href="/blog/readers/reader.css">
+</head>
+<body>
+
+<div id="lb" onclick="lbClose(event)">
+  <span id="lb-close" onclick="lbHide()">&#x2715;</span>
+  <img id="lb-img" src="" alt="">
+</div>
+
+<nav id="sb">
+  <div id="sb-title">
+    <p class="zh"><a href="https://alan-hpc.github.io/blog/" target="_blank">Yang Min · 技术博客</a></p>
+    <h2 class="section-h lv1" id="DeepSeek-V3-推理系统深度解析三DeepGEMM-Expert-Compute从">DeepSeek V3 推理系统深度解析（三）：DeepGEMM Expert Compute，从…</h2>
+  </div>
+  <div class="ti tl1"><a href="#prologue--本篇问题与读法">Prologue · 本篇问题与读法</a></div>
+  <div class="ti tl1"><a href="#1--expert-compute-边界不是普通-batched-gemm">1 · Expert compute 边界：不是普通 batched GEMM</a></div>
+  <div class="ti tl2"><a href="#11-deepep-输出什么deepgemm-接什么">1.1 DeepEP 输出什么，DeepGEMM 接什么</a></div>
+  <div class="ti tl2"><a href="#12-grouped-gemm-只-group-m-维">1.2 Grouped GEMM 只 group M 维</a></div>
+  <div class="ti tl2"><a href="#13-api-contract窄接口才是性能边界">1.3 API contract：窄接口才是性能边界</a></div>
+  <div class="ti tl2"><a href="#14-官方性能画像小-m-更吃调度质量">1.4 官方性能画像：小 M 更吃调度质量</a></div>
+  <div class="ti tl1"><a href="#2--两套-moe-layoutprefill-紧凑decode-固定">2 · 两套 MoE Layout：prefill 紧凑，decode 固定</a></div>
+  <div class="ti tl2"><a href="#21-contiguous-与-masked-是同一数学的两种系统形态">2.1 Contiguous 与 Masked 是同一数学的两种系统形态</a></div>
+  <div class="ti tl2"><a href="#22-contiguous-layoutm_indices-让整-tile-skip-成为-o1-判断">2.2 Contiguous layout：m_indices 让整 tile skip 成为 O(1) 判断</a></div>
+  <div class="ti tl2"><a href="#23-masked-layoutdecode-用-padding-换-cuda-graph">2.3 Masked layout：decode 用 padding 换 CUDA Graph</a></div>
+  <div class="ti tl2"><a href="#24-deepep-与-deepgemm-的-layout-契约">2.4 DeepEP 与 DeepGEMM 的 layout 契约</a></div>
+  <div class="ti tl2"><a href="#25-优化前后为什么不是普通-permute--batched-gemm">2.5 优化前后：为什么不是普通 permute + batched GEMM</a></div>
+  <div class="ti tl1"><a href="#3--fp8-数值路径block-scale-与-scale-promotion">3 · FP8 数值路径：block scale 与 scale promotion</a></div>
+  <div class="ti tl2"><a href="#31-gemm1swigluquantgemm2-的物理路径">3.1 GEMM1、SwiGLU、Quant、GEMM2 的物理路径</a></div>
+  <div class="ti tl2"><a href="#32-scale-promotion为什么不是先反量化再-gemm">3.2 Scale promotion：为什么不是先反量化再 GEMM</a></div>
+  <div class="ti tl2"><a href="#33-sm90-与-sm100-的-scale-边界">3.3 SM90 与 SM100 的 scale 边界</a></div>
+  <div class="ti tl2"><a href="#34-weight-scale-与-activation-scale-的方向不同">3.4 Weight scale 与 activation scale 的方向不同</a></div>
+  <div class="ti tl1"><a href="#4--hopper-sm90-kerneltma-生产者wgmma-消费者与-scheduler">4 · Hopper SM90 Kernel：TMA 生产者、WGMMA 消费者与 scheduler</a></div>
+  <div class="ti tl2"><a href="#41-五层结构从-grid-到-wgmma">4.1 五层结构：从 grid 到 WGMMA</a></div>
+  <div class="ti tl2"><a href="#42-warp-specialization-与-setmaxnreg">4.2 Warp specialization 与 setmaxnreg</a></div>
+  <div class="ti tl2"><a href="#43-tma-descriptorswizzle-与-multicast">4.3 TMA descriptor、swizzle 与 multicast</a></div>
+  <div class="ti tl2"><a href="#44-schedulerwaves非对齐-block-与-rasterization">4.4 Scheduler：waves、非对齐 block 与 rasterization</a></div>
+  <div class="ti tl2"><a href="#45-jit-config为什么-shape-要进入编译期">4.5 JIT config：为什么 shape 要进入编译期</a></div>
+  <div class="ti tl2"><a href="#46-ffma-interleave一个历史优化点的边界">4.6 FFMA interleave：一个历史优化点的边界</a></div>
+  <div class="ti tl1"><a href="#5--vllm-集成边界什么时候进-deepgemm什么时候-fallback">5 · vLLM 集成边界：什么时候进 DeepGEMM，什么时候 fallback</a></div>
+  <div class="ti tl2"><a href="#51-backend-选择不是装饰逻辑">5.1 Backend 选择不是装饰逻辑</a></div>
+  <div class="ti tl2"><a href="#52-prefill-与-decode-的后端分流">5.2 Prefill 与 decode 的后端分流</a></div>
+  <div class="ti tl2"><a href="#53-vllm-里的选择条件">5.3 vLLM 里的选择条件</a></div>
+  <div class="ti tl2"><a href="#54-常见误读">5.4 常见误读</a></div>
+  <div class="ti tl1"><a href="#optimization-audit--优化点查漏">Optimization Audit · 优化点查漏</a></div>
+  <div class="ti tl1"><a href="#map--图解索引">Map · 图解索引</a></div>
+  <div class="ti tl1"><a href="#references">References</a></div>
+</nav>
+
+<div id="reader">
+  <div id="reader-inner">
+
+    <header class="book-header">
+      <p class="kicker"><a href="https://alan-hpc.github.io/blog/" target="_blank">Yang Min · 技术博客</a> · 离线阅读版</p>
+      <h1>DeepSeek V3 推理系统深度解析（三）：DeepGEMM Expert Compute，从 FP8 Grouped GEMM 到两套 MoE Layout</h1>
+      <p class="sub">2026-05-06</p>
+      <div style="margin-top:16px;padding:12px 16px;border:1px solid var(--rule);
+                  border-radius:4px;background:var(--paper);font-family:-apple-system,sans-serif;
+                  font-size:12.5px;line-height:2.0;color:var(--muted);">
+        <span style="font-size:10px;letter-spacing:.9px;text-transform:uppercase;
+                     color:#888;display:block;margin-bottom:6px;">原文来源</span>
+        <a href="https://alan-hpc.github.io/blog/posts/2026-05-01-deepseek-v3-推理优化系列-三-deepgemm-fp8-grouped-gemm/" style="color:var(--accent);text-decoration:none;" target="_blank">DeepSeek V3 推理系统深度解析（三）：DeepGEMM Expert Compute，从 FP8 Grouped GEMM 到两套 MoE Layout</a>
+        · Yang Min · 2026
+      </div>
+    </header>
+
+    <p class="zh">DeepGEMM 的核心问题不是"FP8 GEMM 能不能运行"，而是<b>MoE 的不规则 expert shape 如何让 FP8 GEMM 在 Hopper 上持续高效</b>。标准 cuBLAS FP8 GEMM 假设固定的 M/N/K，但 MoE decode 的 token 分布让每个 expert 的 M 大小在运行时完全不可预测。DeepGEMM 用 JIT 编译 + grouped layout 绕开这个约束：不预编译，而是在第一次遇到特定 shape 时即时生成 CUTLASS kernel。不读这个设计决策，就不会理解为什么 JIT 在这里是必要的而不是可选的。</p><div class="callout"><p class="zh"><b>系列目录</b> ：1. DeepSeekV3 开篇、PD 分离与 Cross-node EP / 2. DeepEP HT/LL Dispatch 与 Buffer 协议 / <b>3. DeepGEMM Expert Compute 与 FP8 Grouped GEMM（本篇）</b> / 4. MLA Prefill/Decode 分流与 FlashMLA Latent KV / 5. DBO 与五段 Decode 流水 / 6. MTP 投机采样 / 7. DSA 稀疏注意力 / 8. vLLM 源码全链路与 MoE Backend</p></div><section id="prologue--本篇问题与读法"><h2 id="prologue--本篇问题与读法" class="section-h lv1">Prologue · 本篇问题与读法</h2><p class="zh">这一篇只讨论 routed expert compute：DeepEP 已经把 token 送到目标 expert，下一步要用两次 expert GEMM 和一次 SwiGLU 把 token 算完，再交回 Combine。DeepGEMM 在这条链路里不是“又一个 GEMM 库”，而是一个专门服务 DeepSeek-V3/R1 FP8 MoE 形状的 expert compute 后端。</p><p class="zh">本文把问题拆成五层：第一层先确认 MoE FFN 的数学语义；第二层解释 prefill 与 decode 为什么要分成 contiguous / masked 两套 layout；第三层解释 FP8 block scale 和 scale promotion；第四层进入 Hopper SM90 kernel 的 TMA、WGMMA、barrier、scheduler；最后回到 vLLM，说明什么条件下这条路径会被选中，什么时候必须 fallback。</p><p class="zh">需要先划清边界：DeepGEMM 当前仓库已经扩展到 SM90/SM100、FP8/FP4/BF16、Mega MoE、indexer scoring 等更多 kernel family。本文聚焦的是 DeepSeek-V3/R1 推理主线里的 <b>SM90 FP8 grouped GEMM</b> ，也就是 part 3 的主题；Mega MoE 融合 kernel 和 Blackwell FP4 会在独立文章里展开。</p><div class="callout"><p class="zh"><b>读代码时先抓接口契约</b> ：DeepGEMM 不负责 routing、不负责普通 MoE 的 top-k 选择，也不替 Combine 做 slot-sum。它只吃已经整理好的 <code class="ic">A / A_scale / B / B_scale / grouped_layout</code>，并且要求 <code class="ic">NT</code> 权重布局、<code class="ic">K</code> 维 128 block quant、<code class="ic">LHS scale</code> 已经是 TMA-friendly 的 column-major 形态。任何额外 transpose / cast / permute 如果没有被前后 kernel 融掉，都会回到 HBM 成本里。</p></div>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F1.drawio</div>
+  </div>
+  <figcaption>DeepGEMM 的系统边界：DeepEP 负责路由与分发，DeepGEMM 承接 expert FFN compute，Combine 只做回填与累加。</figcaption>
+</figure>
+<div class="callout"><p class="zh no-indent"><b>Routed expert FFN 的语义对象</b></p>$$
+\begin{array}{lll}
+g & = & (t,k),\qquad e=\pi_{t,k},\qquad s=s_{t,k},\\[0.55em]
+X_g & = & \operatorname{Dispatch}(X_t,e),\\[0.55em]
+H_g & = & X_g W_{1,e}^T=[G_g,U_g],\\[0.55em]
+A_g & = & \operatorname{silu}(G_g)\odot U_g\cdot s,\\[0.55em]
+(\widetilde A_g,A_{sf,g}) & = & Q_{\mathrm{FP8}}(A_g),\\[0.55em]
+Z_g & = & \widetilde A_g W_{2,e}^T,\\[0.55em]
+Y_t & = & \sum_{k:\pi_{t,k}\ne -1} Z_{(t,k)} .
+\end{array}
+$$</div><p class="zh">这里故意把 routing weight <code class="ic">s</code> 放进 SwiGLU 输出一侧，而不是在 Combine 再乘一次。这样 Linear2 的输出已经是带权贡献，Combine 的语义就简化成 slot-sum。理解这一点很重要，否则很容易把 DeepGEMM / DeepEP / vLLM 里的 buffer 命名和高层 MoE 公式对不上。</p><section id="1--expert-compute-边界不是普通-batched-gemm"><h2 id="1--expert-compute-边界不是普通-batched-gemm" class="section-h lv1">1 · Expert compute 边界：不是普通 batched GEMM</h2><h3 id="11-deepep-输出什么deepgemm-接什么" class="section-h lv2">1.1 DeepEP 输出什么，DeepGEMM 接什么</h3><p class="zh">DeepEP 的 HT/LL dispatch 已经解决“token 到哪个 expert、跨 rank 怎么搬”的问题。到 DeepGEMM 入口时，核心对象不是原始 token 序列，而是按 expert 聚合后的 pooled token，以及两个辅助数组：每个 slot 属于哪个 expert、每个 expert 有多少真实 token。</p><p class="zh">如果把这一步当成普通 batched GEMM，会很快撞到两个问题。第一，每个 expert 的 <code class="ic">M_e</code> 不同，batch 维度并不规则；第二，prefill 和 decode 对 shape 的要求完全相反。Prefill 希望少 padding，decode 希望 shape 固定以便 CUDA Graph replay。</p><h3 id="12-grouped-gemm-只-group-m-维" class="section-h lv2">1.2 Grouped GEMM 只 group M 维</h3><p class="zh">DeepGEMM 的 MoE grouped GEMM 与传统 grouped GEMM 的关键区别是：只在 M 维 group，N/K 固定。这样每个 expert 的权重形状相同，kernel 不需要为每个 group 维护完全不同的 GEMM descriptor；变化只发生在“这个 expert 有多少行 token”。</p><div class="callout"><p class="zh no-indent"><b>M-grouped GEMM 的约束</b></p>$$
+\begin{array}{lll}
+A_e & \in & \mathbb{R}^{M_e\times K},\\[0.45em]
+B_e & \in & \mathbb{R}^{N\times K},\\[0.45em]
+C_e & = & A_e B_e^T,\qquad e\in\{0,\ldots,E-1\},\\[0.45em]
+\text{only } M_e \text{ varies} &;& N,K \text{ are fixed across experts.}
+\end{array}
+$$</div><p class="zh">这就是为什么 DeepGEMM 的 grouped layout 看起来像“把所有 expert 的 M 轴重新排布”，而不是像 cuBLAS batched GEMM 那样把每个矩阵当成完全独立的 batch item。</p><h3 id="13-api-contract窄接口才是性能边界" class="section-h lv2">1.3 API contract：窄接口才是性能边界</h3><p class="zh">DeepGEMM 的 Python 入口很短，但约束很硬。<code class="ic">m_grouped_gemm_fp8_fp8_bf16_nt_contiguous</code> 接收 <code class="ic">(M_sum,K)</code> 的 packed token；<code class="ic">m_grouped_gemm_fp8_fp8_bf16_nt_masked</code> 接收 <code class="ic">(E,M_max,K)</code> 的固定三维张量。两者共同要求是 FP8 E4M3 输入、BF16 输出、RHS 已经是转置语义的 <code class="ic">(E,N,K)</code> 权重，scale 是 block-wise 128 粒度。</p><div class="table-scroll"><table class="data-table"><thead><tr><th>入口</th><th>激活 layout</th><th>动态信息</th><th>典型阶段</th><th>不该在这里发生的事</th></tr></thead><tbody><tr><td><code class="ic">m_grouped_gemm_fp8_fp8_bf16_nt_contiguous</code></td><td><code class="ic">(M_sum,K)</code></td><td><code class="ic">m_indices[M_sum]</code></td><td>prefill / 训练 forward</td><td>每 expert 单独 launch、小矩阵 padding 到统一 <code class="ic">M_max</code></td></tr><tr><td><code class="ic">m_grouped_gemm_fp8_fp8_bf16_nt_masked</code></td><td><code class="ic">(E,M_max,K)</code></td><td><code class="ic">masked_m[E]</code> + <code class="ic">expected_m</code></td><td>decode / CUDA Graph</td><td>每步重建 shape、CPU 参与重排、动态 capture</td></tr></tbody></table></div><p class="zh">这里最容易漏掉的是 <code class="ic">LHS scale</code>。DeepGEMM 要求它以 column-major、16B TMA-aligned 的方式进入 kernel；如果上游传普通 contiguous scale，辅助函数会临时转置，这条慢路径虽然保证正确性，却会把性能账重新暴露出来。因此 vLLM 里的 quant kernel 会直接产出 DeepGEMM 需要的 scale stride，而不是先写普通 scale 再让 GEMM 入口修。</p><h3 id="14-官方性能画像小-m-更吃调度质量" class="section-h lv2">1.4 官方性能画像：小 M 更吃调度质量</h3><p class="zh">DeepGEMM 报告在 H800 SXM5 上给出的数据有一个很稳定的信号：<code class="ic">M=64/128</code> 这类小 M dense shape 的相对收益很高，MoE grouped shape 的收益更像是稳态提升。原因并不神秘：小 M 时 launch、scheduler、tile occupancy、scale 读取和边界判断的占比更高，能否把这些开销 JIT 到编译期、能否让 CTA 数接近 SM 数，会直接改变吞吐。</p><div class="table-scroll"><table class="data-table"><thead><tr><th>场景</th><th>代表形状</th><th>观察到的信号</th><th>这说明什么</th></tr></thead><tbody><tr><td>Dense 小 M</td><td><code class="ic">M=64/128, K=7168</code></td><td>相比内部 CUTLASS 路径提升明显</td><td>overhead 与 tile 并行度决定上限</td></tr><tr><td>Dense 大 M</td><td><code class="ic">M=4096</code> 级别</td><td>更接近硬件上限，提升收敛</td><td>主瓶颈回到 Tensor Core 吞吐</td></tr><tr><td>Grouped contiguous</td><td>多 expert 大 M 拼接</td><td>稳定优于泛化 grouped 路径</td><td>layout 与 scheduler 更贴近 MoE</td></tr><tr><td>Grouped masked</td><td>decode 小 M + 固定 shape</td><td>带宽和 graph 约束一起出现</td><td>需要为了 graph 接受 padding</td></tr></tbody></table></div><p class="zh">换句话说，DeepGEMM 的胜负不只在 Tensor Core 峰值，而在“能不能把小而散的 expert 计算变成硬件愿意吃的连续 tile 流”。当 <code class="ic">M</code> 足够大时，很多 GEMM backend 都能接近上限；当 <code class="ic">M</code> 很小、expert 很多、top-k 很稀疏时，layout、JIT config 和 scheduler 才是主要差异。</p><section id="2--两套-moe-layoutprefill-紧凑decode-固定">
+<h2 class="section-h lv1">2 · 两套 MoE Layout：prefill 紧凑，decode 固定2.1 Contiguous 与 Masked 是同一数学的两种系统形态DeepGEMM 提供 contiguous layout 和 masked layout。它们不是两个不同的 MoE 数学公式，而是两套不同的物理存储契约。
+
+  
+    Draw.io 图表 · 可编辑
+    figures/F2.drawio
+  
+  两套 grouped GEMM layout：contiguous 把所有 expert token 拼到一条 M 轴；masked 保留固定三维形状，用 token count 让 kernel 只算有效部分。
+
+Contiguous 与 Masked 的 layout 对比$$
+\begin{array}{lll}
+A_{\mathrm{contig}} & = & \operatorname{concat}_e\left(X_e,\operatorname{pad}_{a_M}(X_e)\right),\\[0.55em]
+m_{\mathrm{idx}}[m] & \in & \{0,\ldots,E-1,-1\},\\[0.55em]
+A_{\mathrm{masked}}[e,m,:] & = &
+\begin{cases}
+X_{e,m,:}, & m&lt;n_e,\\
+\mathrm{unused}, & m\ge n_e,
+\end{cases}\\[0.55em]
+n_e & = & \mathrm{expert\_num\_tokens}[e].
+\end{array}
+$$Prefill token 多，动态 shape 能接受，最重要的是减少 padding 与无效计算；decode token 少，又处在每 step 重复执行的热路径，最重要的是固定 shape，让 CUDA Graph、persistent buffer 和后端选择都稳定。2.2 Contiguous layout：m_indices 让整 tile skip 成为 O(1) 判断Contiguous layout 会把每个 expert 的 token 段按 get_mk_alignment_for_contiguous_layout() 对齐。有效行记录 expert id，padding 行记录 -1。kernel scheduler 取到一个 M tile 后，不需要逐行扫描，只看 tile 首行对应的 grouped_layout。
+
+  
+    Draw.io 图表 · 可编辑
+    figures/F3.drawio
+  
+  Contiguous layout 的关键不是把 token 拼起来，而是让 padding 行变成整 CTA 粒度的 skip 判断。
+
+优化前，prefill 如果按 expert 分别 launch GEMM，会产生大量小 GEMM launch 和低 occupancy；如果做普通 padding batched GEMM，又会把每个 expert 补到统一 max_m。Contiguous layout 的优化路径是：把所有有效 token 拼接成一条大 M 轴，只在每个 expert 尾部对齐到 block 边界，padding 的成本最多落在尾 tile。Contiguous 的有效 tile 判断$$
+\begin{array}{lll}
+m_0 & = & m_{\mathrm{offset}} + b_M\cdot B_M,\\[0.45em]
+\mathrm{valid}(b_M) & = & m_{\mathrm{idx}}[m_0] \ge 0,\\[0.45em]
+\mathrm{expert}(b_M) & = & \max\left(0,m_{\mathrm{idx}}[m_0]\right).
+\end{array}
+$$这也是 contiguous layout 为什么更适合 prefill：layout 准备、scatter/gather 与一次大 grouped kernel 的成本能被长序列摊薄。2.3 Masked layout：decode 用 padding 换 CUDA GraphMasked layout 把输入看成 (E,max_m,K)。每个 expert 都有固定槽位，真实 token 数存在 expert_num_tokens[e]。scheduler 遍历 group 时，根据 ceil_div(expert_num_tokens[e], BLOCK_M) 决定当前 expert 有多少 M blocks。
+
+  
+    Draw.io 图表 · 可编辑
+    figures/F4.drawio
+  
+  Masked layout 故意保留固定三维张量：Graph replay 只更新 token count，kernel 形状不变。
+
+优化前，decode 每步 top-k 后的 expert token 分布都是动态的，CPU 若要为每步重新组织 shape、重新 launch 小 GEMM，会把低延迟路径拖垮。Masked layout 的优化路径是：固定外壳，把动态信息收敛到一个小的 count/mask 张量，让 CUDA Graph 和 buffer address 稳定。2.4 DeepEP 与 DeepGEMM 的 layout 契约DeepEP low-latency dispatch 输出可以直接喂给 masked grouped GEMM；prefill 或训练 forward 更偏向 contiguous layout。两者共同点是：routing 结果必须变成 DeepGEMM 能直接消费的 A tensor、expert weight bank、grouped layout/count metadata 和 FP8 scale tensor。任何额外的转置、cast、重排，如果没有融合到前序 kernel，都会把 DeepGEMM 的收益吃掉。vLLM 的两条路径正好对应这两个物理契约：vLLM 对象DeepGEMM layout关键中间张量Combine 之前的状态DeepGemmExpertsStandard 2D → contiguousdeepgemm_moe_permute 生成 expert_ids=-1 padding、inv_permdeepgemm_unpermute_and_reduce 用 topk_weights 回填BatchedDeepGemmExpertsBatchedExperts 3D → maskedexpert_num_tokens 控制有效 M_e，expected_m 辅助调参Prepare/Finalize 决定是否在 combine 内完成权重归约这也解释了为什么“prefill 用 contiguous、decode 用 masked”不是审美选择。Prefill 的 M_sum 大，重排成本能被吞吐摊薄；decode 的 M_e 小但反复 replay，固定三维外壳能让 CUDA Graph、workspace 与 DeepEP low-latency buffer 保持稳定。2.5 优化前后：为什么不是普通 permute + batched GEMM把 MoE expert compute 写成普通 PyTorch / Triton 风格，最直观的 baseline 是：# baseline sketch: 每个 expert 形成一个独立小 GEMM
+for e in active_experts:
+    x_e = gather(tokens, topk_ids == e)
+    h_e = x_e @ w1[e].T
+    a_e = silu(h_e[..., :I]) * h_e[..., I:]
+    z_e = quant(a_e) @ w2[e].T
+    scatter_add(out, z_e, token_ids, topk_weight)
+这条路径的问题不是数学错，而是系统边界太多：每个 expert 都有 gather、GEMM launch、activation、quant、GEMM launch、scatter；小 M_e 时 launch 和调度占比会超过真正的 MMA 时间。DeepGEMM 路径把它改成：# DeepGEMM sketch: 上游一次性整理 layout，kernel 只吃 grouped tiles
+a1q, a1q_scale, expert_ids, inv_perm = deepgemm_moe_permute(...)
+m_grouped_fp8_gemm_nt_contiguous((a1q, a1q_scale), (w1, w1_scale), h, expert_ids)
+a2q, a2q_scale = fused_silu_mul_quant(h)
+m_grouped_fp8_gemm_nt_contiguous((a2q, a2q_scale), (w2, w2_scale), z, expert_ids)
+deepgemm_unpermute_and_reduce(z, topk_ids, topk_weights, inv_perm, output)
+优化点在于：routing 语义仍然完整，但 GEMM 看到的是一条连续的 tile stream；padding 行用 -1 标记后可以被 scheduler 整 tile 跳过；scale 直接按 TMA 所需布局生成；Combine 只处理 GEMM 已经算完的 slot。3 · FP8 数值路径：block scale 与 scale promotion3.1 GEMM1、SwiGLU、Quant、GEMM2 的物理路径DeepSeek-V3 expert FFN 一般可以理解成两段 grouped GEMM：第一段从 hidden 到 gate/up，第二段从 intermediate 回到 hidden。中间的 SwiGLU + routing weight + FP8 quant 是边界最敏感的地方。它如果写回一个大 BF16 activation，再由第二个 GEMM 读回，就会把 HBM 往返暴露出来。在 DeepGEMM 的基线路径里，这些边界仍然是分段 kernel，但每段的 layout 和 scale 都按后续 GEMM 需要准备。到了 Mega MoE 文章，才会进一步讨论把这些边界折到同一个 persistent kernel 里。3.2 Scale promotion：为什么不是先反量化再 GEMMFP8 GEMM 的朴素理解是先反量化 A_fp8、B_fp8，再做高精度 GEMM。但这会产生两个问题：反量化后的中间 tile 要占更多寄存器/SMEM/HBM，scale 乘法也会和 Tensor Core mainloop 混在一起，难以保持流水。DeepGEMM 的做法是：Tensor Core 先对 FP8 tile 做 raw accumulation；每个 K-block 结束后，CUDA core 用对应的 A scale / B scale 做 promotion，再累加到 FP32 final accumulator。
+
+  
+    Draw.io 图表 · 可编辑
+    figures/F5.drawio
+  
+  Scale promotion 的等价变换：不物化反量化矩阵，只在 K-block 边界把 raw accumulator 乘上 A/B scale。
+
+Scale promotion 的计算等价式$$
+C_{ij}
+=
+\sum_{b=0}^{K/128-1}
+s^A_{i,b}s^B_{j,b}
+\left(
+\sum_{r=0}^{127}
+\widetilde A_{i,128b+r}\widetilde B_{j,128b+r}
+\right).
+$$这比“先反量化再 GEMM”快，是因为被移除的不是数学乘法，而是反量化 tensor 的物化、读写和生命周期管理。Tensor Core 仍然做它最擅长的 FP8 MMA，CUDA core 在每个 K-block 后补上 scale 语义。如果把这一段落到代码层，可以把一轮 K block 看成三步：TMA 搬入 A_fp8、B_fp8 与 A_scale。WGMMA 先产生 raw accumulator。CUDA core 用 A_scale * B_scale promote 到 FP32 final accumulator。因此 DeepGEMM 并没有“省掉 scale”，而是把 scale 从数据路径前置反量化移到 accumulator 边界。前者会扩大中间数据生命周期，后者只扩大少量寄存器中的 accumulator 更新。3.3 SM90 与 SM100 的 scale 边界DeepGEMM README 里明确区分了两代实现的 scale 格式：SM90 路径使用 FP32 scale，SM100 路径使用 packed UE8M0。本文分析的是 V3/R1 的 SM90 FP8 grouped GEMM，所以公式里写成 FP32 scale；如果读当前仓库的 SM100/FP4 代码，看到 packed UE8M0、FP8xFP4 或 Mega MoE 相关实现，不要把它们反向套回 V3 的 Hopper 路径。3.4 Weight scale 与 activation scale 的方向不同另一个容易读错的点是：RHS 权重 scale 和 LHS activation scale 不是同一种存储方向。权重是离线准备的，vLLM 在加载 FP8 MoE weight 时会把 w13_scale / w2_scale 转成 DeepGEMM 需要的 scale layout；activation scale 是 runtime quant 产生的，必须尽量由 quant kernel 直接产出 column-major TMA-friendly stride。scale来源形状语义什么时候准备为什么重要A_scaledispatch 后 activation quant 或 SwiGLU quantM × ceil(K/128)，按 LHS token 行变化runtime，每 step / 每 batch要和 TMA load A 一起进 shared memoryB_scalecheckpoint / weight loader 后处理E × ceil(N/128) × ceil(K/128)load-time 或 warmup专家权重固定，适合提前变换这就是 DeepGEMM README 里强调“LHS scaling factor must be TMA-aligned and transposed”的原因。它不是格式洁癖，而是为了让 mainloop 里读取 scale 的地址模式与 TMA / shared memory pipeline 对齐。4 · Hopper SM90 Kernel：TMA 生产者、WGMMA 消费者与 scheduler4.1 五层结构：从 grid 到 WGMMADeepGEMM 的 SM90 FP8 kernel 可以从外到内读成五层：JIT config 先决定 block shape / stages / multicast；scheduler 把 persistent CTA 映射到 (m_block,n_block,group)；TMA warp group 把 A/B/scale 搬进 shared memory；math warp group 发 WGMMA；最后用 CUDA core 做 scale promotion 和输出。
+
+  
+    Draw.io 图表 · 可编辑
+    figures/F6.drawio
+  
+  SM90 DeepGEMM kernel 的五层阅读法：shape config、scheduler、warp group、pipeline stage、WGMMA。
+
+4.2 Warp specialization 与 setmaxnregHopper 上的核心设计是 warp specialization：TMA warp group 是 producer，math warp groups 是 consumers。它们通过 ClusterTransactionBarrier 和 full/empty phase 协作，TMA 负责把下一段 K tile 搬进 ring buffer，math 负责消费当前 tile。
+
+  
+    Draw.io 图表 · 可编辑
+    figures/F7.drawio
+  
+  Warp specialization 时间线：TMA copy、WGMMA、scale promotion 和 empty/full barrier 交替推进。
+
+setmaxnreg 的作用是把 register file 从“平均分配”改成“按角色分配”。TMA warp group 不需要大量 accumulator，寄存器可以降到 40 左右；math warp group 需要保存 WGMMA accumulator 和 scale promotion 中间量，寄存器可以提高到 232 左右。常见 SM90 路径的寄存器预算$$
+R_{\mathrm{CTA}}
+=
+128\cdot R_{\mathrm{TMA}}
++2\cdot128\cdot R_{\mathrm{MMA}}
+=
+128\cdot(40+2\cdot232)
+=
+64,512
+&lt;65,536.
+$$这解释了为什么它能在单个 SM 的 register budget 内同时容纳一个 TMA warp group 和两个 math warp groups。优化前如果每个 warp 都按 math 角色配置，就会把 RF 压爆或者降低 occupancy；优化后 producer 少拿寄存器，consumer 多拿寄存器，资源与职责对齐。4.3 TMA descriptor、swizzle 与 multicastTMA descriptor 把 GMEM tensor 的形状、stride、box size、swizzle 等信息变成硬件可直接使用的 copy 描述符。DeepGEMM host 侧为 A、B、D、scale 准备 descriptor，kernel 内部通过 cute::prefetch_tma_descriptor 和 tma::copy 发起异步拷贝。TMA multicast 是另一层优化：当多个 CTA 需要相同 A tile 或 B tile 时，可以把一次 global load multicast 到 cluster 内多个 CTA 的 shared memory。SM90 上这件事还要受 peer CTA 是否存在、grouped layout 是否同 expert 等条件约束；contiguous layout 如果两个相邻 M tile 属于不同 expert，就不能盲目 multicast B。4.4 Scheduler：waves、非对齐 block 与 rasterizationDeepGEMM 的 get_best_configs 思路可以压缩成四个问题：这个 shape 需要多少 waves；shared memory 能放多少 stages；TMA multicast 是否值得；block rasterization 如何让 L2 更容易复用。JIT 的价值在这里非常具体：一旦 shape 和 block 成为编译时常量，很多分支、loop bound 和 descriptor 形态都能静态化。
+
+  
+    Draw.io 图表 · 可编辑
+    figures/F8.drawio
+  
+  Shape-dependent config：DeepGEMM 会为了贴近 SM 数选择非 2 的幂 block，并用 swizzle/rasterization 提升 L2 局部性。
+
+非对齐 BLOCK_N 的并行度账本$$
+\begin{array}{lll}
+B_N=128 &:& \left\lceil 256/128 \right\rceil\cdot\left\lceil 7168/128 \right\rceil=112,\\[0.55em]
+B_N=112 &:& \left\lceil 256/128 \right\rceil\cdot\left\lceil 7168/112 \right\rceil=128.
+\end{array}
+$$H100/H800 是 132 SM 级别，112 个 CTA 会留下明显并行度空洞；128 个 CTA 更接近硬件规模。这里的“非 2 的幂 block”不是怪癖，而是用 tile 数去匹配 persistent kernel 的 wave 结构。代码里的 scheduler 还做了两件重要但不显眼的事。第一，contiguous layout 通过 grouped_layout + m_block_idx * BLOCK_M 找到当前 M tile 属于哪个 expert，由此把 RHS 指针切到对应 expert；第二，masked layout 会按 masked_m[e] 逐 expert 计算 ceil_div(M_e,BLOCK_M)，所以 padding 行不会参与 tile 数统计。两者都把“动态 expert token 数”压缩成了 scheduler 的 tile 索引问题。4.5 JIT config：为什么 shape 要进入编译期DeepGEMM 的 JIT key 包含 N/K/BLOCK_M/BLOCK_N/NUM_GROUPS/NUM_STAGES/NUM_TMA_MULTICAST/GEMM_TYPE。这看起来像普通 autotune，实际作用更接近“把 MoE 的热路径形状固化成专用 kernel”。JIT key被固化的决策省掉的运行时成本BLOCK_M/BLOCK_Ntile 形状、CTA 数、wave 数runtime block shape 分支NUM_STAGESshared memory ring buffer 深度动态 pipeline 分支NUM_TMA_MULTICASTcluster launch 形状multicast/非 multicast 双路径判断GEMM_TYPENormal / Contiguous / Maskedlayout 分支与 scheduler 分支这也是为什么首次运行会有 JIT latency，而 steady-state 才能看到它的收益。推理服务里这类 kernel 通常会被 warmup 和 cache 吃掉首编译成本；如果 shape 频繁抖动，DeepGEMM 的专用化优势就会下降。4.6 FFMA interleave：一个历史优化点的边界早期 DeepGEMM 报告里还提到过基于 SASS 的 FFMA interleave / yield bit 调整，用来改善 CUDA core promotion 的指令交错。当前 DeepGEMM README 已经说明，CUDA 12.9 之后 NVCC 会自动做 FFMA interleaving，相关 post optimization 不再是主线接口。写文章时要保留这个优化点的历史意义，但不要把它当成当前路径必须手动打开的开关。5 · vLLM 集成边界：什么时候进 DeepGEMM，什么时候 fallback5.1 Backend 选择不是装饰逻辑在 vLLM 里，DeepGEMM 不是无条件替换所有 MoE compute。后端选择需要同时满足 dtype、shape、alignment、weight layout、scale layout、contiguous/masked layout 以及环境开关。任何一项不满足，系统都应该 fallback 到 CUTLASS、Triton 或其他 MoE backend。
+
+  
+    Draw.io 图表 · 可编辑
+    figures/F9.drawio
+  
+  vLLM 集成边界：只有当 routed layout、FP8 weight/scale 和 shape 约束都满足时，DeepGEMM 后端才是正确选择。
+
+5.2 Prefill 与 decode 的后端分流Prefill 更像吞吐任务：batch 大、token 多，layout 准备成本可以摊薄，contiguous layout 能减少 padding。Decode 更像延迟任务：每步 token 少，CPU 调度和 launch overhead 占比高，masked layout 与 CUDA Graph 的固定 shape 更关键。这就是为什么 part 2 的 DeepEP dispatch 文章、part 3 的 DeepGEMM 文章、part 4 的 FlashMLA 文章不能孤立看。真正的 decode 热路径收益来自多个契约同时成立：通信把 token 摆成正确 layout，GEMM 后端吃到正确 scale，attention 后端吃到 latent KV，CUDA Graph 固定反复 replay。5.3 vLLM 里的选择条件vLLM 的 standard path 会先用 TritonOrDeepGemmExperts 包一层 fallback：如果 shape 满足 DeepGEMM，就走 DeepGemmExperts；否则回到 Triton。这里的检查很朴素也很必要：M 至少达到 block alignment，N/K 都要对齐，N&lt;=512 这类低收益小 shape 会主动 fallback，输入和权重还必须是 contiguous FP8。Decode 的 batched path 则由 activation format 决定：当 DeepEP low-latency 把激活做成 BatchedExperts 3D 格式时，oracle 会选择 BATCHED_DEEPGEMM，后续 BatchedDeepGemmExperts 直接调用 masked grouped GEMM。它还会根据 DP metadata 估计 expected_m，让 kernel config 更贴近真实每 expert token 数，而不是机械地按 M_max 调参。路径选择信号GEMM API额外 kernelStandard / contiguousFusedMoEActivationFormat.Standard，shape 对齐m_grouped_fp8_gemm_nt_contiguouspermute、SwiGLU+quant、unpermute+reduceBatchedExperts / maskedDeepEP LL，固定 (E,T,K)fp8_m_grouped_gemm_nt_maskedpersistent masked SwiGLU+quant，Prepare/Finalize combinefallbackdtype/shape/layout 不满足，或小 N 低收益Triton / CUTLASS / FlashInfer保证正确性优先5.4 常见误读误读更准确的说法DeepGEMM 快是因为 FP8FP8 是硬件入口，真正收益还来自 layout、JIT、TMA/WGMMA pipeline 和 schedulergrouped GEMM 就是 batched GEMMDeepGEMM 只 group M 维，N/K 固定，专门贴 MoE expert shapemasked layout 浪费 padding，所以一定慢decode 里固定 shape 往往比少量 padding 更重要，因为它换来 CUDA Graphscale promotion 是额外开销它替代了显式反量化 tensor 的物化与读写，是把数值语义放到更便宜的位置Optimization Audit · 优化点查漏优化点资料落点解决的 baseline 瓶颈机制边界条件Contiguous layoutDeepGEMM grouped contiguous API、vLLM deepgemm_moe_permuteprefill 每 expert 小 GEMM 或 max_m padding拼接 M 轴，尾部按 block 对齐，m_indices=-1 整 tile skiplayout 准备成本要能被长序列摊薄Masked layoutDeepGEMM grouped masked API、vLLM BatchedDeepGemmExpertsdecode 每步动态 shape 破坏 CUDA Graph固定 (E,max_m,K)，只用 token count 控制有效 tile会消耗 padding 与 staging 显存M-only grouped GEMMDeepGEMM README grouped GEMM contract泛化 grouped descriptor 过重N/K 固定，expert 只改变 M要求 expert 权重同形状LHS scale TMA layoutDeepGEMM utils / vLLM quant utilsscale 临时转置或非合并读取runtime quant 直接产出 column-major TMA-aligned scale上游若传普通 contiguous scale 会走慢修正路径Weight scale 后处理vLLM weight loader / FP8 utils每次运行时重排 weight scaleload-time 转成 DeepGEMM 需要的 scale layoutcheckpoint scale dtype 与 block size 必须匹配Scale promotionDeepGEMM mainloop显式反量化导致带宽与生命周期开销WGMMA raw acc 后按 K-block 乘 scale 并 FP32 累加scale layout 必须按 SM90/SM100 路径准备Warp specializationSM90 FP8 kernelcopy、MMA、promotion 串行或资源平均分配TMA producer + math consumers + barrier pipeline需要合理 stage 数与 shared memorysetmaxnregkernel register reconfigurationTMA warp 浪费寄存器，math warp 寄存器不足producer 少寄存器，consumer 多寄存器受 SM register budget 限制TMA descriptor prefetchTMA mainloopdescriptor load 暴露在 hot pathkernel 开头预取 A/B/D/scale descriptordescriptor 只在 shape 固定时收益稳定TMA multicastTMA copy / cluster launch多 CTA 重复加载同一 tilecluster 内把一次 TMA load 送到多个 CTAgrouped layout 必须保证 peer tile 语义一致非对齐 blockget_best_configs2 的幂 tile 数无法填满 SM用 BLOCK_N=112/120 等形状贴近 waveblock 过小会增加调度和边界成本Rasterization / swizzleScheduler相邻 CTA 访问模式破坏 L2改变 CTA 发射顺序与 shared memory swizzle与 multicast、shape、layout 共同决定JIT configPython JIT wrapper泛化 kernel 保留太多运行时分支shape/block/stage 编译时常量化首次编译有 JIT latency，需要 cachevLLM backend oraclevLLM FP8 oracle / fallback wrapper错用后端导致隐式重排或错误 fallbackdtype / shape / layout / scale 条件一起判断集成层必须拒绝不满足契约的输入Map · 图解索引图读法F1系统边界：DeepEP、DeepGEMM、Combine 各管什么F2两套 layout 的共同语义与不同系统目标F3Contiguous layout 如何用 m_indices=-1 做整 tile skipF4Masked layout 为什么适合 decode + CUDA GraphF5FP8 scale promotion 的等价变换F6SM90 kernel 五层阅读法F7TMA / WGMMA warp specialization 时间线F8get_best_configs 选择 block、stages、multicast、swizzle 的直觉F9vLLM 后端选择与 fallback 边界References</h2>
+<div class="kbox">
+<p class="zh no-indent"><b>Source list.</b>　DeepGEMM FP8 矩阵乘法相关论文、仓库与算法文献。</p>
+<ol class="zh-list ref-list">
+<li><a href="https://github.com/deepseek-ai/open-infra-index/blob/main/202502OpenSourceWeek/day_6_one_more_thing_deepseekV3R1_inference_system_overview.md">DeepSeek-V3/R1 Inference System Overview</a></li>
+<li><a href="https://github.com/deepseek-ai/DeepGEMM">DeepGEMM GitHub Repository</a></li>
+<li><a href="https://github.com/deepseek-ai/DeepEP">DeepEP GitHub Repository</a></li>
+<li><a href="https://github.com/vllm-project/vllm">vLLM Project</a></li>
+<li><a href="https://docs.nvidia.com/cuda/parallel-thread-execution/">NVIDIA PTX ISA: asynchronous copy, TMA and WGMMA related instructions</a></li>
+</ol>
+</div>
+</section></div></div><!-- /reader-inner -->
+</div><!-- /reader -->
+
+
+</body>
+</html>

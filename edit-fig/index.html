@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Edit · drawio</title>
+<style>
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;font-family:-apple-system,Segoe UI,PingFang SC,sans-serif;color:#1f2328}
+  #bar{position:fixed;top:0;left:0;right:0;height:38px;display:flex;align-items:center;gap:12px;padding:0 14px;border-bottom:1px solid #d0d7de;background:#f6f8fa;font-size:13px;z-index:10;box-sizing:border-box}
+  #bar code{font-family:ui-monospace,Menlo,monospace;color:#57606b}
+  #bar .s{color:#57606b}
+  #bar .ok{color:#1f883d;font-weight:600}
+  #bar .err{color:#cf222e}
+  #bar a{display:none;color:#0969da;text-decoration:none;font-weight:600}
+  #bar a.show{display:inline-block}
+  #tokenBox{position:fixed;right:14px;top:48px;z-index:20;display:none;width:min(420px,calc(100vw - 28px));box-sizing:border-box;padding:12px;border:1px solid #d0d7de;border-radius:6px;background:#fff;box-shadow:0 10px 30px rgba(31,35,40,.12);font-size:13px}
+  #tokenBox.show{display:block}
+  #tokenBox .row{display:flex;gap:8px;margin-top:8px}
+  #tokenBox input{min-width:0;flex:1;padding:7px 8px;border:1px solid #d0d7de;border-radius:4px;font:inherit}
+  #tokenBox button{padding:7px 10px;border:1px solid #0969da;border-radius:4px;background:#0969da;color:#fff;font-weight:600;cursor:pointer}
+  #tokenBox small{display:block;color:#57606b;line-height:1.45}
+  #f{position:fixed;top:38px;left:0;right:0;bottom:0;width:100%;height:calc(100vh - 38px);border:0;display:block;background:#fff}
+  .pane{max-width:540px;margin:80px auto;padding:0 20px}
+  .pane a{color:#0969da}
+</style>
+</head>
+<body>
+<div id="bar"><strong>drawio</strong> <code id="src">…</code> <span class="s" id="st">loading…</span><a id="openDrawio" target="_blank" rel="noopener">备用打开 draw.io</a><a id="openPost" target="_blank" rel="noopener">打开刷新后的原文</a></div>
+<div id="tokenBox" aria-live="polite">
+  <strong>保存需要 GitHub PAT</strong>
+  <small>可以先正常编辑；按 ⌘S 保存前，把有 repo 写权限的 token 放这里。</small>
+  <div class="row"><input id="pat" type="password" autocomplete="off" placeholder="github_pat_..."><button id="savePat" type="button">保存 token</button></div>
+  <small id="patErr" class="err"></small>
+</div>
+<iframe id="f" src="about:blank" allow="clipboard-read; clipboard-write"></iframe>
+
+<script>
+const qs   = new URLSearchParams(location.search);
+function normalizeAssetPath(path) {
+  path = String(path || '').split('#')[0].trim();
+  try { path = decodeURIComponent(path); } catch (e) {}
+  path = path.replace(/^https?:\/\/[^/]+\/blog(?=\/)/i, '').replace(/^https?:\/\/[^/]+/i, '');
+  path = path.replace(/^\/blog(?=\/)/, '');
+  if (!path.startsWith('/')) path = '/' + path;
+  return path;
+}
+const rawSrc = qs.get('src');
+if (!rawSrc) {
+  document.body.innerHTML = '<div class="pane"><h2>缺少 ?src 参数</h2></div>';
+  throw 0;
+}
+const src  = normalizeAssetPath(rawSrc);
+document.getElementById('src').textContent = src;
+const st = document.getElementById('st');
+const setStat = (t,c) => { st.textContent = t; st.className = c || 's'; };
+const REPO = 'alan-hpc/blog';
+const BRANCH = 'main';
+const siteBasePath = location.pathname.replace(/\/edit-fig(?:\/.*)?$/i, '/') || '/';
+const siteURL = path => siteBasePath + String(path || '').replace(/^\/+/, '');
+
+let drawioPath = null;
+let svgPath = null;
+let pngPath = null;
+if (/^\/drawio\/.+\.drawio$/i.test(src)) {
+  drawioPath = src;
+  svgPath = src.replace(/^\/drawio\/(.+)\/figures\/([^/]+)\.drawio$/i, '/figures/$1/$2.svg');
+} else if (/\.svg$/i.test(src)) {
+  svgPath = src.startsWith('/') ? src : '/' + src;
+  drawioPath = src
+    .replace(/^\/figures\//, '/drawio/')
+    .replace(/\/([^/]+)\.svg$/i, '/figures/$1.drawio');
+} else {
+  const assetHref = src.startsWith('/') ? src : '/' + src;
+  document.body.innerHTML =
+    '<div class="pane"><h2>这张图没有 draw.io 源文件</h2>' +
+    '<p><code>' + src.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])) + '</code> 是 PNG/JPG 等 raster 图，不能直接进入 draw.io 编辑器。</p>' +
+    '<p><a href="' + siteURL(assetHref) + '">打开原图</a></p></div>';
+  throw 0;
+}
+if (svgPath) pngPath = svgPath.replace(/\.svg$/i, '.png');
+
+function tokenString(v, loose) {
+  if (typeof v !== 'string') return null;
+  v = v.trim();
+  if (/^gh[pousr]_[A-Za-z0-9_]{20,}$/.test(v) || /github_pat_[A-Za-z0-9_]{20,}/.test(v)) return v;
+  if (loose && /^[A-Za-z0-9._-]{20,}$/.test(v)) return v;
+  return null;
+}
+function findToken(v, depth = 0, loose = false) {
+  if (!v || depth > 5) return null;
+  if (typeof v === 'string') {
+    return tokenString(v, loose);
+  }
+  if (typeof v !== 'object') return null;
+  for (const k of ['token', 'access_token', 'accessToken', 'pat', 'githubToken', 'github_token']) {
+    const direct = tokenString(v[k], true);
+    if (direct) return direct;
+    const t = findToken(v[k], depth + 1, true);
+    if (t) return t;
+  }
+  for (const k of Object.keys(v)) {
+    const t = findToken(v[k], depth + 1, loose || /(token|pat)/i.test(k));
+    if (t) return t;
+  }
+  return null;
+}
+function readPAT() {
+  const known = ['drawio-github-token','netlify-cms-user','decap-cms-user','netlify-cms.user','decap-cms.user','deepcms-user','deep-cms-user','deepcms.user','cms-user','github-user','oauth-user'];
+  const stores = [];
+  try { stores.push(localStorage); } catch (e) {}
+  try { stores.push(sessionStorage); } catch (e) {}
+  for (const store of stores) {
+    for (const k of known) {
+      const v = store.getItem(k);
+      if (!v) continue;
+      try { const t = findToken(JSON.parse(v)); if (t) return t; } catch (e) { const t = findToken(v, 0, true); if (t) return t; }
+    }
+    for (let i = 0; i < store.length; i++) {
+      const k = store.key(i);
+      if (!/(cms|decap|netlify|deep|github|oauth|token|pat)/i.test(k || '')) continue;
+      const v = store.getItem(k);
+      const loose = /(token|pat)/i.test(k || '');
+      try { const t = findToken(JSON.parse(v), 0, loose); if (t) return t; } catch (e) { const t = findToken(v, 0, loose); if (t) return t; }
+    }
+  }
+  return null;
+}
+let token = readPAT();
+function showTokenBox(message) {
+  const box = document.getElementById('tokenBox');
+  const err = document.getElementById('patErr');
+  if (message) err.textContent = message;
+  box.className = 'show';
+}
+function hideTokenBox() {
+  document.getElementById('tokenBox').className = '';
+}
+function saveTokenFromInput() {
+    const t = tokenString(document.getElementById('pat').value, true);
+    if (!t) {
+      document.getElementById('patErr').textContent = 'PAT 格式不对，请检查后再试。';
+      return false;
+    }
+    token = t;
+    localStorage.setItem('drawio-github-token', JSON.stringify({token: t}));
+    localStorage.setItem('drawio-edit-mode', '1');
+    hideTokenBox();
+    setStat('token 已保存 · 编辑后 ⌘S 保存', 'ok');
+    return true;
+}
+function ensureToken() {
+  if (token) return true;
+  setStat('需要 GitHub PAT 才能保存；图仍可继续编辑', 'err');
+  showTokenBox('请先保存 token，然后再次按 ⌘S。');
+  return false;
+}
+document.getElementById('savePat').onclick = saveTokenFromInput;
+if (!token) showTokenBox('');
+
+const iframe = document.getElementById('f');
+let drawioXML = null;
+let saving = false;
+let pendingSave = null;
+let exportTimer = null;
+let loadRetryTimer = null;
+let loadAttempts = 0;
+let editorLoaded = false;
+let legacyMode = false;
+const openPost = document.getElementById('openPost');
+const openDrawio = document.getElementById('openDrawio');
+const postPath = svgPath ? svgPath.replace(/^\/figures\/(.+)\/[^/]+\.svg$/i, '/posts/$1/') : null;
+if (drawioPath) {
+  openDrawio.href = 'https://app.diagrams.net/?mode=github#H' +
+    encodeURIComponent(`${REPO}/${BRANCH}/static${drawioPath}`);
+  openDrawio.className = 'show';
+}
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+function transientError(err) {
+  return /IncompleteRead|network|Failed to fetch|timeout|timed out|ECONNRESET|ETIMEDOUT|502|503|504|524/i.test(String(err || ''));
+}
+async function fetchTextWithRetry(url, options = {}, attempts = 3, label = '请求') {
+  let lastErr;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      const r = await fetch(url, options);
+      if (!r.ok) throw new Error(`${label} ${url} → ${r.status}`);
+      return await r.text();
+    } catch (err) {
+      lastErr = err;
+      if (i >= attempts || !transientError(err)) break;
+      setStat(`${label} 失败，重试 ${i + 1}/${attempts}…`);
+      await sleep(600 * i);
+    }
+  }
+  throw lastErr;
+}
+async function fetchJsonWithRetry(url, options = {}, attempts = 4, label = '保存') {
+  let lastErr;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      const r = await fetch(url, options);
+      const text = await r.text();
+      let j;
+      try {
+        j = JSON.parse(text);
+      } catch (e) {
+        throw new Error(`${label} 返回非 JSON: ${text.slice(0, 220)}`);
+      }
+      if (!r.ok || !j.ok) throw new Error(j.error || `${label} HTTP ${r.status}`);
+      return j;
+    } catch (err) {
+      lastErr = err;
+      if (i >= attempts || !transientError(err)) break;
+      setStat(`${label} 失败，重试 ${i + 1}/${attempts}…`);
+      await sleep(900 * i);
+    }
+  }
+  throw lastErr;
+}
+function decodeSvgExport(data) {
+  if (!data) return '';
+  if (typeof data !== 'string') {
+    try { data = data.data || data.xml || data.svg || ''; } catch (e) { data = ''; }
+  }
+  data = String(data);
+  if (data.startsWith('data:image/svg+xml;base64,')) {
+    try { return sanitizeSvgExport(decodeURIComponent(escape(atob(data.split(',', 2)[1] || '')))); } catch (e) { return sanitizeSvgExport(atob(data.split(',', 2)[1] || '')); }
+  }
+  if (data.startsWith('data:image/svg+xml,')) {
+    try { return sanitizeSvgExport(decodeURIComponent(data.split(',', 2)[1] || '')); } catch (e) { return sanitizeSvgExport(data.split(',', 2)[1] || ''); }
+  }
+  return sanitizeSvgExport(data);
+}
+function sanitizeSvgExport(svg) {
+  svg = String(svg || '');
+  // draw.io appends this fallback when exporting SVG with foreignObject text.
+  // Browser rendering is fine, but command-line SVG→PNG tools render the warning.
+  svg = svg.replace(/<switch><g requiredFeatures="http:\/\/www\.w3\.org\/TR\/SVG11\/feature#Extensibility"\/><a[\s\S]*?Text is not SVG - cannot display[\s\S]*?<\/a><\/switch>\s*(?=<\/svg>)/i, '');
+  return svg;
+}
+function decodePngExport(data) {
+  if (!data) return '';
+  if (typeof data !== 'string') {
+    try { data = data.data || data.xml || data.png || ''; } catch (e) { data = ''; }
+  }
+  data = String(data).trim();
+  if (data.startsWith('data:image/png;base64,')) return data.split(',', 2)[1] || '';
+  if (/^[A-Za-z0-9+/=\s]+$/.test(data) && data.length > 100) return data.replace(/\s/g, '');
+  return '';
+}
+function encodeGitPath(path) {
+  return String(path || '').split('/').map(encodeURIComponent).join('/');
+}
+function githubHeaders() {
+  return {
+    'Accept': 'application/vnd.github+json',
+    'Authorization': 'Bearer ' + token,
+    'X-GitHub-Api-Version': '2022-11-28',
+  };
+}
+function utf8ToBase64(text) {
+  const bytes = new TextEncoder().encode(String(text || ''));
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+function base64ToUtf8(text) {
+  const binary = atob(String(text || '').replace(/\s/g, ''));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+async function githubJsonWithRetry(url, options = {}, attempts = 4, label = 'GitHub API') {
+  let lastErr;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      const r = await fetch(url, options);
+      const text = await r.text();
+      let j = {};
+      if (text) {
+        try {
+          j = JSON.parse(text);
+        } catch (e) {
+          throw new Error(`${label} 返回非 JSON: ${text.slice(0, 220)}`);
+        }
+      }
+      if (!r.ok) throw new Error(`${label} ${r.status}: ${j.message || text.slice(0, 220)}`);
+      return j;
+    } catch (err) {
+      lastErr = err;
+      if (i >= attempts || !transientError(err)) break;
+      setStat(`${label} 失败，重试 ${i + 1}/${attempts}…`);
+      await sleep(900 * i);
+    }
+  }
+  throw lastErr;
+}
+async function readExistingEncodedFile(repoPath) {
+  repoPath = normalizeAssetPath(repoPath).replace(/^\/+/, '');
+  const url = `https://api.github.com/repos/${REPO}/contents/${encodeGitPath(repoPath)}?ref=${encodeURIComponent(BRANCH)}&_=${Date.now()}`;
+  try {
+    const j = await githubJsonWithRetry(url, {headers: githubHeaders(), cache: 'no-store'}, 3, '读取当前文件');
+    return {
+      sha: j.sha || null,
+      contentBase64: typeof j.content === 'string' ? j.content.replace(/\s/g, '') : null,
+    };
+  } catch (err) {
+    if (/读取当前文件 404:/.test(String(err))) return null;
+    throw err;
+  }
+}
+async function readExistingFile(repoPath) {
+  const existing = await readExistingEncodedFile(repoPath);
+  if (!existing) return null;
+  return {
+    sha: existing.sha,
+    content: existing.contentBase64 ? base64ToUtf8(existing.contentBase64) : null,
+  };
+}
+async function saveFigFile(path, content, message) {
+  path = normalizeAssetPath(path);
+  const repoPath = 'static' + path;
+  const existing = await readExistingFile(repoPath);
+  if (existing && existing.content === content) {
+    return {ok: true, sha: existing.sha, path: repoPath, unchanged: true};
+  }
+  const body = {
+    message,
+    branch: BRANCH,
+    content: utf8ToBase64(content),
+  };
+  if (existing && existing.sha) body.sha = existing.sha;
+  const j = await githubJsonWithRetry(`https://api.github.com/repos/${REPO}/contents/${encodeGitPath(repoPath)}`, {
+    method: 'PUT',
+    headers: Object.assign({'Content-Type': 'application/json'}, githubHeaders()),
+    body: JSON.stringify(body),
+  }, 4, '保存 ' + path);
+  return {ok: true, sha: j.commit && j.commit.sha, path: repoPath};
+}
+async function saveFigBase64(path, base64Content, message) {
+  path = normalizeAssetPath(path);
+  base64Content = String(base64Content || '').replace(/\s/g, '');
+  if (!base64Content) return {ok: false, skipped: true};
+  const repoPath = 'static' + path;
+  const existing = await readExistingEncodedFile(repoPath);
+  if (existing && existing.contentBase64 === base64Content) {
+    return {ok: true, sha: existing.sha, path: repoPath, unchanged: true};
+  }
+  const body = {
+    message,
+    branch: BRANCH,
+    content: base64Content,
+  };
+  if (existing && existing.sha) body.sha = existing.sha;
+  const j = await githubJsonWithRetry(`https://api.github.com/repos/${REPO}/contents/${encodeGitPath(repoPath)}`, {
+    method: 'PUT',
+    headers: Object.assign({'Content-Type': 'application/json'}, githubHeaders()),
+    body: JSON.stringify(body),
+  }, 4, '保存 ' + path);
+  return {ok: true, sha: j.commit && j.commit.sha, path: repoPath};
+}
+function showPostLink(sha) {
+  if (!postPath) return;
+  openPost.href = siteURL(postPath) + '?edit=1&_=' + encodeURIComponent(sha || Date.now());
+  openPost.className = 'show';
+}
+function parseDrawioMessage(data) {
+  if (!data) return null;
+  if (typeof data === 'string') {
+    try { return JSON.parse(data); } catch (e) { return null; }
+  }
+  if (typeof data === 'object') return data;
+  return null;
+}
+function postToEditor(obj) {
+  if (!iframe.contentWindow) return;
+  iframe.contentWindow.postMessage(JSON.stringify(obj), '*');
+}
+function postLoadToEditor(reason) {
+  if (!drawioXML || editorLoaded || legacyMode) return;
+  postToEditor({
+    action: 'load',
+    xml: drawioXML,
+    autosave: 0,
+    title: drawioPath ? drawioPath.split('/').pop() : 'diagram',
+    fit: 1,
+    maxFitScale: 1,
+    saveAndExit: 0,
+    noSaveBtn: 0,
+  });
+  if (reason !== 'init') {
+    setStat('等待 drawio 接收 XML…');
+  }
+}
+function startLegacyClientMode() {
+  clearInterval(loadRetryTimer);
+  legacyMode = true;
+  editorLoaded = false;
+  setStat('JSON 模式无响应，切到兼容编辑模式…');
+  iframe.src = 'https://embed.diagrams.net/?client=1';
+}
+function armLoadRetry() {
+  clearInterval(loadRetryTimer);
+  loadAttempts = 0;
+  loadRetryTimer = setInterval(() => {
+    if (editorLoaded || loadAttempts >= 6) {
+      clearInterval(loadRetryTimer);
+      if (!editorLoaded) {
+        startLegacyClientMode();
+      }
+      return;
+    }
+    loadAttempts += 1;
+    postLoadToEditor('retry');
+  }, 1500);
+}
+async function saveDrawioAssets(xml, svg, pngBase64) {
+  try {
+    setStat('保存 drawio…');
+    const drawioResult = await saveFigFile(drawioPath, xml, 'edit ' + drawioPath + ' via drawio embed');
+    let finalResult = drawioResult;
+    if (svgPath && svg && /^\s*<svg[\s>]/i.test(svg)) {
+      setStat('保存 SVG 并触发 GitHub Pages…');
+      finalResult = await saveFigFile(svgPath, svg, 'export ' + svgPath + ' from drawio edit');
+    } else {
+      setStat('SVG 导出失败，只保存 drawio 源…');
+    }
+    if (pngPath && pngBase64) {
+      setStat('保存 PNG 展示图…');
+      finalResult = await saveFigBase64(pngPath, pngBase64, 'export ' + pngPath + ' from drawio edit');
+    } else {
+      setStat('PNG 导出失败；页面会退回 SVG 更新', finalResult.ok ? 'ok' : 'err');
+    }
+    saving = false;
+    pendingSave = null;
+    const sha = (finalResult.sha || drawioResult.sha || '').slice(0, 7);
+    showPostLink(sha);
+    setStat('✓ commit ' + (sha || 'ok') + ' · GitHub Pages 正在刷新', 'ok');
+  } catch (err) {
+    saving = false;
+    pendingSave = null;
+    setStat('保存失败: ' + err + '；可以直接再次按 ⌘S 重试', 'err');
+  }
+}
+
+fetchTextWithRetry(siteURL(drawioPath) + '?_=' + Date.now(), {}, 3, '加载 drawio')
+  .then(t => {
+    drawioXML = t;
+    setStat('XML 已读取，启动 drawio…');
+    // embed=1: postMessage protocol
+    // proto=json: JSON-format messages
+    // ui=min: minimal UI (avoids the 'atlas' theme rendering issues we saw)
+    // spin=1: show loading overlay until drawio accepts the XML
+    // saveAndExit=0: stay in editor after save
+    // noSaveBtn=0: keep the Save button (it triggers our save handler)
+    iframe.src = 'https://embed.diagrams.net/?embed=1&proto=json&ui=min&spin=1&libraries=1&saveAndExit=0&noSaveBtn=0';
+    armLoadRetry();
+  })
+  .catch(e => setStat('加载失败: ' + e, 'err'));
+
+window.addEventListener('message', e => {
+  if (e.source !== iframe.contentWindow) return;
+  if (legacyMode) {
+    if (e.data === 'ready') {
+      editorLoaded = true;
+      iframe.contentWindow.postMessage(drawioXML || '', '*');
+      setStat(token ? '兼容模式就绪 · 保存后更新 drawio 源' : '兼容模式就绪 · 保存前填 PAT', 'ok');
+      return;
+    }
+    if (typeof e.data === 'string') {
+      const legacyXML = e.data.trim();
+      if (/^<mx(file|GraphModel)\b/i.test(legacyXML) && !saving) {
+        if (!ensureToken()) return;
+        saving = true;
+        saveDrawioAssets(legacyXML, '', '');
+      } else if (legacyXML === '') {
+        setStat('已退出，未保存');
+      }
+      return;
+    }
+  }
+  const m = parseDrawioMessage(e.data);
+  if (!m || !m.event) return;
+
+  if (m.event === 'init') {
+    postLoadToEditor('init');
+  }
+  else if (m.event === 'load') {
+    editorLoaded = true;
+    clearInterval(loadRetryTimer);
+    // After load, clear the status bar inside drawio.
+    setTimeout(() => postToEditor({ action: 'status', message: '' }), 200);
+    setStat(token ? 'drawio 就绪 · 编辑后 ⌘S 保存' : 'drawio 就绪 · 保存前填 PAT', 'ok');
+  }
+  else if (m.event === 'save' && !saving) {
+    if (!ensureToken()) return;
+    // m.xml is the new mxfile XML. The blog page itself renders the committed
+    // SVG asset, so a useful save must update both the editable .drawio source
+    // and the matching .svg display file, then rebuild the local Hugo preview.
+    saving = true;
+    const xml = m.xml || '';
+    pendingSave = {xml, svg: '', png: '', phase: 'svg'};
+    setStat('导出 SVG…');
+    clearTimeout(exportTimer);
+    exportTimer = setTimeout(() => saveDrawioAssets(xml, pendingSave && pendingSave.svg || '', pendingSave && pendingSave.png || ''), 25000);
+    postToEditor({ action: 'export', format: 'svg', xml, spin: '导出 SVG…' });
+  }
+  else if (m.event === 'export' && saving && pendingSave) {
+    clearTimeout(exportTimer);
+    if (pendingSave.phase === 'svg') {
+      pendingSave.svg = decodeSvgExport(m.data || m.xml || m.svg || '');
+      pendingSave.phase = 'png';
+      setStat('导出 PNG…');
+      exportTimer = setTimeout(() => saveDrawioAssets(pendingSave.xml, pendingSave.svg, ''), 25000);
+      postToEditor({ action: 'export', format: 'png', xml: pendingSave.xml, spin: '导出 PNG…' });
+    } else {
+      pendingSave.png = decodePngExport(m.data || m.xml || m.png || '');
+      saveDrawioAssets(pendingSave.xml, pendingSave.svg, pendingSave.png);
+    }
+  }
+});
+</script>
+</body>
+</html>

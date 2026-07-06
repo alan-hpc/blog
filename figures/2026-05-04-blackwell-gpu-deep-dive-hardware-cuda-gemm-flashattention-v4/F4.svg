@@ -1,0 +1,38 @@
+<svg viewBox='0 0 1010 290' xmlns='http://www.w3.org/2000/svg' font-family='sans-serif'>
+<text x='505' y='30' font-size='15' font-weight='700' text-anchor='middle' fill='#1f2328'>MMA 指令四代演进：累加器位置从 RF→TMEM、同步从同步→异步、发射从线程→warpgroup→线程</text>
+<rect x='30' y='50' width='950' height='32' fill='#eef0f5' stroke='#aaa'/>
+<text x='110' y='71' font-size='12.5' font-weight='700' text-anchor='middle'>指令</text>
+<text x='320' y='71' font-size='12.5' font-weight='700' text-anchor='middle'>发射粒度</text>
+<text x='480' y='71' font-size='12.5' font-weight='700' text-anchor='middle'>操作数位置</text>
+<text x='620' y='71' font-size='12.5' font-weight='700' text-anchor='middle'>累加器位置</text>
+<text x='830' y='71' font-size='12.5' font-weight='700' text-anchor='middle'>同步语义</text>
+<rect x='30' y='82' width='950' height='48' fill='white' stroke='#ddd'/>
+<rect x='30' y='82' width='6' height='48' fill='#b85450'/>
+<text x='110' y='112' font-size='12' font-family='monospace' text-anchor='middle' fill='#222'>Volta mma.sync</text>
+<text x='320' y='112' font-size='12' text-anchor='middle' fill='#333'>线程</text>
+<text x='480' y='112' font-size='12' text-anchor='middle' fill='#333'>RF</text>
+<text x='620' y='112' font-size='12' text-anchor='middle' fill='#333' font-weight='700'>RF</text>
+<text x='830' y='112' font-size='11' text-anchor='middle' fill='#444'>同步</text>
+<rect x='30' y='130' width='950' height='48' fill='#fafbfc' stroke='#ddd'/>
+<rect x='30' y='130' width='6' height='48' fill='#c97'/>
+<text x='110' y='160' font-size='12' font-family='monospace' text-anchor='middle' fill='#222'>Ampere mma + cp.async</text>
+<text x='320' y='160' font-size='12' text-anchor='middle' fill='#333'>线程</text>
+<text x='480' y='160' font-size='12' text-anchor='middle' fill='#333'>RF</text>
+<text x='620' y='160' font-size='12' text-anchor='middle' fill='#333' font-weight='700'>RF</text>
+<text x='830' y='160' font-size='11' text-anchor='middle' fill='#444'>MMA 同步 / 数据异步</text>
+<rect x='30' y='178' width='950' height='48' fill='white' stroke='#ddd'/>
+<rect x='30' y='178' width='6' height='48' fill='#e0b300'/>
+<text x='110' y='208' font-size='12' font-family='monospace' text-anchor='middle' fill='#222'>Hopper wgmma</text>
+<text x='320' y='208' font-size='12' text-anchor='middle' fill='#333'>warp-group (128)</text>
+<text x='480' y='208' font-size='12' text-anchor='middle' fill='#333'>SMEM/RF</text>
+<text x='620' y='208' font-size='12' text-anchor='middle' fill='#333' font-weight='700'>RF</text>
+<text x='830' y='208' font-size='11' text-anchor='middle' fill='#444'>异步 (fence/commit/wait)</text>
+<rect x='30' y='226' width='950' height='48' fill='#fafbfc' stroke='#ddd'/>
+<rect x='30' y='226' width='6' height='48' fill='#5fa55f'/>
+<text x='110' y='256' font-size='12' font-family='monospace' text-anchor='middle' fill='#222'>Blackwell tcgen05.mma</text>
+<text x='320' y='256' font-size='12' text-anchor='middle' fill='#333'>单线程</text>
+<text x='480' y='256' font-size='12' text-anchor='middle' fill='#333'>SMEM/TMEM</text>
+<text x='620' y='256' font-size='12' text-anchor='middle' fill='#333' font-weight='700'>TMEM</text>
+<text x='830' y='256' font-size='11' text-anchor='middle' fill='#444'>异步 (mbarrier 自动 arrive)</text>
+<text x='505' y='285' font-size='11' text-anchor='middle' fill='#666' font-style='italic'>关键趋势：发射粒度看似“绕回”线程，但 Blackwell 的"线程"是单线程异步发射，背后由硬件 mbarrier 跟踪</text>
+</svg>

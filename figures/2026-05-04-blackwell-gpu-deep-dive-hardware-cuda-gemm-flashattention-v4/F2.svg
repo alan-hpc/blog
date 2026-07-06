@@ -1,0 +1,44 @@
+<svg viewBox='0 0 1000 240' xmlns='http://www.w3.org/2000/svg' font-family='sans-serif'>
+<defs>
+<marker id='ar' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='8' markerHeight='8' orient='auto'>
+<path d='M0,0 L10,5 L0,10 z' fill='#333'/></marker>
+<marker id='arR' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='8' markerHeight='8' orient='auto'>
+<path d='M0,0 L10,5 L0,10 z' fill='#b85450'/></marker>
+<marker id='arG' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='8' markerHeight='8' orient='auto'>
+<path d='M0,0 L10,5 L0,10 z' fill='#5fa55f'/></marker>
+<marker id='arB' viewBox='0 0 10 10' refX='9' refY='5' markerWidth='8' markerHeight='8' orient='auto'>
+<path d='M0,0 L10,5 L0,10 z' fill='#4a6fd3'/></marker>
+</defs>
+<text x='500' y='35' font-size='15' font-weight='700' text-anchor='middle' fill='#1f2328'>Blackwell 执行层级：6 个粒度，每一级都有对应的硬件原语</text>
+<text x='500' y='55' font-size='11.5' text-anchor='middle' fill='#666'>从左到右：粒度从粗到细。Hopper 在 Warpgroup 发射 MMA，Blackwell 退回 Thread 但保持异步。</text>
+<rect x='30' y='80' width='140' height='110' rx='6' fill='#dde' stroke='#666' stroke-width='1.4'/>
+<text x='100' y='105' font-size='14' font-weight='700' text-anchor='middle' fill='#222'>Grid</text>
+<text x='100' y='128' font-size='11' text-anchor='middle' fill='#444'>kernel 启动单位</text>
+<text x='100' y='160' font-size='10.5' text-anchor='middle' fill='#777' font-family='monospace'>1+</text>
+<line x1='170' y1='135' x2='185' y2='135' stroke='#999' stroke-width='1.5' marker-end='url(#ar)'/>
+<rect x='185' y='80' width='140' height='110' rx='6' fill='#cce' stroke='#666' stroke-width='1.4'/>
+<text x='255' y='105' font-size='14' font-weight='700' text-anchor='middle' fill='#222'>Cluster</text>
+<text x='255' y='128' font-size='11' text-anchor='middle' fill='#444'>线程块集群</text>
+<text x='255' y='160' font-size='10.5' text-anchor='middle' fill='#777' font-family='monospace'>≤ 16 CTA</text>
+<line x1='325' y1='135' x2='340' y2='135' stroke='#999' stroke-width='1.5' marker-end='url(#ar)'/>
+<rect x='340' y='80' width='140' height='110' rx='6' fill='#bcd' stroke='#666' stroke-width='1.4'/>
+<text x='410' y='105' font-size='14' font-weight='700' text-anchor='middle' fill='#222'>CTA</text>
+<text x='410' y='128' font-size='11' text-anchor='middle' fill='#444'>Cooperative Thread Array</text>
+<text x='410' y='160' font-size='10.5' text-anchor='middle' fill='#777' font-family='monospace'>1 CTA = 1 SM</text>
+<line x1='480' y1='135' x2='495' y2='135' stroke='#999' stroke-width='1.5' marker-end='url(#ar)'/>
+<rect x='495' y='80' width='140' height='110' rx='6' fill='#fde' stroke='#666' stroke-width='1.4'/>
+<text x='565' y='105' font-size='14' font-weight='700' text-anchor='middle' fill='#222'>Warpgroup</text>
+<text x='565' y='128' font-size='11' text-anchor='middle' fill='#444'>4 个 warp = 128 thread</text>
+<text x='565' y='160' font-size='10.5' text-anchor='middle' fill='#777' font-family='monospace'>wgmma 发射粒度</text>
+<line x1='635' y1='135' x2='650' y2='135' stroke='#999' stroke-width='1.5' marker-end='url(#ar)'/>
+<rect x='650' y='80' width='140' height='110' rx='6' fill='#fdc' stroke='#666' stroke-width='1.4'/>
+<text x='720' y='105' font-size='14' font-weight='700' text-anchor='middle' fill='#222'>Warp</text>
+<text x='720' y='128' font-size='11' text-anchor='middle' fill='#444'>32 thread</text>
+<text x='720' y='160' font-size='10.5' text-anchor='middle' fill='#777' font-family='monospace'>tcgen05 发射粒度</text>
+<line x1='790' y1='135' x2='805' y2='135' stroke='#999' stroke-width='1.5' marker-end='url(#ar)'/>
+<rect x='805' y='80' width='140' height='110' rx='6' fill='#cfd' stroke='#666' stroke-width='1.4'/>
+<text x='875' y='105' font-size='14' font-weight='700' text-anchor='middle' fill='#222'>Thread</text>
+<text x='875' y='128' font-size='11' text-anchor='middle' fill='#444'>SIMT 最小单位</text>
+<text x='875' y='160' font-size='10.5' text-anchor='middle' fill='#777' font-family='monospace'>tcgen05.mma 单线程发射</text>
+<text x='500' y='215' font-size='11' text-anchor='middle' fill='#444'>对应硬件单元：<tspan fill='#e0b300'>SM scheduler</tspan> → <tspan fill='#e0b300'>cluster network</tspan> → <tspan fill='#e0b300'>SM</tspan> → <tspan fill='#4a6fd3'>warp scheduler</tspan> → <tspan fill='#4a6fd3'>dispatch unit</tspan> → <tspan fill='#5fa55f'>execution lane</tspan></text>
+</svg>

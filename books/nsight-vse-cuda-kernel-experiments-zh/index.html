@@ -1,0 +1,1833 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NVIDIA Nsight VSE — CUDA Kernel 级别实验（中文译注版）</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/monokai-sublime.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<link rel="stylesheet" href="/blog/readers/reader.css">
+<style>
+/* Fixed full-screen flex shell, matching cuda-programming-guide_zh */
+#cg-wrap{position:fixed;top:0;left:0;width:100vw;height:100vh;display:flex;z-index:100;
+  font-family:var(--serif,"PingFang SC","Source Han Serif SC",serif);background:var(--bg);color:var(--ink);}
+body{display:block;overflow:visible;height:auto;}
+
+/* Nsight-page specific tweaks: shrink Nsight's old breadcrumbs / send-feedback / nav buttons if any survived,
+   and tighten table layout in main area */
+.MCBreadcrumbsBox_site\.css_0,.MCWebHelpFramesetLink,#pageheader,#pagefooter,
+.topicToolbarProxy,.topicToolbarProxysite\.css,.MyVariablesNsightVSEMainHeader{display:none!important;}
+
+#reader-inner section.page{padding:36px 0 12px;}
+#reader-inner section.page img{max-width:100%;height:auto;cursor:zoom-in;border:1px solid var(--rule);
+  padding:6px;background:var(--paper);border-radius:2px;margin:14px auto;display:block;}
+#reader-inner section.page table{border-collapse:collapse;margin:14px 0;font-size:13.5px;}
+#reader-inner section.page table td,#reader-inner section.page table th{padding:6px 12px;border:1px solid var(--rule);}
+#reader-inner section.page pre{background:#f5f3ed;border:1px solid var(--rule);padding:12px 16px;
+  font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;
+  overflow-x:auto;border-left:3px solid #b0a898;}
+#reader-inner section.page code{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:13px;background:#f0ece4;padding:1px 5px;border-radius:2px;}
+#reader-inner section.page h3{font-size:18px;margin-top:1.6em;padding-bottom:4px;border-bottom:1px solid var(--rule);}
+#reader-inner section.page h4{font-size:15px;margin-top:1.3em;color:var(--ink);font-weight:600;}
+#reader-inner section.page h5{font-size:13px;margin-top:1em;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;}
+#reader-inner section.page ul{padding-left:1.2em;}
+#reader-inner section.page li{margin:6px 0;}
+#reader-inner section.page a{color:var(--accent,#1d4f7c);text-decoration:none;border-bottom:1px solid transparent;}
+#reader-inner section.page a:hover{border-bottom-color:var(--accent,#1d4f7c);}
+#reader-inner section.page hr{display:none;}
+
+/* Lightbox */
+#lb{display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,.88);
+  z-index:9999;justify-content:center;align-items:center;cursor:zoom-out;}
+#lb.open{display:flex;}
+#lb img{max-width:92vw;max-height:92vh;border:none;background:transparent;}
+#lb #lb-close{position:absolute;top:18px;right:24px;color:#fff;font-size:22px;cursor:pointer;}
+</style>
+</head>
+<body>
+
+<div id="lb" onclick="lbClose(event)">
+  <span id="lb-close" onclick="lbHide()">&#x2715;</span>
+  <img id="lb-img" src="" alt="">
+</div>
+
+<div id="cg-wrap">
+
+<nav id="sb">
+  <div id="sb-title">
+    <p>NVIDIA Nsight VSE · 中文译注版</p>
+    <h2>CUDA<br>Kernel 级别实验</h2>
+  </div>
+<div class="ti tl1" style="padding-top:10px;font-size:10px;color:#504a4b;padding-left:15px;letter-spacing:.8px;text-transform:uppercase;">概述</div>
+<div class="ti tl1"><a href="#page-1-top">1. Kernel 级别实验（总览）</a></div>
+<div class="ti tl1" style="padding-top:10px;font-size:10px;color:#504a4b;padding-left:15px;letter-spacing:.8px;text-transform:uppercase;">执行效率</div>
+<div class="ti tl1"><a href="#page-2-top">2. 实际占用率</a></div>
+<div class="ti tl2"><a href="#page-2-Overview">概述</a></div>
+<div class="ti tl2"><a href="#page-2-Background">背景</a></div>
+<div class="ti tl1"><a href="#page-3-top">3. 发射效率</a></div>
+<div class="ti tl2"><a href="#page-3-Overview">概述</a></div>
+<div class="ti tl2"><a href="#page-3-Charts">图表</a></div>
+<div class="ti tl2"><a href="#page-3-Analysis">分析</a></div>
+<div class="ti tl1"><a href="#page-4-top">4. 指令统计</a></div>
+<div class="ti tl2"><a href="#page-4-Overview">概述</a></div>
+<div class="ti tl2"><a href="#page-4-Charts">图表</a></div>
+<div class="ti tl2"><a href="#page-4-Analysis">分析</a></div>
+<div class="ti tl1" style="padding-top:10px;font-size:10px;color:#504a4b;padding-left:15px;letter-spacing:.8px;text-transform:uppercase;">算力</div>
+<div class="ti tl1"><a href="#page-5-top">5. 实际 FLOPS</a></div>
+<div class="ti tl2"><a href="#page-5-Overview">概述</a></div>
+<div class="ti tl2"><a href="#page-5-Charts">图表</a></div>
+<div class="ti tl2"><a href="#page-5-Analysis">分析</a></div>
+<div class="ti tl1"><a href="#page-6-top">6. 实际 IOPS</a></div>
+<div class="ti tl2"><a href="#page-6-Overview">概述</a></div>
+<div class="ti tl2"><a href="#page-6-Charts">图表</a></div>
+<div class="ti tl2"><a href="#page-6-Analysis">分析</a></div>
+<div class="ti tl1"><a href="#page-7-top">7. 流水线利用率</a></div>
+<div class="ti tl2"><a href="#page-7-Overview">概述</a></div>
+<div class="ti tl2"><a href="#page-7-Charts">图表</a></div>
+<div class="ti tl2"><a href="#page-7-Analysis">分析</a></div>
+<div class="ti tl1"><a href="#page-8-top">8. 分支统计</a></div>
+<div class="ti tl2"><a href="#page-8-Overview">概述</a></div>
+<div class="ti tl2"><a href="#page-8-Charts">图表</a></div>
+<div class="ti tl2"><a href="#page-8-Analysis">分析</a></div>
+<div class="ti tl1" style="padding-top:10px;font-size:10px;color:#504a4b;padding-left:15px;letter-spacing:.8px;text-transform:uppercase;">内存</div>
+<div class="ti tl1"><a href="#page-9-top">9. 内存统计</a></div>
+<div class="ti tl2"><a href="#page-9-Overview">概述</a></div>
+<div class="ti tl2"><a href="#page-9-OverviewTab">概述标签页</a></div>
+<div class="ti tl1"><a href="#page-10-top">10. 内存统计 — 缓冲区</a></div>
+<div class="ti tl2"><a href="#page-10-Overview">概述</a></div>
+<div class="ti tl2"><a href="#page-10-Chart">图表</a></div>
+<div class="ti tl2"><a href="#page-10-Analysis">分析</a></div>
+<div class="ti tl1"><a href="#page-11-top">11. 内存统计 — 缓存</a></div>
+<div class="ti tl2"><a href="#page-11-Overview">概述</a></div>
+<div class="ti tl2"><a href="#page-11-Chart">图表</a></div>
+<div class="ti tl2"><a href="#page-11-Analysis">分析</a></div>
+<div class="ti tl1"><a href="#page-12-top">12. 内存统计 — 全局内存</a></div>
+<div class="ti tl2"><a href="#page-12-Overview">概述</a></div>
+<div class="ti tl2"><a href="#page-12-Chart">图表</a></div>
+<div class="ti tl2"><a href="#page-12-Analysis">分析</a></div>
+<div class="ti tl1"><a href="#page-13-top">13. 内存统计 — 本地内存</a></div>
+<div class="ti tl2"><a href="#page-13-Overview">概述</a></div>
+<div class="ti tl2"><a href="#page-13-Chart">图表</a></div>
+<div class="ti tl2"><a href="#page-13-Analysis">分析</a></div>
+<div class="ti tl1"><a href="#page-14-top">14. 内存统计 — 共享内存</a></div>
+<div class="ti tl2"><a href="#page-14-Overview">概述</a></div>
+<div class="ti tl2"><a href="#page-14-Chart">图表</a></div>
+<div class="ti tl2"><a href="#page-14-Analysis">分析</a></div>
+<div class="ti tl1"><a href="#page-15-top">15. 内存统计 — 纹理内存</a></div>
+<div class="ti tl2"><a href="#page-15-Overview">概述</a></div>
+<div class="ti tl2"><a href="#page-15-Chart">图表</a></div>
+<div class="ti tl2"><a href="#page-15-Analysis">分析</a></div>
+<div class="ti tl1"><a href="#page-16-top">16. 内存统计 — 原子操作</a></div>
+<div class="ti tl2"><a href="#page-16-Overview">概述</a></div>
+<div class="ti tl2"><a href="#page-16-Chart">图表</a></div>
+<div class="ti tl2"><a href="#page-16-Analysis">分析</a></div>
+<div class="ti tl1" style="padding-top:10px;font-size:10px;color:#504a4b;padding-left:15px;letter-spacing:.8px;text-transform:uppercase;">工具</div>
+<div class="ti tl1"><a href="#page-17-top">17. 反汇编正则匹配</a></div>
+<div class="ti tl2"><a href="#page-17-Overview">概述</a></div>
+<div class="ti tl2"><a href="#page-17-Analysis">分析</a></div>
+<div class="ti tl1"><a href="#page-18-top">18. 性能计数器</a></div>
+<div class="ti tl2"><a href="#page-18-Overview">概述</a></div>
+<div class="ti tl2"><a href="#page-18-Configuration">配置</a></div>
+<div class="ti tl2"><a href="#page-18-Output">输出</a></div>
+</nav>
+
+<div id="reader">
+  <div id="reader-inner" style="max-width:880px;padding:48px 56px 80px;">
+    <header class="book-header" style="border-bottom:2px solid var(--rule);padding-bottom:18px;margin-bottom:32px;">
+      <p class="kicker" style="font-family:-apple-system,sans-serif;font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--muted);">NVIDIA Nsight Visual Studio Edition · 用户指南</p>
+      <h1 style="font-size:30px;line-height:1.3;color:var(--ink);margin:8px 0 6px;">CUDA Kernel 级别实验</h1>
+      <p class="sub" style="font-family:-apple-system,sans-serif;font-size:13px;color:var(--muted);margin-top:6px;">
+        17 个 Profile-mode 实验 + 1 个父级总览的中文译注版　·　原文：
+        <a href="https://archive.docs.nvidia.com/gameworks/content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/achievedoccupancy.htm" target="_blank" style="color:var(--muted);">archive.docs.nvidia.com/gameworks/.../cudaexperiments/kernellevel/</a>
+      </p>
+    </header>
+
+<section class="page" id="page-1-top">
+  <h2 class="section-h lv1" style="font-size:24px;margin-top:0;padding-top:0;"><span style="color:var(--muted);font-size:14px;font-weight:500;margin-right:8px;">01</span>Kernel 级别实验（总览）</h2>
+  <p class="kicker" style="font-family:-apple-system,sans-serif;font-size:11px;letter-spacing:.6px;color:var(--muted);margin-top:-6px;margin-bottom:18px;text-transform:uppercase;">Kernel 级别实验 · 原文 kernel_level_experiments.htm</p>
+<p><span class="MyVariablesNsightVSENameShort">NVIDIA&#160;Nsight</span> 中的 CUDA kernel 级别实验包括以下内容：&#160;</p>
+        <blockquote>
+            <p><a href="#page-2-top">实际占用率</a> </p>
+            <p><a href="#page-5-top">实际 FLOPS</a> </p>
+            <p><a href="#page-6-top">实际 IOPS</a>
+            </p>
+            <p><a href="#page-4-top">指令统计</a> </p>
+            <p><a href="#page-3-top">发射效率</a> </p>
+            <p><a href="#page-8-top">分支统计</a> </p>
+            <p><a href="#page-9-top">内存统计</a> </p>
+            <blockquote>
+                <p><a href="#page-12-top">内存统计 — 全局内存</a>
+                </p>
+                <p><a href="#page-13-top">内存统计 — 本地内存</a> </p>
+                <p><a href="#page-16-top">内存统计 — 原子操作</a>
+                </p>
+                <p><a href="#page-14-top">内存统计 — 共享内存</a> </p>
+                <p><a href="#page-15-top">内存统计 — 纹理内存</a>
+                </p>
+                <p><a href="#page-11-top">内存统计 — 缓存</a>
+                </p>
+                <p><a href="#page-10-top">内存统计 — 缓冲区</a>
+                </p>
+            </blockquote>
+            <p><a href="#page-7-top">流水线利用率</a> </p>
+            <p><a href="#page-18-top">性能计数器</a> </p>
+            <p><a href="#page-17-top">反汇编正则匹配</a> </p>
+        </blockquote>
+        <p>&#160;</p>
+        <p>&#160;</p>
+</section>
+<div class="chapter-sep" style="margin:52px 0;padding:24px 0;border-top:2px solid var(--rule);border-bottom:2px solid var(--rule);text-align:center;font-family:-apple-system,sans-serif;"><span style="font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);">第 1 / 18 页</span></div><section class="page" id="page-2-top">
+  <h2 class="section-h lv1" style="font-size:24px;margin-top:0;padding-top:0;"><span style="color:var(--muted);font-size:14px;font-weight:500;margin-right:8px;">02</span>实际占用率</h2>
+  <p class="kicker" style="font-family:-apple-system,sans-serif;font-size:11px;letter-spacing:.6px;color:var(--muted);margin-top:-6px;margin-bottom:18px;text-transform:uppercase;">实际占用率 · 原文 achievedoccupancy.htm</p>
+<h3><a id="page-2-Overview"></a>概述</h3>
+        <p>
+          对于在 Profile 模式和 Trace 模式下记录的所有 CUDA kernel 启动，<b>占用率</b>实验详情面板会显示"理论占用率"，即由 kernel 启动配置和 CUDA 设备能力所决定的占用率上限。<b>实际占用率</b> Profile 模式实验会测量 kernel 执行期间的占用率，并将实际值与理论值一同显示在占用率实验详情面板中。其他图表会显示每个 SM 的实际占用率，并说明如何通过调整编译器和启动参数来控制占用率。
+        </p>
+        <h3><a id="page-2-Background"></a>背景</h3>
+        <h4><a id="page-2-DefinitionOfOccupancy"></a>占用率的定义</h4>
+        <p>
+          CUDA C Programming Guide 说明了 CUDA 设备的<a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#hardware-implementation">硬件实现</a>如何将一个 block 中相邻的线程组合成 warp。从 warp 中的线程开始执行起，直到 warp 中的所有线程都退出 kernel，该 warp 都被视为活跃。每个流多处理器（SM）上可并发活跃的 warp 数量存在上限，具体数值见 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capabilities">Programming Guide 的计算能力表</a>。占用率被定义为 SM 上活跃 warp 数量与该 SM 所支持的最大活跃 warp 数量之比。占用率会随着 warp 的开始和结束而随时间变化，且每个 SM 上的占用率可能不同。
+        </p>
+        <p>
+          低占用率会导致较差的指令发射效率，因为没有足够的合格 warp 来隐藏依赖指令之间的延迟。当占用率已足够高以隐藏延迟时，继续提高占用率反而可能因每线程可用资源减少而降低性能。kernel 性能分析的早期步骤之一应该是检查占用率，并观察在不同占用率水平下运行时对 kernel 执行时间的影响。
+        </p>
+        <h4><a id="page-2-TheoreticalOccupancy"></a>理论占用率</h4>
+        <p> 活跃 warp 数量（也即占用率）存在一个上限，该上限可以从启动配置、kernel 的编译选项和设备能力推导出来。kernel 启动时的每个 block 会被分配到某个 SM 上执行。从 block 中的 warp 开始执行起，直到 block 中所有 warp 都退出 kernel，该 block 都被视为活跃。SM 上可并发执行的 block 数量受下面所列因素限制。活跃 warp 数量的上限等于活跃 block 数量上限与每个 block 中 warp 数量的乘积。因此，可以通过增加每个 block 中的 warp 数量（由 block 维度决定），或通过改变限制 SM 可容纳 block 数量的因素以允许更多活跃 block，来提高活跃 warp 数量的上限。限制因素如下：</p>
+        <p>
+            <ul style="list-style-type:none">
+                <li value="1"><b>每个 SM 的 warp 数</b>
+                    <ul style="list-style-type:none">
+                        <li style="text-indent:-20px;" value="1">
+                每个 SM 上可同时活跃的 warp 数量存在最大值。由于占用率是活跃 warp 数与所支持最大活跃 warp 数之比，因此当活跃 warp 数等于最大值时占用率为 100%。如果该因素正在限制活跃 block 数量，则无法继续提高占用率。例如，在一个每 SM 支持 64 个活跃 warp 的 GPU 上，8 个活跃 block、每个 block 含 256 个线程（每个 block 8 个 warp）会得到 64 个活跃 warp，理论占用率为 100%。同理，16 个活跃 block、每个 block 含 128 个线程（每个 block 4 个 warp）也会得到 64 个活跃 warp，理论占用率同样为 100%。
+              </li>
+                        <div style="text-align: center;">
+                            <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/achievedoccupancylimitedbywarps.png" style="mc-thumbnail: none;" / onclick="lbShow(this.src)">
+                        </div>
+                    </ul>
+                </li>
+                <li value="2"><b>每个 SM 的 block 数</b>
+                    <ul style="list-style-type:none">
+                        <li style="text-indent:-20px;" value="1">
+                每个 SM 上可同时活跃的 block 数量存在最大值。如果占用率低于 100% 且该因素限制了活跃 block 数量，则意味着当达到设备的活跃 block 上限时，每个 block 中包含的 warp 不足以使占用率达到 100%。此时可通过增大 block 大小来提高占用率。例如，在一个每 SM 支持 16 个活跃 block 和 64 个活跃 warp 的 GPU 上，含 32 个线程（每个 block 1 个 warp）的 block 最多只能产生 16 个活跃 warp（理论占用率 25%），因为最多只能有 16 个活跃 block，每个 block 又只有一个 warp。在此 GPU 上，将 block 大小增加到每个 block 4 个 warp 就可以达到 100% 理论占用率。
+              </li>
+                        <div style="text-align: center;">
+                            <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/achievedoccupancylimitedbyblocks.png" style="mc-thumbnail: none;" / onclick="lbShow(this.src)">
+                        </div>
+                    </ul>
+                </li>
+                <li value="3"><b>每个 SM 的寄存器数</b>
+                    <ul style="list-style-type:none">
+                        <li style="text-indent:-20px;" value="1">
+                每个 SM 拥有一组由所有活跃线程共享的寄存器。如果该因素限制了活跃 block 数量，则意味着可以减少编译器为每个线程分配的寄存器数量来提高占用率（参见 __launch_bounds__）。在通过调整每线程寄存器数来控制占用率时，应仔细监控 kernel 执行时间和平均合格 warp 数。占用率提升带来的延迟隐藏收益，可能会被每线程寄存器变少、更频繁地向本地内存溢出所带来的性能损失抵消。占用率与每线程寄存器数之间的最佳性能平衡点，可以通过使用 __launch_bounds__ 控制每线程寄存器数、对不同寄存器数编译的 kernel 进行 trace 来通过实验找到。
+              </li>
+                        <div style="text-align: center;">
+                            <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/achievedoccupancylimitedbyregisters.png" style="mc-thumbnail: none;" / onclick="lbShow(this.src)">
+                        </div>
+                    </ul>
+                </li>
+                <li value="4"><b>每个 SM 的共享内存</b>
+                    <ul style="list-style-type:none">
+                        <li style="text-indent:-20px;" value="1">
+                每个 SM 拥有固定容量的共享内存，由所有活跃线程共享。如果该因素限制了活跃 block 数量，则意味着可以减少每个线程所需的共享内存来提高占用率。每线程的共享内存是"静态共享内存"（所有 __shared__ 变量所需的总大小）与"动态共享内存"（作为参数传递给 kernel 启动的共享内存量）之和。某些 CUDA 设备上，每个 SM 的共享内存大小是可配置的，可以在共享内存大小与 L1 缓存大小之间进行权衡。如果此类 GPU 被配置为使用更多 L1 缓存，而共享内存恰好是占用率的限制因素，那么也可以通过选择使用更少的 L1 缓存、更多的共享内存来提高占用率。
+              </li>
+                        <div style="text-align: center;">
+                            <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/achievedoccupancylimitedbysharedmem.png" style="mc-thumbnail: none;" / onclick="lbShow(this.src)">
+                        </div>
+                    </ul>
+                </li>
+            </ul>
+        </p>
+        <h4><a id="page-2-AchievedOccupancy"></a>实际占用率</h4>
+        <p>
+          理论占用率给出了 SM 上活跃 warp 的上界，但实际活跃 warp 数量会随着 warp 的开始与结束在 kernel 执行期间发生变化。如<a href="#page-3-top">发射效率</a>中所述，一个 SM 包含一个或多个 warp 调度器。每个 warp 调度器都会尝试在每个时钟周期从某个 warp 发射指令。要充分隐藏依赖指令之间的延迟，每个调度器在每个时钟周期都必须有至少一个 warp 合格、可发射指令。在 kernel 整个执行过程中尽可能多地维持活跃 warp（即保持高占用率），有助于避免出现所有 warp 都停顿、没有指令被发射的情况。实际占用率是在每个 warp 调度器上使用硬件性能计数器、对该调度器上每个时钟周期的活跃 warp 数进行计数得到的。这些计数随后会跨每个 SM 的所有 warp 调度器累加，再除以该 SM 活跃的时钟周期数，从而得到每个 SM 的平均活跃 warp 数。再除以该 SM 所支持的最大活跃 warp 数，就得到 kernel 执行期间每个 SM 的平均实际占用率，并展示在<a href="#AchievedOccupancyChart">实际占用率图表</a>中。对所有 SM 求平均即得到整体实际占用率，该数值会与理论占用率一同显示在实验详情面板中。
+        </p>
+        <h4><a id="page-2-LowAchievedOccupancy"></a>实际占用率偏低的原因</h4>
+        <p>
+          实际占用率不可能超过理论占用率，所以提高占用率的第一步应该是通过调整限制因素来提高理论占用率。下一步是检查实际值是否接近理论值。当 SM 活跃期间未能始终维持理论上的活跃 warp 数时，实际值就会低于理论值。这种情况会在以下场景中发生：
+        </p>
+        <ul style="list-style-type:none">
+            <li value="1"><b>block 内部的负载不均衡</b>
+                <ul style="list-style-type:none">
+                    <li style="text-indent:-20px;" value="1">
+                如果一个 block 中的各个 warp 执行时间不相同，则称该负载不均衡。这意味着在 kernel 接近结束时活跃 warp 数会减少，这就是所谓的"尾部效应"问题。最佳解决方案是尽量让每个 block 中各 warp 之间的负载更均衡。
+              </li>
+                </ul>
+            </li>
+            <li value="2"><b>block 之间的负载不均衡</b>
+                <ul style="list-style-type:none">
+                    <li style="text-indent:-20px;" value="1">
+                如果一个 grid 中的各个 block 执行时间不相同，这种负载同样是不均衡的，不过即使不将其改造为更均衡的负载，也能提高设备效率。启动更多 block 可以让某些 block 完成后立刻有新的 block 启动，意味着尾部效应不会出现在每个 block 内部，而只会出现在 kernel 末尾。如果没有更多 block 可启动，运行具有相似 block 属性的并发 kernel 也能达到同样效果。
+              </li>
+                </ul>
+            </li>
+            <li value="3"><b>启动的 block 数过少</b>
+                <ul style="list-style-type:none">
+                    <li style="text-indent:-20px;" value="1">
+                每个 SM 的活跃 block 上限由理论占用率决定，但该计算并未考虑每 SM 启动 block 数不足该上限的情况。设备的 SM 数量乘以每 SM 最大活跃 block 数被称为"完整一波（full wave）"，启动量不足一波会导致实际占用率偏低。例如，在一个具有 15 个 SM、配置期望 100% 理论占用率且每 SM 4 个 block 的设备上，完整一波是 60 个 block。仅启动 45 个 block（假定负载均衡）会导致大约 75% 的实际占用率。
+              </li>
+                </ul>
+            </li>
+            <li value="4"><b>最后一波不完整</b>
+                <ul style="list-style-type:none">
+                    <li style="text-indent:-20px;" value="1">
+                每个 SM 上可同时活跃的 warp 数量存在最大值。由于占用率是活跃 warp 数与所支持最大活跃 warp 数之比，因此当活跃 warp 数等于最大值时占用率为 100%。如果该因素正在限制活跃 block 数量，则无法继续提高占用率。例如，在一个每 SM 支持 64 个活跃 warp 的 GPU 上，8 个活跃 block、每个 block 含 256 个线程（每个 block 8 个 warp）会得到 64 个活跃 warp，理论占用率为 100%。同理，16 个活跃 block、每个 block 含 128 个线程（每个 block 4 个 warp）也会得到 64 个活跃 warp，理论占用率同样为 100%。
+              </li>
+                </ul>
+            </li>
+        </ul>
+        <h3><a id="Charts">图表</a>
+        </h3>
+        <table>
+            <tr>
+                <td>
+                    <h4><a id="VaryingBlockSize">变动 Block 大小</a>
+                    </h4>
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/achievedoccupancyvaryingblocksize.png" style="float: right;mc-thumbnail: none;" / onclick="lbShow(this.src)">
+                    <p>
+          展示在其他参数保持不变的情况下，变动 block 大小如何影响理论占用率。圆圈标记点显示当前每个 block 的线程数和当前活跃 warp 上限。注意，活跃 warp 数并非每个 block 的 warp 数（后者是每 block 线程数除以 warp 大小并向上取整得到）。如果图表中的曲线高于圆圈，则说明在不改动其他因素的情况下，仅通过改变 block 大小就可以提高占用率。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <p>
+        </p>
+        <table>
+            <tr>
+                <td>
+                    <h4><a id="VaryingRegisterCount">变动寄存器数</a>
+                    </h4>
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/achievedoccupancyvaryingregistercount.png" style="float: right;mc-thumbnail: none;" / onclick="lbShow(this.src)">
+                    <p>
+          展示在其他参数保持不变的情况下，变动寄存器数如何影响理论占用率。圆圈标记点显示当前每线程的寄存器数和当前活跃 warp 上限。如果图表中的曲线高于圆圈，则说明在不改动其他因素的情况下，仅通过改变每线程寄存器数就可以提高占用率。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <p>
+        </p>
+        <table>
+            <tr>
+                <td>
+                    <h4><a id="VaryingSharedMemoryUsage">变动共享内存用量</a>
+                    </h4>
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/achievedoccupancyvaryingsharedmemoryusage.png" style="float: right;mc-thumbnail: none;" / onclick="lbShow(this.src)">
+                    <p>
+          展示在其他参数保持不变的情况下，变动共享内存用量如何影响理论占用率。圆圈标记点显示当前每个 block 的共享内存大小和当前活跃 warp 上限。如果图表中的曲线高于圆圈，则说明在不改动其他因素的情况下，仅通过改变每个 block 的共享内存大小就可以提高占用率。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <p>
+        </p>
+        <table>
+            <tr>
+                <td>
+                    <h4><a id="AchievedOccupancyChart">每个 SM 的实际占用率</a>
+                    </h4>
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/achievedoccupancypersm.png" style="float: right;mc-thumbnail: none;" / onclick="lbShow(this.src)">
+                    <p>
+          每个 SM 的实际占用率。所报告的值是在 kernel 执行期间对所有 warp 调度器求平均得到的。横跨所有柱状条的那条线是平均值，对应于其他表格中所报告的实际占用率。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <h3><a id="Analysis">分析</a>
+        </h3>
+        <ul style="list-style-type:none">
+            <li value="1">
+            低占用率本身并不是问题，但通常会导致合格 warp 过少。如果 <a href="#page-3-WarpIssueEfficiency">Warp 发射效率</a>图表中"没有合格 warp"的周期占比较高 ……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……尽量在可能的情况下增加活跃 warp 数。在很多情况下，增加活跃 warp 数会带来更大的合格 warp 池。如果……
+                  <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                      ……理论占用率较低，则尝试优化 kernel 启动的<a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#execution-configuration">执行配置</a>，借助占用率表格找出哪些因素正在限制占用率。如果你受限于寄存器，也不要排除使用 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#launch-bounds">launch bounds</a> 来试验提高占用率，即使这会造成一定程度的寄存器溢出。
+                    </li><li style="text-indent:-20px;" value="2">
+                      ……实际占用率明显低于理论占用率，则检查<a href="#page-4-top">指令统计</a>实验中是否存在严重的负载不均衡或尾部效应。可行的策略包括：以更细粒度拆分 kernel grid，更均衡地将工作分配到各 block 之间，避免在单个 block、warp 或线程上汇集最终结果。
+                    </li><li style="text-indent:-20px;" value="3">
+                      ……<a href="#page-7-top">流水线利用率</a>实验显示某条特定流水线已被完全占满，则增加活跃 warp 不太可能带来更多合格 warp，因为所有新增的活跃 warp 都会因尝试访问已过载的流水线而停顿。这种情况下，可以尝试减少该流水线上的负载，或排查是否已达到目标硬件预期的性能峰值。
+                    </li></ul></li></ul></li>
+        </ul>
+</section>
+<div class="chapter-sep" style="margin:52px 0;padding:24px 0;border-top:2px solid var(--rule);border-bottom:2px solid var(--rule);text-align:center;font-family:-apple-system,sans-serif;"><span style="font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);">第 2 / 18 页</span></div><section class="page" id="page-3-top">
+  <h2 class="section-h lv1" style="font-size:24px;margin-top:0;padding-top:0;"><span style="color:var(--muted);font-size:14px;font-weight:500;margin-right:8px;">03</span>发射效率</h2>
+  <p class="kicker" style="font-family:-apple-system,sans-serif;font-size:11px;letter-spacing:.6px;color:var(--muted);margin-top:-6px;margin-bottom:18px;text-transform:uppercase;">发射效率 · 原文 issueefficiency.htm</p>
+<h3><a id="page-3-Overview"></a>概述</h3>
+        <p>
+          发射效率实验提供有关设备发射指令能力的信息。其核心是回答这样一个问题：设备是否能够在每个周期都成功发射指令。如果做不到这一点，就不可避免地会降低 kernel 的潜在峰值性能。理解无法连续背靠背发射指令的根因，是分析 kernel 性能时一个很好的高层级初步排查切入点。
+        </p>
+        <h5><a id="page-3-Background"></a>背景</h5>
+        <p>
+          对于计算能力 2.0 及更高的设备，每个流多处理器（SM）都配备了多个 warp 调度器。每个 warp 调度器管理一个由硬件给定的固定最大 warp 数量。这就定义了每个 SM 上 warp 的<b>设备上限</b>——即同时驻留在每个 SM 上的 warp 数量的上界。kernel 启动的<a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#execution-configuration">执行配置</a>可能因资源约束进一步限制可驻留 warp 数（详细信息见……）。<b>理论占用率</b>定义了 SM 上 warp 并行度的最高上限。到目前为止讨论的所有信息都是由目标设备、kernel 的源代码及启动参数静态确定的。在运行时，每个周期同时分配给某个多处理器的 warp 数被称为<b>活跃 warp</b>。在最佳情况下，kernel 执行期间的平均活跃 warp 数等于或非常接近理论占用率。但如果调度器未能在各 warp 调度器之间均匀地平衡工作，或者干脆没有剩余的工作可发射以填满机器，那么实际的活跃 warp 数就可能明显低于理论占用率。上述指标之间的关系如下：</p><pre>Device Limit &gt;= Theoretical Occupancy &gt;= Active Warps</pre>
+        <p>活跃 warp 集合可以理解为在运行时某一时刻可以推进执行的候选池。然而，并非所有活跃 warp 都一定能发射其下一条指令。例如，某个 warp 可能正停在 barrier 处等待其他 warp 跟上，或者尚未取到下一条指令，又或者在等待先前指令的结果就绪。按是否能发射下一条指令对活跃 warp 进行划分，可得到无法推进执行的<b>停顿 warp</b>子集和已准备好发射下一条指令的<b>合格 warp</b>子集。更具体地说，一个活跃 warp 被视为合格的条件是：指令已取回、指令所需的执行单元可用、且指令的所有依赖均已满足。按定义，这些指标之间的关系可表示为：</p><pre>Active Warps == Stalled Warps + Eligible Warps</pre>
+        <p>在每个周期，每个 warp 调度器都会从合格 warp 中挑选一个并发射一条或多条指令。如果某个周期没有合格 warp 可用，调度器就失去了推进执行的机会，处理单元也可能因此闲置。由于每个调度器在每个周期要么不挑选 warp，要么恰好挑选一个 warp，所以每个多处理器每个周期的<b>已选 warp</b>数处于 <code>[0 .. # Warp Schedulers per SM]</code> 范围之内。要保证每个调度器在每个周期都能发射指令，就需要每个 warp 调度器在每个周期都至少有一个合格 warp 可用。因此，每个调度器合格 warp 数的目标值是每个周期至少有一个或多个 warp 可用。在 SM 层面上，这意味着合格 warp 数至少要等于 warp 调度器数量。
+        </p>
+        <div style="text-align: center;">
+            <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/issueefficiencywarpscheduling.png" style="mc-thumbnail: none;" / onclick="lbShow(this.src)">
+        </div>
+        <h3><a id="page-3-Charts"></a>图表</h3>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="page-3-WarpsPerSm"></a>每个 SM 的 warp 数</h4>
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/issueefficiencychartwarpspersm.png" style="float: right;mc-thumbnail: none;" / onclick="lbShow(this.src)">
+                    <p>
+          概览本文档<a href="#page-3-Background">背景</a>章节中讨论的、每个 SM 的各种 warp 指标。这些指标以整个 kernel 执行期间、目标设备各个 SM 上的平均值给出。Y 轴按设备上限进行缩放。
+        </p>
+                    <p style="padding:10px;background-color:#eaefe0">
+          即便平均来看有足够多的合格 warp，也并不一定保证从未出现某个周期内某个 warp 调度器漏发一条指令的情况。
+        </p>
+                    <h5>指标</h5>
+                    <p><b>活跃 warp</b>
+          warp 从被调度到某个多处理器的那一刻起，直到完成其最后一条指令期间都是活跃的。每个 warp 调度器维护其自己已分配的活跃 warp 列表。warp 与调度器的分配在 warp 变为活跃时一次性完成，并在该 warp 的整个生命周期内有效。一个粗略的指导原则是：每个 warp 调度器至少应有 8 个活跃 warp。更多的活跃 warp 可能让 warp 延迟得以更有效地隐藏。
+        </p>
+                    <p><b>合格 warp</b>
+          如果一个活跃 warp 能够发射下一条指令，就被视为合格。每个 warp 调度器都会从合格 warp 池中挑选下一个发射指令的 warp。不合格的 warp 会报告一个<a href="#page-3-IssueStallReasons">发射停顿原因</a>。目标是每个调度器每个周期至少有一个合格 warp。
+        </p>
+                    <p><b>理论占用率</b>
+          理论占用率作为每个 SM 上活跃 warp（也即合格 warp）的上限，由 kernel 启动的<a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#execution-configuration">执行配置</a>所定义。更详细的内容见<a href="#page-2-top">实际占用率</a>实验。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <p>
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="page-3-WarpIssueEfficiency"></a>Warp 发射效率</h4>
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/issueefficiencychartwarpissueefficiency.png" style="float: right;mc-thumbnail: none;" / onclick="lbShow(this.src)">
+                    <p>
+          整个 GPU 上各周期合格 warp 可用情况的分布。所给数值是在 kernel 执行期间跨所有 warp 调度器求和得到的。
+        </p>
+                    <p style="padding:10px;background-color:#eaefe0">
+          在计算能力 2.x 的设备上，该图表显示三个指标。"没有合格 warp"意味着两个 warp 调度器都未能发射。"一个合格"表示只有一个 warp 调度器有可用的合格 warp。"两个或更多"则保证两个 warp 调度器都发射了一条指令。
+        </p>
+                    <h5>指标</h5>
+                    <p><b>没有合格</b>
+          warp 调度器没有合格 warp 可供挑选、因而未发射指令的周期数。没有合格 warp 的周期占比越低，代码在目标设备上的运行就越高效。如果该值较高，请查看<a href="#page-3-IssueStallReasons">发射停顿原因</a>以了解是什么导致 warp 无法变为合格。
+        </p>
+                    <p><b>一个或更多合格</b>
+          warp 调度器至少有一个合格 warp 可供挑选的周期数。该指标等于所有 warp 调度器累加之后、发射了指令的总周期数。该值越高越好，目标是接近 100%。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <p>
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="page-3-IssueStallReasons"></a>发射停顿原因</h4>
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/analysis_issue_stall_reasons.001.png" style="float: right;mc-thumbnail: none;" / onclick="lbShow(this.src)">
+                    <p>
+          发射停顿原因捕捉的是活跃 warp 为何不合格。在计算能力 3.0 及更高的设备上，每个停顿的 warp 都会在每个周期将其最关键的停顿原因计数加 1。因此每个多处理器每个周期停顿原因的总和，其增量在 0（如果所有 warp 均合格）到活跃 warp 数（如果所有 warp 均停顿）之间。停顿原因计数器对所有停顿的 warp 都会更新，与当前周期是否能发射指令无关。这与计算能力 2.x 的设备不同——后者仅在 warp 调度器无法发射指令的周期才更新发射停顿原因。
+        </p>
+                    <ul>
+                        <li value="1"><b>流水线繁忙</b> — 指令所需的计算资源尚不可用。</li>
+                        <li value="2"><b>纹理</b> — 纹理子系统已被充分占用，或存在过多未完成请求。 </li>
+                        <li value="3"><b>常量</b> — 由于常量缓存未命中导致常量加载被阻塞。 </li>
+                        <li value="4"><b>指令取指</b> — 下一条汇编指令尚未取回。 </li>
+                        <li value="5"><b>内存节流</b> — 大量挂起的内存操作阻碍了进一步的执行推进。可以通过将多个内存事务合并为一个来缓解。 </li>
+                        <li value="6"><b>内存依赖</b> — 由于所需资源不可用或已被完全占用，或某类请求过多未完成，load/store 无法执行。可以通过优化内存对齐和访问模式来潜在地减少内存依赖停顿。 </li>
+                        <li value="7"><b>同步</b> — warp 被阻塞在 <code>_syncthreads()</code> 调用处。 </li>
+                        <li value="8"><b>执行依赖</b> — 指令所需的输入尚不可用。可以通过提高指令级并行度来潜在地减少执行依赖停顿。 </li>
+                    </ul>
+                </td>
+            </tr>
+        </table>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h5><a id="page-3-WarpIssueEfficiencyVsIssueStallReasons"></a>结合分析 Warp 发射效率与发射停顿原因</h5>
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/analysis_warp_issue_vs_stall_reasons.001.png" style="float: right;mc-thumbnail: none;" / onclick="lbShow(this.src)">
+                    <p>Warp 发射效率图表中的"没有合格"段反映了发射停顿出现的频率。发射停顿原因图表则展示了 warp 停顿原因的分布。如果"没有合格"段较小，说明发射停顿出现得不频繁，研究停顿原因的价值就会变小。然而，如果"没有合格"段较大，则解决发射停顿原因图表中最突出的问题将能在发射效率上带来最大的改进。
+</p>
+                    <p>在示意图所示的例子中，首先注意到在 Warp 发射效率中，kernel 执行期间超过 80% 的时钟周期没有任何 warp 合格、可以发射其下一条指令。</p>
+                    <p>较高的发射停顿占比说明应当查阅发射停顿原因图表以确定停顿原因。本例中最突出的原因是内存依赖，占停顿总数一半以上。这是对尚未到达的内存加载数据的依赖，表明性能受内存延迟所限制。</p>
+                    <p>本例中，kernel 可以通过执行更多计算、利用计算来隐藏内存延迟，或通过引入指令级并行让独立指令可以在加载数据与使用数据之间发射，从而更好地利用 GPU。</p>
+                </td>
+            </tr>
+        </table>
+        <h3><a id="page-3-Analysis"></a>分析</h3>
+        <ul style="list-style-type:none">
+            <li value="1">
+            如果 <a href="#page-3-WarpIssueEfficiency">Warp 发射效率</a>图表中没有合格 warp 的周期占比较高 ……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……尽量在可能的情况下增加活跃 warp 数。在很多情况下，增加活跃 warp 数会带来更大的合格 warp 池。如果……
+                  <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                      ……<a href="#page-3-WarpsPerSm">每个 SM 的 warp 数</a>图表中的理论占用率与设备上限（Y 轴最大值）相差较远，则尝试优化 kernel 启动的<a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#execution-configuration">执行配置</a>，并进一步查看<a href="#page-2-top">占用率</a>实验的详情。如果你受限于寄存器，也不要排除使用 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#launch-bounds">launch bounds</a> 来试验提高占用率，即使这会造成一定程度的寄存器溢出。
+                    </li><li style="text-indent:-20px;" value="2">
+                      ……<a href="#page-3-WarpsPerSm">每个 SM 的 warp 数</a>图表中的平均活跃 warp 明显低于理论占用率，则检查<a href="#page-4-top">指令统计</a>实验中是否存在严重不均衡的负载或尾部效应。可行的策略包括：以更细粒度拆分 kernel grid，更均衡地将工作分配到各 block 之间，避免/并行化为在单个 block、warp 或线程上准备或汇集最终结果所做的代价高昂的归约操作。
+                    </li><li style="text-indent:-20px;" value="3">
+                      ……查看<a href="#page-7-top">流水线利用率</a>实验，确认是否某条特定流水线已被完全占满。这种情况下增加活跃 warp 不太可能带来更多合格 warp，因为任何新增的活跃 warp 都会因尝试访问已过载的流水线而停顿。这种情况下，可以尝试减少该流水线上的负载，或排查是否已达到目标硬件预期的性能峰值。
+                    </li></ul></li><li style="text-indent:-20px;" value="2">
+                ……尝试解决最常见的停顿原因。如果占比最高的停顿原因是……
+                  <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                       ……执行依赖，则运行内存类实验，寻找优化慢速内存访问的潜力。同时检查指令组合中是否存在大量低吞吐量指令（如 double 指令），并确认你确实需要使用这些低吞吐量操作。在可接受的情况下，尽量改用更快的数学内联函数（intrinsics）或切换到单精度浮点。可以使用编译器选项 <code>--use_fast_math</code> 来快速检验此类优化方法的潜在效果。
+                     </li><li style="text-indent:-20px;" value="2">
+                       ……纹理停顿，则使用<a href="#page-15-top">内存统计 — 纹理内存</a>检查纹理访问，寻找进一步优化的可能。同样地，也要查看<a href="#page-7-top">流水线利用率</a>实验，以确认纹理流水线的最大吞吐量是否已达到。
+                     </li><li style="text-indent:-20px;" value="3">
+                       ……barrier 停顿，则尝试在 barrier 之前让每个 block 中各 warp 的执行负载更均衡，或考虑该算法是否可以用更少的 barrier 实现。
+                     </li></ul></li></ul></li>
+            <li value="2">
+          如果 <a href="#page-3-WarpIssueEfficiency">Warp 发射效率</a>图表中没有合格 warp 的周期占比接近零 ……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……检查 kernel 性能是否已接近指令吞吐量或内存吞吐量所对应的预期峰值。
+              </li><li style="text-indent:-20px;" value="2">
+                ……且 <a href="#page-3-WarpsPerSm">每个 SM 的 warp 数</a>中平均合格 warp 数明显高于每个多处理器的 warp 调度器数，那么一个潜在的进阶优化策略是将两个或多个线程的工作合并到一个线程中。如果剩余 grid 仍足够大、能够填满整个设备，这种方式即使整体占用率、活跃 warp 数和合格 warp 数都有所降低，也可能带来更优的执行时间。
+              </li></ul></li>
+        </ul>
+        <!--
+        <h3><a href="#CommonPatterns"></a>Common Patterns</h3>
+        <p>
+          
+        </p>
+        -->
+</section>
+<div class="chapter-sep" style="margin:52px 0;padding:24px 0;border-top:2px solid var(--rule);border-bottom:2px solid var(--rule);text-align:center;font-family:-apple-system,sans-serif;"><span style="font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);">第 3 / 18 页</span></div><section class="page" id="page-4-top">
+  <h2 class="section-h lv1" style="font-size:24px;margin-top:0;padding-top:0;"><span style="color:var(--muted);font-size:14px;font-weight:500;margin-right:8px;">04</span>指令统计</h2>
+  <p class="kicker" style="font-family:-apple-system,sans-serif;font-size:11px;letter-spacing:.6px;color:var(--muted);margin-top:-6px;margin-bottom:18px;text-transform:uppercase;">指令统计 · 原文 instructionstatistics.htm</p>
+<h3><a id="page-4-Overview"></a>概述</h3>
+        <p>
+          指令统计实验为理解 kernel 执行时目标设备的整体利用情况提供了第一层级的初步排查信息。它回答以下问题：kernel grid 是否能在整个执行期间持续让所有多处理器保持忙碌？工作负载是否在各处之间均衡分布？实际达到的指令吞吐量是否接近硬件的峰值性能？
+        </p>
+        <h5><a id="page-4-Background"></a>背景</h5>
+        <p>
+          对于计算能力 2.0 及更高的设备，全局工作分发引擎会将线程 block 调度到流多处理器（SM）上执行。如果一个多处理器至少被分配到一个 warp，就被视为活跃。在 kernel 执行期间某 SM 处于活跃状态的总周期数被定义为<b>活跃周期</b>。
+        </p>
+        <p>
+          每个多处理器都暴露多个 warp 调度器，能够每个周期至少执行一条指令。Fermi 架构（计算能力 2.x）上每个 SM 有两个 warp 调度器；Kepler 架构（计算能力 3.x）上每个 SM 配备四个 warp 调度器。在每次指令发射时刻，每个 warp 调度器都会从其分配到的 warp 列表中挑选一个能够推进执行的 warp。对该选中的 warp，调度器随后要么发射下一条单条指令，要么发射下两条指令。双发射在计算能力 2.x 及更高的设备上得到支持，且仅适用于相互独立的指令。
+        </p>
+        <p>
+          一个 warp 调度器可能需要多次发射同一条指令，才能真正完成 warp 中全部 32 个线程的执行。<b>已发射指令数</b>与<b>已执行指令数</b>之间存在差异主要有两个原因：第一，内存操作上的地址分歧和 bank 冲突（详见各<a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capabilities">计算能力</a>技术规范中的内存章节）。第二，某些汇编指令每个周期只能为半个 warp 发射，因此需要发射两次。双精度浮点指令就是此类指令的典型例子。由于每条已执行指令至少要被发射一次，因此下面这一关系在所有情况下都成立：
+        </p><pre>Instructions Issued &gt;= Instructions Executed</pre>
+        <p>
+          多次发射同一条指令也被称为<b>指令重发（Instruction Replay）</b>。每次重发迭代都会占用该 warp 调度器原本可用于发射新指令、推进执行的能力。同时，每次指令重发都会消耗处理该指令所需的计算资源。简而言之，所需的指令重发迭代越多，对 kernel 执行的性能影响就越大。
+        </p>
+        <h3><a id="page-4-Charts"></a>图表</h3>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="page-4-InstructionsPerClock"></a>每时钟周期指令数（IPC）</h4>
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/instructionstatisticschartinstructionsperclock.png" style="float: right;mc-thumbnail: none;" / onclick="lbShow(this.src)">
+                    <p>
+          一张 z 序柱状图，分别展示每个 SM 上已发射指令与已执行指令所达到的吞吐量。理论 IPC 峰值是一项设备上限，由目标设备的计算能力决定。Y 轴按该峰值进行缩放。
+        </p>
+                    <p style="padding:10px;background-color:#eaefe0">
+          IPC 峰值是单个周期可达到的最大已执行指令数。可持续维持的已执行 IPC 最大值可能会更低。
+        </p>
+                    <h5>指标</h5>
+                    <p><b>已发射 IPC</b>
+          考虑所有指令重发迭代的情况下，每周期平均已发射的指令数。该值越接近"已执行 IPC"越好。如本文档<a href="#page-4-Background">背景</a>章节所述，某些汇编指令需要多次发射。因此，该指标的最优目标值取决于指令的组合。
+        </p>
+                    <p><b>已执行 IPC</b>
+          每周期平均已执行的指令数。数值越高，表明对所有可用资源的使用越高效。请注意，所报告的数值是按每个多处理器给出的。由于多处理器中的每个 warp 调度器都能独立执行指令，所以"每周期执行一条指令"的目标意味着平均 IPC 应等于每个 SM 的 warp 调度器数量。对一个 kernel 而言，可达到的最大目标 IPC 取决于其所执行指令的组合。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <p>
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="page-4-SmActivity"></a>SM 活动率</h4>
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/instructionstatisticschartsmactivity.png" style="float: right;mc-thumbnail: none;" / onclick="lbShow(this.src)">
+                    <p>
+          展示 kernel 启动期间每个多处理器处于活跃状态的时间占比。如果一个多处理器当前至少被分配了一个 warp 来执行，则被视为活跃。即便 kernel grid 尚未完成，由于负载严重不均衡，某个 SM 也可能处于非活跃状态。SM 之间负载分布不均可能由以下几种因素引起：kernel 中各 block 的执行时间不同、各 SM 被调度的 block 数量存在差异，或两者兼有。
+        </p>
+                    <p>
+          负载不均衡的可观察结果是各多处理器之间的活动率数值差异显著：原因很简单——部分 SM 仍在忙于执行工作，而其他 SM 已经完成了自己的份额、由于没有更多可调度的工作项而处于空闲。这通常被称为尾部效应。block 数量较少的小型 kernel grid 更容易受到尾部效应的影响。<a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#conurrent-kernel-execution">并发 kernel 执行</a>可以利用空闲的多处理器去处理后续的 kernel 启动。由于 profile 类活动是对每次 kernel 启动单独进行观察的，profile 结果只能指示出尾部效应的存在。要分析并发 kernel 执行的有效性，请运行 CUDA trace 类活动。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <p>
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="page-4-InstructionsPerWarp"></a>每 warp 指令数（IPW）</h4>
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/instructionstatisticschartinstructionsperwarp.png" style="float: right;mc-thumbnail: none;" / onclick="lbShow(this.src)">
+                    <p>
+          展示每个多处理器上每个 warp 平均已执行的指令数。各 SM 之间 IPW 指标差异较大，表明 kernel grid 中各 block 的工作负载不一致。这种不均衡并不一定会导致性能低下，但 IPW 对于理解 <a href="#page-4-SmActivity">SM 活动率</a>差异的原因非常有用。
+        </p>
+                    <p>
+          导致 IPW 出现较大差异最常见的代码模式，是其条件表达式依赖于 block 索引的条件执行代码块。例子包括：仅对某一个 block 执行的特殊预处理或后处理操作；或者仅对 grid 中某一部分触发的、代价高昂的边界条件检测与处理。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <p>
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="page-4-WarpsLaunched"></a>启动的 warp 数</h4>
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/instructionstatisticschartwarpslaunched.png" style="float: right;mc-thumbnail: none;" / onclick="lbShow(this.src)">
+                    <p>
+          展示在所执行 kernel grid 中，每个多处理器上启动的 warp 总数。各 SM 之间启动 warp 数差异较大，最常见的原因是 kernel grid 提供的并行度不足。更具体地说，是 kernel block 数量过少，不足以充分利用所有可用的计算资源。仅当一个或多个 SM 上的 <a href="#page-4-SmActivity">SM 活动率</a>较低时，启动 warp 数差异大才是一个需要关注的问题。这种情况下，可以考虑采用另一种工作划分方式，使每个 warp 的执行时长方差更小，或者启动更多的线程 block，两者都有助于工作分发器更均匀地分发给定的工作。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <h3><a id="page-4-Analysis"></a>分析</h3>
+        <ul style="list-style-type:none">
+            <li value="1">
+            如果 kernel 启动的平均 <a href="#page-4-SmActivity">SM 活动率</a>较低，且……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……各多处理器之间差异很小，说明 kernel grid 无法充分利用所有计算资源。如果可能，请增大问题规模，或考察宿主应用是否可以应用<a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#conurrent-kernel-execution">并发 kernel 执行</a>来利用本来会闲置的计算资源。
+              </li><li style="text-indent:-20px;" value="2">
+                ……各多处理器之间差异较大，则查看<a href="#page-4-InstructionsPerWarp">每 warp 指令数</a>图表和<a href="#page-4-WarpsLaunched">启动的 warp 数</a>图表，以理解不均衡的成因。可能的优化策略包括：调整 kernel grid 的划分方案以暴露更多线程 block，或减小 grid 中各 block 之间的负载差异。
+              </li></ul></li>
+            <li value="2">
+            如果平均已执行的<a href="#page-4-InstructionsPerClock">每时钟周期指令数</a>较低 ……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……运行内存类实验，从中排查 kernel 是否存在不佳的内存访问模式或大量的 bank 冲突。这两者都会迫使指令多次重发，从而把资源消耗在被重发的操作上，而非用于继续推进 kernel 的执行。
+              </li><li style="text-indent:-20px;" value="2">
+                ……仔细检查已执行的指令组合中是否包含大量高延迟指令——这些指令所提供的 IPC 比设备理论最大值要低。此类指令通常包括双精度浮点运算和超越函数。<a href="#page-5-top">实际 FLOPS</a> 实验、<a href="#page-6-top">实际 IOPS</a> 实验以及<a href="#page-17-top">反汇编正则匹配</a>实验有助于识别指令组合。
+              </li><li style="text-indent:-20px;" value="3">
+                ……运行<a href="#page-3-top">发射效率</a>实验，检查 kernel 中相邻指令之间是否存在大量依赖、且可用并行度不足以隐藏这些依赖。
+              </li><li style="text-indent:-20px;" value="4">
+                ……运行<a href="#page-2-top">实际占用率</a>实验，验证 kernel grid 的整体并行度是否足以有效地隐藏延迟。
+              </li></ul></li>
+        </ul>
+</section>
+<div class="chapter-sep" style="margin:52px 0;padding:24px 0;border-top:2px solid var(--rule);border-bottom:2px solid var(--rule);text-align:center;font-family:-apple-system,sans-serif;"><span style="font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);">第 4 / 18 页</span></div><section class="page" id="page-5-top">
+  <h2 class="section-h lv1" style="font-size:24px;margin-top:0;padding-top:0;"><span style="color:var(--muted);font-size:14px;font-weight:500;margin-right:8px;">05</span>实际 FLOPS</h2>
+  <p class="kicker" style="font-family:-apple-system,sans-serif;font-size:11px;letter-spacing:.6px;color:var(--muted);margin-top:-6px;margin-bottom:18px;text-transform:uppercase;">实际 FLOPS · 原文 achievedflops.htm</p>
+<h3><a id="page-5-Overview"></a>概述</h3>
+        <p>
+          每秒浮点运算次数（FLOPS）是比较不同算法、不同实现变体或不同计算设备的常用指标。在优化 kernel 代码时，它的主要价值在于估计一种实现与目标设备的理论算术峰值性能的接近程度。基于此，它可以用来跟踪 kernel 性能优化的进展；尽管该指标本身对"是什么导致了性能偏低"提供的洞察有限。
+        </p>
+        <h5><a id="page-5-Background"></a>背景</h5>
+        <p>
+          所有 CUDA 计算设备都遵循 IEEE 754-2008 二进制浮点表示标准，但存在一些小的例外。这些例外在 CUDA C Programming Guide 的 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#floating-point-standard.xml">浮点标准</a> 一节中有详细描述。其中一个关键差异是融合乘加（<code>FMA</code>）指令，它将乘法和加法合并为一条指令执行。其结果通常与分别执行两步运算所得到的结果略有不同。
+        </p>
+        <p>
+          本文档中对具体汇编指令的引用，指的是硬件的实际指令集架构（ISA），称为 SASS。关于不同 CUDA 计算架构 SASS 汇编指令的描述和完整列表，请参阅 NVIDIA CUDA 工具 <a href="http://docs.nvidia.com/cuda/pdf/cuobjdump.pdf">cuobjdump</a> 的文档。
+        </p>
+        <h3><a id="page-5-Charts"></a>图表</h3>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="page-5-FloatingPointOperations"></a>浮点运算</h4>
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/achievedflopschartfloatingpointoperations.png" style="float: right;mc-thumbnail: none;" alt="浮点运算" / onclick="lbShow(this.src)">
+                    <p>
+          报告按指令类别分组的已执行浮点指令命中数的加权和。所应用的权重可以在数据收集前通过 Activity 页面上的 <a href="../../../activity/activitytype/profilesettings/experimentconfiguration/experimentconfiguration.htm">实验配置</a> 自定义。
+        </p>
+                    <p style="padding:10px;background-color:#eaefe0">
+          根据实际操作和所使用的编译器选项不同，CUDA C 中一条浮点指令在汇编代码中可能对应多条指令。所报告的数值是基于已执行的汇编指令，因此数字可能与仅从 CUDA C 代码推断出的预期不一致。可使用 <a href="#page-4-top">源码视图</a> 页面研究高级代码与汇编代码之间的映射关系。
+        </p>
+                    <h5>指标</h5>
+                    <p><b>Single ADD</b>
+          所有已执行的单精度浮点加法（<code>FADD</code>）的加权和。默认权重为 1。
+        </p>
+                    <p><b>Single MUL</b>
+          所有已执行的单精度浮点乘法（<code>FMUL</code>）的加权和。默认权重为 1。
+        </p>
+                    <p><b>Single FMA</b>
+          所有已执行的单精度浮点融合乘加（<code>FFMA</code>）指令的加权和。是否将浮点乘法与加法/减法合并为浮点乘加运算可通过 <code>--fmad</code> 编译器选项控制。默认权重为 2。
+        </p>
+                    <p><b>Single Special</b>
+          所有已执行的单精度特殊运算的加权和，包括倒数（<code>RCP</code>）、倒数平方根（<code>RSQ</code>）、正弦或余弦（<code>SIN</code>/<code>COS</code>）、以 2 为底的指数（<code>EX2</code>）以及以 2 为底的对数（<code>LG2</code>）。每个特殊函数都可以单独配置权重。默认权重为 1；其中 <code>RSQ</code> 的默认权重为 2。
+        </p>
+                    <p><b>Double ADD</b>
+          所有已执行的双精度浮点加法（<code>DADD</code>）的加权和。默认权重为 1。
+        </p>
+                    <p><b>Double MUL</b>
+          所有已执行的双精度浮点乘法（<code>DMUL</code>）的加权和。默认权重为 1。
+        </p>
+                    <p><b>Double FMA</b>
+          所有已执行的双精度融合乘加（<code>DFMA</code>）指令的加权和。是否将浮点乘法与加法/减法合并为浮点乘加运算可通过 <code>--fmad</code> 编译器选项控制。默认权重为 2。
+        </p>
+                    <p><b>Double Special</b>
+          所有已执行的双精度特殊运算的加权和，包括倒数（<code>RCP</code>）和倒数平方根（<code>RSQ</code>）。两个特殊函数可以分别配置权重。<code>RCP</code> 的默认权重为 1；<code>RSQ</code> 的默认权重为 2。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <p>
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="page-5-FloatingPointOperationsPerSecond"></a>每秒浮点运算次数</h4>
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/achievedflopschartfloatingpointoperationspersecond.png" style="float: right;mc-thumbnail: none;" alt="每秒浮点运算次数" / onclick="lbShow(this.src)">
+                    <p>
+          报告单精度和双精度下，每秒已执行浮点指令命中数的加权和。该图表是一个堆叠柱状图，所使用的指令类别与 <a href="#page-5-FloatingPointOperations">浮点运算</a> 图表完全相同。
+        </p>
+                    <h5>指标</h5>
+                    <p><b>Single</b>
+          所有已执行的单精度运算每秒的加权和。一个 CUDA 设备的单精度浮点峰值性能定义为 CUDA Cores 数乘以图形时钟频率再乘以 2。乘以 2 的因子来自使用融合乘加（<code>FFMA</code>）指令一次执行两次运算的能力。仅当实验配置为使用默认权重时，该理论峰值才是有效的上界。自定义权重会导致不同的理论峰值。
+        </p>
+                    <p><b>Double</b>
+          所有已执行的双精度运算每秒的加权和。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <h3><a id="page-5-Analysis"></a>分析</h3>
+        <p>
+          CUDA C Best Practices Guide 给出了若干优化浮点 <a href="http://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#arithmetic-instructions">算术指令</a> 的通用建议：
+          <ul style="list-style-type:none"><li value="1"><a href="http://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#division-and-modulo-operations">倒数平方根</a></li><li value="2"><a href="http://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#other-arithmetic-instructions">其他算术指令</a>：避免 double 到 float 的自动转换。
+            </li><li value="3"><a href="http://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#math-libraries">数学库</a>：当速度优先于精度时使用 fast math 库。在可行的情况下，优先使用更快、更专用的数学函数，避免使用较慢、更通用的版本。
+            </li><li value="4"><a href="http://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#precision-related-compiler-flags">精度相关的编译器选项</a></li></ul></p>
+        <p>
+          同时也尽量减少所执行的低吞吐量算术指令数量。CUDA C Programming Guide 给出了各计算能力下所有原生 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#arithmetic-instructions">算术指令</a> 的预期吞吐量列表。
+        </p>
+</section>
+<div class="chapter-sep" style="margin:52px 0;padding:24px 0;border-top:2px solid var(--rule);border-bottom:2px solid var(--rule);text-align:center;font-family:-apple-system,sans-serif;"><span style="font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);">第 5 / 18 页</span></div><section class="page" id="page-6-top">
+  <h2 class="section-h lv1" style="font-size:24px;margin-top:0;padding-top:0;"><span style="color:var(--muted);font-size:14px;font-weight:500;margin-right:8px;">06</span>实际 IOPS</h2>
+  <p class="kicker" style="font-family:-apple-system,sans-serif;font-size:11px;letter-spacing:.6px;color:var(--muted);margin-top:-6px;margin-bottom:18px;text-transform:uppercase;">实际 IOPS · 原文 achievediops.htm</p>
+<h3><a id="page-6-Overview"></a>概述</h3>
+        <p>
+          了解已执行的整数运算数量和指令构成，对于为 kernel 给出合理的性能预期估计是一项有用的输入。同时它也是更好地理解许多其他指标和实验的基础。与 <a href="#page-5-top">实际 FLOPS</a> 实验类似，它的主要价值在于跟踪并评估代码改动带来的性能差异，而不是推导性能受限的真正原因。
+        </p>
+        <h5><a id="page-6-Background"></a>背景</h5>
+        <p>
+          在计算能力 1.x 的设备上，32 位整数乘法由于不被原生支持，因此使用多条指令实现。然而 24 位整数乘法通过 <code>__[u]mul24</code> 内建函数得到原生支持。对于受指令限制的 kernel，在可能的情况下使用 <code>__[u]mul24</code> 替代 32 位乘法运算符通常可以提升性能。但在使用 <code>__[u]mul24</code> 反而抑制了编译器优化的情况下，效果可能相反。
+        </p>
+        <p>
+          在计算能力 2.x 及以上的设备上，32 位整数乘法被原生支持，而 24 位整数乘法则不被原生支持。因此 <code>__[u]mul24</code> 会使用多条指令实现，应避免使用。
+        </p>
+        <p>
+          整数除法和模运算代价高昂：在计算能力 1.x 的设备上需要数十条指令，在计算能力 2.x 及以上的设备上需要不到 20 条指令。在某些情况下它们可以用位运算替代：如果 <code>n</code> 是 2 的幂，<code>(i/n)</code> 等价于 <code>(i&gt;&gt;log2(n))</code>，<code>(i%n)</code> 等价于 <code>(i&amp;(n-1))</code>；如果 <code>n</code> 是字面常量，编译器会自动完成这些转换。
+        </p>
+        <p>
+          本文档中对具体汇编指令的引用，指的是硬件的实际指令集架构（ISA），称为 SASS。关于不同 CUDA 计算架构 SASS 汇编指令的描述和完整列表，请参阅 NVIDIA CUDA 工具 <a href="http://docs.nvidia.com/cuda/pdf/cuobjdump.pdf">cuobjdump</a> 的文档。
+        </p>
+        <h3><a id="page-6-Charts"></a>图表</h3>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="page-6-IntegerOperations"></a>整数运算</h4>
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/achievediopschartintegeroperations.png" style="float: right;mc-thumbnail: none;" alt="整数运算" / onclick="lbShow(this.src)">
+                    <p>
+          报告按指令类别分组的已执行整数指令命中数的加权和。所应用的权重可以在数据收集前通过 Activity 页面上的 <a href="../../../activity/activitytype/profilesettings/experimentconfiguration/experimentconfiguration.htm">实验配置</a> 自定义。
+        </p>
+                    <p style="padding:10px;background-color:#eaefe0">
+          根据实际操作和所使用的编译器选项不同，CUDA C 中一条整数指令在汇编代码中可能对应多条指令。所报告的数值是基于已执行的汇编指令，因此数字可能与仅从 CUDA C 代码推断出的预期不一致。可使用 <a href="#page-4-top">源码视图</a> 页面研究高级代码与汇编代码之间的映射关系。
+        </p>
+                    <h5>指标</h5>
+                    <p><b>ADD</b>
+          所有已执行的整数加法（<code>IADD</code>）的加权和。默认权重为 1。
+        </p>
+                    <p><b>MUL</b>
+          所有已执行的整数乘法（<code>IMUL</code>）的加权和。默认权重为 1。
+        </p>
+                    <p><b>MAD</b>
+          所有已执行的整数乘加（<code>IMAD</code>）指令的加权和。默认权重为 2。
+        </p>
+                    <p><b>SAD</b>
+          所有已执行的绝对差之和（<code>ISAD</code>）指令的加权和。默认权重为 1。
+        </p>
+                    <p><b>SCADD</b>
+          所有已执行的移位加（<code>ISCADD</code>）指令的加权和。默认权重为 2。
+        </p>
+                    <p><b>Shifts</b>
+          所有已执行的移位指令的加权和，涵盖右移（<code>SHR</code>）、左移（<code>SHL</code>）和漏斗移位（<code>SHF</code>）操作。默认权重为 1。
+        </p>
+                    <p><b>Bit Ops</b>
+          所有已执行的整数位运算的加权和。具体包括位域提取（<code>BFE</code>）、位域插入（<code>BFI</code>）以及查找首个 1 位（<code>FLO</code>）操作。默认权重为 1。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <p>
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="page-6-IntegerOperationsPerSecond"></a>每秒整数运算次数</h4>
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/achievediopschartintegeroperationspersecond.png" style="float: right;mc-thumbnail: none;" alt="每秒整数运算次数" / onclick="lbShow(this.src)">
+                    <p>
+          报告每秒已执行整数指令命中数的加权和。该图表是一个堆叠柱状图，所使用的指令类别与 <a href="#page-6-IntegerOperations">整数运算</a> 图表完全相同。
+        </p>
+                    <h5>指标</h5>
+                    <p><b>Math</b>
+          所有已执行的整数算术指令每秒的加权和。汇总了 <a href="#page-6-IntegerOperations">整数运算</a> 图表中 ADD、MUL、MAD、SAD 和 SCADD 的各自贡献。
+        </p>
+                    <p><b>Other</b>
+          移位指令和位运算每秒的加权和。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <h3><a id="page-6-Analysis"></a>分析</h3>
+        <p>
+          CUDA C Best Practices Guide 给出了若干优化整数 <a href="http://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#arithmetic-instructions">算术指令</a> 的通用建议：
+          <ul style="list-style-type:none"><li value="1"><a href="http://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#division-and-modulo-operations">除法与模运算</a>：使用移位操作来避免昂贵的除法和模运算。
+            </li></ul></p>
+        <p>
+          同时也尽量减少所执行的低吞吐量算术指令数量。CUDA C Programming Guide 给出了各计算能力下所有原生 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#arithmetic-instructions">算术指令</a> 的预期吞吐量列表。
+        </p>
+</section>
+<div class="chapter-sep" style="margin:52px 0;padding:24px 0;border-top:2px solid var(--rule);border-bottom:2px solid var(--rule);text-align:center;font-family:-apple-system,sans-serif;"><span style="font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);">第 6 / 18 页</span></div><section class="page" id="page-7-top">
+  <h2 class="section-h lv1" style="font-size:24px;margin-top:0;padding-top:0;"><span style="color:var(--muted);font-size:14px;font-weight:500;margin-right:8px;">07</span>流水线利用率</h2>
+  <p class="kicker" style="font-family:-apple-system,sans-serif;font-size:11px;letter-spacing:.6px;color:var(--muted);margin-top:-6px;margin-bottom:18px;text-transform:uppercase;">流水线利用率 · 原文 pipeutilization.htm</p>
+<h3><a id="page-7-Overview"></a>概述</h3>
+        <p>
+          CUDA 设备的每个流多处理器（SM）都包含许多专门执行特定任务的硬件单元。在芯片层面，这些单元提供执行流水线，warp 调度器将指令分派到这些流水线上。例如，纹理单元负责执行纹理读取并完成纹理过滤；Load/Store 单元负责从内存读取数据或将数据写回内存。理解这些流水线的利用率，并了解它们距离目标设备的峰值性能还有多远，是分析 kernel 执行效率的关键信息；同时也可以帮助识别由于某种类型流水线被过度使用而导致的性能瓶颈。
+        </p>
+        <h5><a id="page-7-Background"></a>背景</h5>
+        <p>
+          <a href="http://www.nvidia.com/content/PDF/kepler/NVIDIA-Kepler-GK110-Architecture-Whitepaper.pdf">Kepler GK110 白皮书</a> 和 <a href="http://www.geforce.com/Active/en_US/en_US/pdf/GeForce-GTX-680-Whitepaper-FINAL.pdf">NVIDIA GeForce GTX 680 白皮书</a> 都描述并对比了最新 CUDA 计算设备的架构细节。下表简要列出了每个 SM 中各类单元的数量以及对应流水线的每周期吞吐量：
+        </p>
+        <table align="center" style="border-collapse:collapse;border-spacing:0;">
+            <thead>
+                <tr>
+                    <th colspan="2" rowspan="2" style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+                    </th>
+                    <th colspan="2" style="border:1px solid;background-color:#eaefe0;padding:2px 10px;">
+              Fermi (cc 2.0)
+            </th>
+                    <th colspan="2" style="border:1px solid;background-color:#eaefe0;padding:2px 10px;">
+              Kepler (cc 3.x)
+            </th>
+                </tr>
+                <tr>
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;">
+              单元数量
+            </th>
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;">
+              吞吐量
+            </th>
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;">
+              单元数量
+            </th>
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;">
+              吞吐量
+            </th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <th colspan="2" style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              Load/Store
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              16
+            </td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              16
+            </td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              32
+            </td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              32
+            </td>
+                </tr>
+                <tr>
+                    <th colspan="2" style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              纹理（Texture）
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              4
+            </td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              4
+            </td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              16
+            </td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              16
+            </td>
+                </tr>
+                <tr>
+                    <th rowspan="2" style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              算术运算
+            </th>
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              FP32
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              32
+            </td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              64
+            </td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              192
+            </td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              192
+            </td>
+                </tr>
+                <tr>
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              SFU
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              4
+            </td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              8
+            </td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              32
+            </td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              32
+            </td>
+                </tr>
+            </tbody>
+        </table>
+        <p>
+          相对于这些架构吞吐量数值，<b>流水线利用率</b>指标报告的是运行时每条流水线观察到的利用率。高流水线利用率表明在 kernel 执行期间相应的计算资源被大量使用且经常处于繁忙状态。低值则说明该流水线使用频率不高、资源处于空闲。每条流水线的结果相互独立；将两条或多条流水线的利用率百分比相加并不会得到有意义的数值。由于流水线指标是 kernel 启动持续时间内的平均值，因此较低的值并不能完全排除该流水线在 kernel 执行某个时间点曾是瓶颈的可能。
+        </p>
+        <p>
+          算术指令由多种流水线执行，上表中以 32 位浮点指令和特殊函数运算两个例子作为示意。这些流水线提供的吞吐量差异很大，进而导致 CUDA C Programming Guide 中记录的 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#arithmetic-instructions">原生算术指令吞吐量</a> 各不相同。对于本实验所支持的 CUDA 设备，这些算术吞吐量如下：
+        </p>
+        <table align="center" style="border-collapse:collapse;border-spacing:0;">
+            <thead>
+                <tr>
+                    <th rowspan="2" colspan="1" style="border:1px solid;background-color:#eaefe0;padding:2px 30px;text-align:left;">
+                    </th>
+                    <th colspan="4" style="border:1px solid;background-color:#eaefe0;padding:2px 30px;">计算能力</th>
+                </tr>
+                <tr class="row" valign="middle">
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 30px;">2.0</th>
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 30px;">2.1</th>
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 30px;">3.0</th>
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 30px;">3.5</th>
+                </tr>
+            </thead>
+            <tbody class="tbody">
+                <tr class="row" valign="middle">
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              32 位浮点加法、乘法、乘加
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">32</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">48</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">192</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">192</td>
+                </tr>
+                <tr class="row" valign="middle">
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              64 位浮点加法、乘法、乘加
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">≤16</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">4</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">8</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">64</td>
+                </tr>
+                <tr class="row" valign="middle">
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              32 位浮点倒数、倒数平方根、以 2 为底的对数、以 2 为底的指数、正弦、余弦
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">4</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">8</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">32</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">32</td>
+                </tr>
+                <tr class="row" valign="middle">
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              32 位整数加法、扩展精度加法、减法、扩展精度减法、最小值、最大值
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">32</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">48</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">160</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">160</td>
+                </tr>
+                <tr class="row" valign="middle">
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              32 位整数乘法、乘加、扩展精度乘加、绝对差之和、置位计数、前导零计数、最高非符号位
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">16</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">16</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">32</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">32</td>
+                </tr>
+                <tr class="row" valign="middle">
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              32 位整数移位
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">16</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">16</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">32</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">≤64</td>
+                </tr>
+                <tr class="row" valign="middle">
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              32 位整数位反转、位域提取/插入
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">16</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">16</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">32</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">64</td>
+                </tr>
+                <tr class="row" valign="middle">
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              逻辑运算
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">32</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">48</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">160</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">160</td>
+                </tr>
+                <tr class="row" valign="middle">
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              Warp shuffle
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">-</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">-</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">32</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">32</td>
+                </tr>
+                <tr class="row" valign="middle">
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              从 8 位、16 位整数到 32 位类型的类型转换
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">16</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">16</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">128</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">128</td>
+                </tr>
+                <tr class="row" valign="middle">
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              与 64 位类型之间的相互转换
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">≤16</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">4</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">8</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">32</td>
+                </tr>
+                <tr class="row" valign="middle">
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              所有其他类型转换
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">16</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">16</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">32</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">32</td>
+                </tr>
+            </tbody>
+        </table>
+        <p>
+          按定义，指令吞吐量描述了每个 SM 每周期可以处理多少操作。换句话说，吞吐量高的操作在发射时的代价比吞吐量低的操作要小。<b>算术负载</b>使用这一简化的成本模型——将发射的指令数按对应指令吞吐量的倒数加权。这样做可以评估每种算术指令对总体处理代价的占比有多大。这对于算术流水线利用率较高的 kernel 尤其有用，可以用来识别哪一类算术运算可能已经触及可用吞吐量的上限。
+        </p>
+        <h3><a id="page-7-Charts"></a>图表</h3>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="page-7-PipeUtilization"></a>流水线利用率</h4>
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/pipeutilizationchartpipeutilization.png" style="float: right;mc-thumbnail: none;" alt="流水线利用率" / onclick="lbShow(this.src)">
+                    <p>
+          显示在 kernel 执行期间 SM 上四条主要逻辑流水线的平均利用率。可用于判断某条流水线是否被过度使用，从而成为限制 kernel 性能的瓶颈；也有助于估计增加额外工作量后是否还能很好地扩展、还是会触及流水线上限。这里的"增加工作量"可以指：增加算术负载（例如提高某些计算的精度）、增加内存操作数量（包括引入寄存器溢出），或者通过增加每个 SM 上的 <a href="#page-3-Background">活跃 warp</a> 数量来改善指令延迟隐藏。
+        </p>
+                    <p style="padding:10px;background-color:#eaefe0">
+          报告的数值是 kernel 执行持续时间内的平均值。较低的利用率百分比并不能保证该流水线在 kernel 执行过程中从未发生过过载。
+        </p>
+                    <h5>指标</h5>
+                    <p><b>Load / Store</b>
+          覆盖所有发射的、会向目标设备内存系统发出请求的指令——不包括纹理操作。包含针对全局内存、本地内存、共享内存的加载和存储操作，以及任何原子操作。也包含寄存器溢出。计算能力 3.5 及以上的设备支持通过 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#global-memory-3-0">只读数据缓存</a>（<code>LDG</code>）加载全局内存；这类操作不计入 load/store 组，而是计入纹理流水线的利用率中。当 load/store 利用率较高时，请运行 <a href="#page-9-top">内存统计</a>，以获取所执行内存操作的类型、数量和效率的更多信息。
+        </p>
+                    <p><b>纹理（Texture）</b>
+          覆盖所有发射的纹理读取指令；对于计算能力 3.5 及以上的设备，还包括通过 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#global-memory-3-0">只读数据缓存</a>（<code>LDG</code>）发起的全局内存加载。如果该指标较高，请运行 <a href="#page-15-top">内存统计 — 纹理内存</a> 实验，对所执行的纹理请求进行更详细的评估。
+        </p>
+                    <p><b>控制流</b>
+          覆盖所有可能影响控制流的发射指令，例如分支指令（<code>BRA,BRX</code>）、跳转指令（<code>JMP,JMX</code>）、函数调用（<code>CAL,JCAL</code>）、循环控制指令（<code>BRK,CONT</code>）、返回指令（<code>RET</code>）、程序终止（<code>EXIT</code>）以及屏障同步（<code>BAR</code>）。关于这些具体指令的详细说明，请参阅 <a href="http://docs.nvidia.com/cuda/cuda-binary-utilities/index.html#instruction-set-ref">指令集参考</a>。如果控制流利用率较高，请运行 <a href="#page-8-top">分支统计</a> 实验；这可以帮助理解控制流对整体 kernel 执行性能的影响。
+        </p>
+                    <p><b>算术运算</b>
+          覆盖所有发射的浮点指令、整数指令、转换操作和移动指令。每一类对应的汇编指令详细列表请参阅 <a href="http://docs.nvidia.com/cuda/cuda-binary-utilities/index.html#instruction-set-ref">指令集参考</a>。如果算术流水线利用率较高，请查看 <a href="#page-7-ArithmeticWorkload">算术负载</a> 图表，以识别代价最高的指令类型。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <p>
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="page-7-ArithmeticWorkload"></a>算术负载</h4>
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/pipeutilizationchartarithmeticworkload.png" style="float: right;mc-thumbnail: none;" alt="算术负载" / onclick="lbShow(this.src)">
+                    <p>
+          给出多种算术指令类别的估计代价分布。该成本模型以发射数乘以对应指令吞吐量的倒数作为加权。指令类别与本文档<a href="#page-7-Background">背景</a>章节中算术吞吐量表的行一一对应。
+        </p>
+                    <p style="padding:10px;background-color:#eaefe0">
+          算术指令由芯片上的多条流水线执行，它们可以并行工作。因此，算术负载的分布并不是 <a href="#page-7-PipeUtilization">流水线利用率</a> 图中算术流水线百分比的真正划分；但代价估计最高的指令类型，最有可能是导致片上流水线利用率最高的来源。
+        </p>
+                    <h5>指标</h5>
+                    <p>
+          下列指标描述中所有对具体汇编指令的引用，均指 CUDA 设备的原生指令集架构（ISA），详见 <a href="http://docs.nvidia.com/cuda/cuda-binary-utilities/index.html#instruction-set-ref">指令集参考</a>。
+        </p>
+                    <p><b>FP32</b>
+          所有 32 位浮点加法（<code>FADD</code>）、乘法（<code>FMUL</code>）、乘加（<code>FMAD</code>）指令的估计负载。
+        </p>
+                    <p><b>FP64</b>
+          所有 64 位浮点加法（<code>DADD</code>）、乘法（<code>DMUL</code>）、乘加（<code>DMAD</code>）指令的估计负载。
+        </p>
+                    <p><b>FP32（特殊函数）</b>
+          所有 32 位浮点倒数（<code>RCP</code>）、倒数平方根（<code>RSQ</code>）、以 2 为底的对数（<code>LG2</code>）、以 2 为底的指数（<code>EX2</code>）、正弦（<code>SIN</code>）、余弦（<code>COS</code>）指令的估计负载。
+        </p>
+                    <p><b>I32（Add）</b>
+          所有 32 位整数加法（<code>IADD</code>）、扩展精度加法、减法、扩展精度减法、最小值（<code>IMNMX</code>）、最大值指令的估计负载。
+        </p>
+                    <p><b>I32（Mul）</b>
+          所有 32 位整数乘法（<code>IMUL</code>）、乘加（<code>IMAD</code>）、扩展精度乘加、绝对差之和（<code>ISAD</code>）、置位计数（<code>POPC</code>）、前导零计数、最高非符号位（<code>FLO</code>）的估计负载。
+        </p>
+                    <p><b>I32（Shift）</b>
+          所有 32 位整数左移（<code>SHL</code>）、右移（<code>SHR</code>）、漏斗移位（<code>SHF</code>）指令的估计负载。
+        </p>
+                    <p><b>I32（Bit）</b>
+          所有 32 位整数位反转、位域提取（<code>BFE</code>）、位域插入（<code>BFI</code>）指令的估计负载。
+        </p>
+                    <p><b>逻辑运算</b>
+          所有逻辑运算（<code>LOP</code>）的估计负载。
+        </p>
+                    <p><b>Shuffle</b>
+          所有 warp shuffle（<code>SHFL</code>）指令的估计负载。
+        </p>
+                    <p><b>Conv（I8/I16 到 I32）</b>
+          所有从 8 位、16 位整数到 32 位类型的类型转换的估计负载（<code>I2I</code> 的子集）。
+        </p>
+                    <p><b>Conv（与 FP64 互转）</b>
+          所有与 64 位类型相互转换的类型转换的估计负载（<code>I2F</code>、<code>F2I</code> 和 <code>F2F</code> 的子集）。
+        </p>
+                    <p><b>Conv（其他全部）</b>
+          所有其他类型转换的估计负载（<code>I2I</code>、<code>I2F</code>、<code>F2I</code> 和 <code>F2F</code> 中剩余的子集）。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <p>
+        </p>
+        <h3><a id="page-7-Analysis"></a>分析</h3>
+        <ul style="list-style-type:none">
+            <li value="1">
+            如果 <a href="#page-7-PipeUtilization">Load/Store 流水线利用率</a> 较高……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……运行 <a href="#page-9-top">内存统计</a>，查找那些每次请求事务数超过理想值的内存操作；改进这些非最优的内存访问可以降低 load/store 流水线的负担。
+              </li><li style="text-indent:-20px;" value="2">
+                ……考虑能否通过改用不同的实现或不同的算法来减少所执行的内存操作总数。
+              </li><li style="text-indent:-20px;" value="3">
+                ……若单个线程访问内存中连续的数值，请确保使用最宽的内存访问类型来完成操作。例如，每个线程需要读取 128 字节连续内存时，使用一次 128 字节宽的访问要优于执行四次 32 字节访问。为此可使用 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#built-in-vector-types">内建向量类型</a>。
+              </li><li style="text-indent:-20px;" value="4">
+                ……如果 <a href="#page-13-top">内存统计 — 本地内存</a> 实验显示本地内存请求数较多，请开启 PTX 优化汇编器的代码生成统计信息打印（<code>--ptxas-options=-v</code>）以获取溢出字节数；如果该数值较高，可尝试通过修改 kernel 启动的 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#execution-configuration">执行配置</a> 或 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#launch-bounds">launch bounds</a> 来减少寄存器溢出。
+              </li></ul></li>
+            <li value="2">
+            如果 <a href="#page-7-PipeUtilization">纹理流水线利用率</a> 较高……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……运行 <a href="#page-15-top">内存统计 — 纹理内存</a> 实验，研究所发起的纹理读取的效率。
+              </li><li style="text-indent:-20px;" value="2">
+                ……考虑能否通过改用不同的实现或不同的算法来减少所执行的纹理操作总数。同时检查 kernel 是否已经接近目标设备预期的峰值纹理性能。
+              </li></ul></li>
+            <li value="3">
+            如果 <a href="#page-7-PipeUtilization">控制流流水线利用率</a> 较高……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……运行 <a href="#page-8-top">分支统计</a> 实验。当 <a href="#page-8-Efficiency">控制流效率</a> 较低且控制流分歧较高时，尝试重新组织 kernel grid 中的线程，目标是最小化 warp 分歧。
+              </li></ul></li>
+            <li value="4">
+            如果 <a href="#page-7-PipeUtilization">算术流水线利用率</a> 较高……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……查看 <a href="#page-7-ArithmeticWorkload">算术负载</a>，并优先优化代价最高的指令类型。在可行的情况下，优先使用更快、更专用的数学函数，避免使用较慢、更通用的版本。也可参考 CUDA C Best Practices Guide 中关于优化 <a href="http://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#arithmetic-instructions">算术指令</a> 的通用建议。
+              </li><li style="text-indent:-20px;" value="2">
+                ……运行 <a href="#page-5-top">实际 FLOPS</a> 和 <a href="#page-6-top">实际 IOPS</a> 实验。检查 kernel 是否已经接近目标设备的峰值性能，并研究是否可以减少所执行的算术指令数量。
+              </li></ul></li>
+        </ul>
+</section>
+<div class="chapter-sep" style="margin:52px 0;padding:24px 0;border-top:2px solid var(--rule);border-bottom:2px solid var(--rule);text-align:center;font-family:-apple-system,sans-serif;"><span style="font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);">第 7 / 18 页</span></div><section class="page" id="page-8-top">
+  <h2 class="section-h lv1" style="font-size:24px;margin-top:0;padding-top:0;"><span style="color:var(--muted);font-size:14px;font-weight:500;margin-right:8px;">08</span>分支统计</h2>
+  <p class="kicker" style="font-family:-apple-system,sans-serif;font-size:11px;letter-spacing:.6px;color:var(--muted);margin-top:-6px;margin-bottom:18px;text-transform:uppercase;">分支统计 · 原文 branchstatistics.htm</p>
+<h3><a id="page-8-Overview"></a>概述</h3>
+        <p>
+          控制流可能对 kernel 的执行效率产生严重影响，尤其是当大量控制流判定都是分歧的，迫使一个 warp 中的线程在 kernel 代码中走上完全不同的控制路径时。分支统计实验有助于回答以下问题：控制流指令被执行了多少次、其中有多少是一致的、有多少是分歧的，以及控制流对整体 kernel 执行性能的影响有多大。
+        </p>
+        <h5><a id="page-8-Background"></a>背景</h5>
+        <p>
+          如果一条控制流指令迫使 warp 中的线程走上不同的执行路径，则该指令被视为分歧的。一旦发生这种情况，由于一个 warp 中的所有线程共享一个程序计数器，不同的执行路径必须被串行化执行；这会增加该 warp 所执行的指令总数。当所有不同的执行路径都完成后，线程才会重新汇合到同一条执行路径。如果条件表达式对一个 warp 中的所有线程评估出一致的判定结果，则只执行被选中的那一条代码路径——因此开销小得多。所执行的一致控制流判定数与全部条件判定执行数之比定义为<b>分支效率（Branch Efficiency）</b>。
+        </p>
+        <p>
+          分歧控制流造成的实际性能影响，与需要评估多少条不同代码路径以及被串行化的代码段有多昂贵的组合成正比。一种刻画方法是：跟踪所有已执行指令中，warp 内实际参与执行（即未被谓词执行屏蔽掉）的线程数。这通常被称为<b>控制流效率（Control Flow Efficiency）</b>。按定义，它与做出多少次控制流判定无关，而是给出了由于控制流而导致的可用计算资源利用率的上限。
+        </p>
+        <h3><a id="page-8-Charts"></a>图表</h3>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="page-8-Efficiency"></a>效率</h4>
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/branchstatisticschartefficiency.png" style="float: right;mc-thumbnail: none;" alt="效率" / onclick="lbShow(this.src)">
+                    <p>
+          效率图显示了用于评估控制流影响的两个主要指标。重点关注控制流效率，以便在考虑分支的情况下估计预期的最大峰值性能。
+        </p>
+                    <p style="padding:10px;background-color:#eaefe0">
+          用 CUDA C 编写的条件表达式可以通过多种方式被翻译成最终的汇编代码。请注意，并非所有可能的条件操作变体都能被这里展示的指标涵盖。因此可以这样说：控制流效率低<u>一定</u>意味着存在性能问题；但反之不一定成立——即使一个 kernel 的控制流效率接近最优，它仍然可能受到控制流的限制。
+        </p>
+                    <h5>指标</h5>
+                    <p><b>分支效率</b>
+          表示所有已执行分支指令中一致控制流判定所占的比例。按 SM 分别显示（柱状图），并对所有 SM 取平均（Branch 折线）。数值越高越好，意味着 warp 更频繁地走在一致的代码路径上。低于 100% 的值是 kernel 执行性能受到负面影响的<u>必要</u>但不充分指标，因为该指标并不知道条件语句所包围的代码区域有多大。例如，十次执行的分支中有一次分歧判定，若它只包围寥寥几行代码，则可以忽略不计；但如果它迫使 warp 执行多条包含数千条指令的不同代码路径，影响就可能非常大。
+        </p>
+                    <p><b>控制流效率</b>
+          定义为：在每条已执行指令上，未被谓词执行屏蔽的活跃线程数与每个 warp 最大线程数之比。每条指令中每个 warp 内活跃的线程数越少，该指标就越低；因此它衡量的是对可用处理单元的利用效率。控制流效率较低可能由以下原因导致：启动 warp 时活跃线程数不足 32；warp 中部分线程比其他线程更早终止；或者只让一部分线程参与指令的执行。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <p>
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="page-8-BranchesPerWarp"></a>每 warp 分支数</h4>
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/branchstatisticschartbranchesperwarp.png" style="float: right;mc-thumbnail: none;" alt="每 warp 分支数" / onclick="lbShow(this.src)">
+                    <p>
+          按条件语句的判定结果分组，显示每个 SM 上每个 warp 平均执行的分支指令数。可用于研究 kernel grid 中各 warp 所执行的控制流指令总量。将每 warp 执行的分支指令数与 <a href="#page-4-InstructionsPerWarp">指令统计</a> 实验中 IPW 指标所报告的每 warp 已执行指令总数进行对比，可以了解 kernel 代码中执行分支指令的频率。
+        </p>
+                    <p style="padding:10px;background-color:#eaefe0">
+          所报告的 taken / not taken 分支数指的是在设备上实际执行的条件语句。如果编译器在优化阶段选择了对条件取反，这并不一定与 CUDA C 或 PTX 代码中表达的定义一致。可查看 <a href="#page-4-top">源码视图</a> 页面以研究高级代码与汇编代码之间的映射关系。
+        </p>
+                    <h5>指标</h5>
+                    <p><b>Not Taken / Taken</b>
+          每 warp 平均执行的、控制流判定一致的分支指令数；即一个 warp 中所有活跃线程要么全部走分支，要么全部不走。
+        </p>
+                    <p><b>Diverged</b>
+          每 warp 平均执行的、条件在 warp 内各线程间产生不同结果的分支指令数。所有至少有一个线程参与的代码路径都会被顺序执行。该数值越低越好；不过，要理解控制流对设备利用率的影响，请同时查看 <a href="#page-8-Efficiency">控制流效率</a>。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <p>
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="page-8-BranchCondition"></a>分支条件</h4>
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/branchstatisticschartbranchcondition.png" style="float: right;mc-thumbnail: none;" alt="分支条件" / onclick="lbShow(this.src)">
+                    <p>
+          显示在 kernel grid 中所有 warp 上汇总后的已执行分支中一致分支与分歧分支的分布。如果分歧分支的比例较高，请考虑重新组织将负载划分到 block 和 warp 的方式；另一种负载分配方案可能能够减少分歧的控制流，同时也减少对控制流判定的总体需求。更多细节也可参阅 CUDA C Best Practices Guide 中 <a href="http://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#branching-and-divergence">分支与分歧</a> 一节。
+        </p>
+                    <p style="padding:10px;background-color:#eaefe0">
+          所报告的 taken / not taken 分支数指的是在设备上实际执行的条件语句。如果编译器在优化阶段选择了对条件取反，这并不一定与 CUDA C 或 PTX 代码中表达的定义一致。可查看 <a href="#page-4-top">源码视图</a> 页面以研究高级代码与汇编代码之间的映射关系。
+        </p>
+                    <h5>指标</h5>
+                    <p><b>Not Taken / Taken</b>
+          控制流判定一致的已执行分支指令总数；即一个 warp 中所有活跃线程要么全部走分支，要么全部不走。
+        </p>
+                    <p><b>Diverged</b>
+          条件在 warp 内各线程间产生不同结果的已执行分支指令总数。所有至少有一个线程参与的代码路径都会被顺序执行。该数值越低越好；不过，要理解控制流对设备利用率的影响，请同时查看 <a href="#page-8-Efficiency">控制流效率</a>。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <h3><a id="page-8-Analysis"></a>分析</h3>
+        <p>
+        CUDA C Best Practices Guide 中重点强调了关于 <a href="http://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#control-flow">控制流</a> 的若干通用编码准则：
+        <ul style="list-style-type:none"><li value="1"><a href="http://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#branching-and-divergence">分支与分歧</a>：避免同一 warp 内出现不同的执行路径。
+          </li><li value="2"><a href="http://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#branch-predication">分支谓词执行</a>：让编译器更容易使用分支谓词执行来替代循环或控制语句。
+          </li><li value="3"><a href="http://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#loop-counters-signed-vs-unsigned">循环计数器：有符号 vs. 无符号</a>：循环计数器使用有符号整数而非无符号整数。
+          </li><li value="4"><a href="http://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#synchronizing-divergent-threads">在循环中同步分歧线程</a>：避免在分歧的代码内部使用 __syncthreads()。
+          </li></ul></p>
+        <p>
+          根据本实验的结果，检查以下哪些情况适用：
+        </p>
+        <ul style="list-style-type:none">
+            <li value="1">
+            如果 <a href="#page-8-Efficiency">控制流效率</a> 较低，并且……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……<a href="#page-8-Efficiency">分支效率</a> 较高，请检查 kernel 启动的 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#execution-configuration">执行配置</a>。如果每个 block 的线程数不是 warp 大小的整数倍，部分活跃的 warp 只使用了可用处理单元的一部分——从而降低整体控制流效率。
+              </li><li style="text-indent:-20px;" value="2">
+                ……<a href="#page-8-Efficiency">分支效率</a> 也较低，则 kernel 执行因控制流分歧而效率较低。请在可能的情况下重新安排负载，使一个 warp 中的线程都走同一条路径。使用 <a href="#page-8-Efficiency">分歧分支</a> 实验识别哪些分支指令导致的分歧最严重、影响的代码区域最大，优先优化这些分支。
+              </li></ul></li>
+        </ul>
+</section>
+<div class="chapter-sep" style="margin:52px 0;padding:24px 0;border-top:2px solid var(--rule);border-bottom:2px solid var(--rule);text-align:center;font-family:-apple-system,sans-serif;"><span style="font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);">第 8 / 18 页</span></div><section class="page" id="page-9-top">
+  <h2 class="section-h lv1" style="font-size:24px;margin-top:0;padding-top:0;"><span style="color:var(--muted);font-size:14px;font-weight:500;margin-right:8px;">09</span>内存统计</h2>
+  <p class="kicker" style="font-family:-apple-system,sans-serif;font-size:11px;letter-spacing:.6px;color:var(--muted);margin-top:-6px;margin-bottom:18px;text-transform:uppercase;">内存统计 · 原文 memorystatistics.htm</p>
+<h3><a id="page-9-Overview"></a>概述</h3>
+        <p>
+          Nsight 提供了一系列实验，聚焦于 kernel 执行期间内存子系统的使用情况。每个独立实验覆盖 CUDA 编程模型所定义的<a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#memory-hierarchy">内存层次结构</a>中的某一特定区域：
+        </p>
+        <ul>
+            <li value="1"><a href="#page-12-top">内存统计 — 全局内存</a>
+            收集针对全局内存空间的内存操作信息。关注流多处理器（SM）与该内存操作所涉及的第一级内存缓存之间的通信；它可能是 L1 缓存、L2 缓存或纹理缓存。
+          </li>
+            <li value="2"><a href="#page-13-top">内存统计 — 本地内存</a>
+            收集针对本地内存空间的内存操作信息。关注 SM 与 L1 缓存之间的通信。
+          </li>
+            <li value="3"><a href="#page-16-top">内存统计 — 原子操作</a>
+            收集原子操作的信息。关注 SM 与 L1 缓存之间的通信。
+          </li>
+            <li value="4"><a href="#page-14-top">内存统计 — 共享内存</a>
+            收集针对共享内存空间的内存操作信息。关注 SM 与片上共享内存之间的通信。
+          </li>
+            <li value="5"><a href="#page-15-top">内存统计 — 纹理内存</a>
+            收集纹理操作的信息。关注 SM 与纹理缓存之间的通信。
+          </li>
+            <li value="6"><a href="#page-11-top">内存统计 — 缓存</a>
+            收集所有已执行内存操作中，L1 缓存和纹理缓存与 L2 缓存之间的通信信息。
+          </li>
+            <li value="7"><a href="#page-10-top">内存统计 — 缓冲区</a>
+            收集 L2 缓存与设备内存、系统内存之间的通信信息。
+          </li>
+        </ul>
+        <p>
+          这些内存实验可以彼此独立地采集；为避免不必要的 Profile 开销，应跳过那些覆盖 kernel 未使用的内存层次区域的实验。对于每个已执行的实验，都会在报告页面上生成一个单独的输出标签页；此外，内存实验的结果还会作为输入提供给概述（Overview）标签页。该概述以高层次的性能指标提供完整内存层次结构的汇总。本文档其余部分将更详细地描述概述标签页；如需了解某个具体内存实验的更多信息，请按上方链接进入。
+        </p>
+        <h3><a id="page-9-OverviewTab"></a>概述标签页</h3>
+        <p>
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="page-9-Chart"></a>图表</h4>
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/memorystatisticschart.png" style="float: right;mc-thumbnail: none;" alt="内存统计图表" / onclick="lbShow(this.src)">
+                    <p>
+          展示 CUDA 编程模型内存层次结构的汇总视图。对于数据采集期间被内存实验覆盖的区域，会报告关键指标；若某区域未被覆盖，或目标设备不支持某条内存数据通路，则图表中对应的区域会显示为灰色。该视图有助于快速概览内存子系统的利用率，并指导使用其他内存标签页进行进一步分析。
+        </p>
+                    <p>
+          图中的节点要么表示某个逻辑内存空间（全局、本地、共享 ……），要么表示芯片上的实际硬件单元（各级缓存、共享内存、设备内存）。对于各类缓存，所报告的百分比为缓存命中率；即在所有请求中，可由该缓存本地数据直接服务的请求占比。命中缓存的请求服务速度远快于未命中的请求；未命中的数据需要从内存层次的另一层获取。
+        </p>
+                    <p>
+          图中节点之间的连线表示从 SM 到内存系统中各内存空间的数据通路。根据配置不同，每条数据通路上会显示不同的指标，包括传输的内存量或实际达到的内存吞吐量。
+        </p>
+                    <h5>选项</h5>
+                    <p><b>View By（查看方式）</b>
+          允许切换每条数据通路上所报告的指标。可用选项包括：
+          <ul><li value="1"><b>Size（大小）</b>：
+              所报告的指标同时覆盖读操作和写操作。从 SM 到各内存空间的数据通路上报告所发起的内存请求总数；这等于触发了相应内存空间传输的、已执行的内存指令数。所有其他数据通路则报告以字节计的内存传输总量。请注意，部分缓存可能只覆盖读操作；因此，将缓存前后的读/写合计流量相除并不一定等于实际的缓存命中率。
+            </li><li value="2"><b>Bandwidth（带宽）</b>：
+              所报告的指标同时覆盖读操作和写操作。将前一节描述的指标与 kernel 执行时间相关联。所报告的吞吐量数值便于与架构峰值进行比较。
+            </li><li value="3"><b>Load Size（加载大小）</b>：
+              报告与第一个选项相同的指标，但仅针对加载（load）操作。按定义不允许加载流量的数据通路不会报告数值。
+            </li><li value="4"><b>Store Size（存储大小）</b>：
+              报告与第一个选项相同的指标，但仅针对存储（store）操作。按定义不允许存储流量的数据通路不会报告数值。
+            </li></ul></p>
+                </td>
+            </tr>
+        </table>
+        <p>
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="page-9-Table"></a>表格</h4>
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/memorystatisticstable.png" style="float: right;mc-thumbnail: none;" alt="内存统计表格" / onclick="lbShow(this.src)">
+                    <p>
+          列出每个被覆盖的内存空间的关键性能指标。以原始数值形式重复展示<a href="#page-9-Chart">图表</a>中显示的所有信息；此外还提供一些额外指标，例如每个内存空间的重放开销。重放开销的定义为：
+        </p><pre>(Transactions - Requests) / Instruction_Issued</pre>
+                    <p>
+          请求数等于已执行的内存指令数。根据内存访问模式以及所访问的内存空间，单个请求可能需要多个事务才能完成对一个 warp 中所有活跃线程的请求。每多一次内存事务，都会迫使该内存指令重新发射。所需事务越多，指令需要重放的次数也越多；最终阻碍快速向前推进。详情参见<a href="#page-4-top">指令统计</a>实验。
+        </p>
+                    <h5>列</h5>
+                    <p><b>Total（总计）</b>
+          以整个 kernel 执行过程的总聚合值形式报告各项数值。
+        </p>
+                    <p><b>Per Warp（每 warp）</b>
+          以每个 warp 为单位报告适用的指标。便于快速与 kernel 开发期间得出的估算值进行比较。
+        </p>
+                    <p><b>Per Second（每秒）</b>
+          以与 kernel 执行时长相关的方式报告适用的指标。对于表示传输字节数的行，该列数值即为实际达到的内存吞吐量。目标设备到设备内存的架构峰值内存带宽可在 <a href="#page-1-top">GPU 设备</a>报告页查看。
+        </p>
+                </td>
+            </tr>
+        </table>
+</section>
+<div class="chapter-sep" style="margin:52px 0;padding:24px 0;border-top:2px solid var(--rule);border-bottom:2px solid var(--rule);text-align:center;font-family:-apple-system,sans-serif;"><span style="font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);">第 9 / 18 页</span></div><section class="page" id="page-10-top">
+  <h2 class="section-h lv1" style="font-size:24px;margin-top:0;padding-top:0;"><span style="color:var(--muted);font-size:14px;font-weight:500;margin-right:8px;">10</span>内存统计 — 缓冲区</h2>
+  <p class="kicker" style="font-family:-apple-system,sans-serif;font-size:11px;letter-spacing:.6px;color:var(--muted);margin-top:-6px;margin-bottom:18px;text-transform:uppercase;">内存统计 — 缓冲区 · 原文 memorystatisticsbuffers.htm</p>
+<h3><a id="page-10-Overview"></a>概述</h3>
+        <p>
+          缓冲区是位于 CUDA 设备上或系统内存中的内存。到设备内存的带宽高于到系统内存的带宽，但各级缓存和共享内存能够提供更低得多的延迟和更高的带宽。因此，访问设备内存和系统内存的最高效方式，是在数据可以存放到共享内存或缓存中时，避免对同一缓冲区数据进行多次重复访问。由于对设备内存和系统内存的初次访问无法避免，这些访问往往会成为性能瓶颈，因此监控缓冲区的带宽十分重要。
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h3><a id="page-10-Chart"></a>图表</h3>
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/memorystatisticsbufferschart.png" style="float: right;mc-thumbnail: none;" alt="内存统计 — 缓冲区图表" / onclick="lbShow(this.src)">
+                    <p>
+                    </p>
+                    <h5>缓冲区</h5>
+                    <p>
+          GPU 对缓冲区的所有访问都通过 L2 写回缓存路由。CUDA kernel 可以通过 zero-copy 直接访问系统内存——使用 CUDA API 分配的系统内存会被映射到 CUDA 设备的地址空间。缓冲区图表分别展示加载（load）与存储（store）的数据量、System Memory（系统内存）和 Device Memory（设备内存）区域中加载与存储之和，以及整体带宽利用率的百分比。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <h3><a id="page-10-Analysis"></a>分析</h3>
+        <ul style="list-style-type:none">
+            <li value="1">
+            如果与系统内存之间的传输速率低于预期 ……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                …… 尝试进行更大块的传输。小而稀疏的传输可能有较高的开销。
+              </li></ul></li>
+            <li value="2">
+            如果与设备内存之间的传输速率已达到 GPU 极限，但仍是瓶颈 ……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                …… 尝试提高缓存效率，以减少所需的带宽。
+              </li><li style="text-indent:-20px;" value="2">
+                …… 检查并确保带宽没有因低效的访问模式而被浪费——这类模式会引发大量缓存事务。
+              </li><li style="text-indent:-20px;" value="3">
+                …… 考虑使用更低分辨率的数据，或可以在共享内存中暂存的压缩数据。
+              </li><li style="text-indent:-20px;" value="4">
+                …… 考虑采用多 GPU 或集群方案。
+              </li></ul></li>
+            <li value="3">
+            如果与系统内存之间的传输速率已达到 PCI 极限，但仍是瓶颈 ……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                …… 尝试通过让传输与并发计算或反方向传输重叠来隐藏传输延迟。
+              </li><li style="text-indent:-20px;" value="2">
+                …… 尝试提高缓存效率，以减少所需的带宽。
+              </li><li style="text-indent:-20px;" value="3">
+                …… 检查并确保带宽没有因低效的访问模式而被浪费——这类模式会引发大量缓存事务。
+              </li><li style="text-indent:-20px;" value="4">
+                …… 确保 CUDA 设备使用受支持的最高 PCI-Express 版本。
+              </li><li style="text-indent:-20px;" value="5">
+                …… 考虑使用具有更大设备内存的 GPU，使大规模问题能够完整放入单个设备的内存中。
+              </li><li style="text-indent:-20px;" value="6">
+                …… 考虑使用更低分辨率的数据，或可在设备内存、共享内存中暂存的压缩数据。
+              </li><li style="text-indent:-20px;" value="7">
+                …… 考虑采用多 GPU 或集群方案。
+              </li></ul></li>
+        </ul>
+</section>
+<div class="chapter-sep" style="margin:52px 0;padding:24px 0;border-top:2px solid var(--rule);border-bottom:2px solid var(--rule);text-align:center;font-family:-apple-system,sans-serif;"><span style="font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);">第 10 / 18 页</span></div><section class="page" id="page-11-top">
+  <h2 class="section-h lv1" style="font-size:24px;margin-top:0;padding-top:0;"><span style="color:var(--muted);font-size:14px;font-weight:500;margin-right:8px;">11</span>内存统计 — 缓存</h2>
+  <p class="kicker" style="font-family:-apple-system,sans-serif;font-size:11px;letter-spacing:.6px;color:var(--muted);margin-top:-6px;margin-bottom:18px;text-transform:uppercase;">内存统计 — 缓存 · 原文 memorystatisticscaches.htm</p>
+<h3><a id="page-11-Overview"></a>概述</h3>
+        <p>
+          CUDA 设备的数据缓存层次结构在 Programming Guide 的各计算能力章节中均有描述，例如 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#architecture-2-x">2.x</a> 与 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#architecture-3-0">3.x</a>。一般而言，存在三类数据缓存：L1、L2 和纹理缓存。从缓存中加载数据是通过固定大小的事务完成的。L1 事务为 128 字节，L2 和纹理事务为 32 字节。优化内存使用的一项重要策略，是将加载和存储成组进行，以尽可能少的缓存事务访问所需的数据。对于同时被 L1 和 L2 缓存的内存，若一个 warp 中的每个线程都从分散位置加载一个 4 字节值，并且这些访问都在 L1 缓存中未命中，则每个线程都会产生一次 128 字节的 L1 事务以及四次 32 字节的 L2 事务。这将导致加载指令的重新发射次数比这些值相邻且按缓存对齐时多 32 倍。如果缓存之间的带宽成为瓶颈，可以通过重排数据或调整算法以更均匀地访问数据来缓解该问题。更多详情参见 Programming Guide 的<a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#global-memory-3-0">全局内存</a>章节。
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h3><a id="page-11-Chart"></a>图表</h3>
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/memorystatisticscacheschart.png" style="float: right;mc-thumbnail: none;" alt="内存统计 — 缓存图表" / onclick="lbShow(this.src)">
+                    <p>
+                    </p>
+                    <h5>缓存</h5>
+                    <p>
+          全局内存访问要么经过 L1 和 L2 缓存，要么仅经过 L2 缓存，具体取决于架构和所使用的指令类型。全局只读内存访问经过纹理缓存和 L2 缓存。关于如何控制全局访问是否绕过 L1，请参见<a href="#page-12-top">内存统计 — 全局内存</a>实验。本地内存访问经过 L1 和 L2 缓存；关于本地内存访问的更多信息，请参见<a href="#page-13-top">内存统计 — 本地内存</a>实验。纹理内存是只读的设备内存，访问经过纹理缓存和 L2 缓存；关于纹理访问的详情，请参见<a href="#page-15-top">内存统计 — 纹理内存</a>实验。共享内存访问不经过任何缓存。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <h3><a id="page-11-Analysis"></a>分析</h3>
+        <ul style="list-style-type:none">
+            <li value="1">
+            如果 L1 缓存命中率偏低 ……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                …… 首先检查是否使用了 L1 缓存。某些设备和某些类型的内存指令会绕过 L1 缓存。
+              </li><li style="text-indent:-20px;" value="2">
+                …… 检查缓存模式是否为 PREFER_L1。若不是，增大 L1 缓存容量有助于提高命中率。请注意，增大 L1 缓存容量需要减小共享内存容量，因此仅当 kernel 不需要额外的共享内存时，这才是一个可行的选择。
+              </li><li style="text-indent:-20px;" value="3">
+                …… 访问模式与 L1 缓存针对线性局部性的优化不匹配。尝试修改访问模式，让访问在空间上更靠近。或者，对于二维访问模式，纹理内存可能比全局内存更高效。
+              </li><li style="text-indent:-20px;" value="4">
+                …… 如果 L1 与 L2 之间的带宽是瓶颈，且每次请求对应的 L1 事务比偏高，可以考虑改为让访问绕过 L1 直接到 L2。由于每次 L1 未命中都会引发四次 L2 事务，直接访问 L2 最多可使访问数据所需的 L2 带宽减少 75%。关于如何更改读取以绕过 L1，请参见<a href="#page-12-top">内存统计 — 全局内存</a>实验的概述章节。
+              </li><li style="text-indent:-20px;" value="5">
+                …… 尝试通过增加每线程寄存器数量来减少寄存器溢出。
+              </li></ul></li>
+        </ul>
+</section>
+<div class="chapter-sep" style="margin:52px 0;padding:24px 0;border-top:2px solid var(--rule);border-bottom:2px solid var(--rule);text-align:center;font-family:-apple-system,sans-serif;"><span style="font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);">第 11 / 18 页</span></div><section class="page" id="page-12-top">
+  <h2 class="section-h lv1" style="font-size:24px;margin-top:0;padding-top:0;"><span style="color:var(--muted);font-size:14px;font-weight:500;margin-right:8px;">12</span>内存统计 — 全局内存</h2>
+  <p class="kicker" style="font-family:-apple-system,sans-serif;font-size:11px;letter-spacing:.6px;color:var(--muted);margin-top:-6px;margin-bottom:18px;text-transform:uppercase;">内存统计 — 全局内存 · 原文 memorystatisticsglobal.htm</p>
+<h3><a id="page-12-Overview"></a>概述</h3>
+        <p>
+          全局内存位于设备内存中，可通过两种不同的数据通路进行访问：从计算能力 2.x 及更高的设备开始，全局内存流量经数据缓存（L1 缓存和/或 L2 缓存）路由。在计算能力 3.5 的设备上独有的另一选项是：只读全局内存访问可以通过纹理缓存来进行——使用标准指针即可，无需事先绑定纹理，也不受标准纹理的尺寸限制。
+        </p>
+        <p>
+          无论使用哪条数据通路，编译器都允许控制沿途各缓存的行为。通过 <code>-dlcm</code> 编译标志，可以在编译时配置全局内存访问是缓存在该数据通路上所有可用的缓存中（<code>-Xptxas -dlcm=ca</code>，这是默认设置），还是仅缓存在 L2 中（<code>-Xptxas -dlcm=cg</code>）。编译器设置提供按编译模块的全局控制，而内联 PTX 汇编则可对每条内存指令进行显式控制（参见 PTX ISA 定义中的 <a href="http://docs.nvidia.com/cuda/parallel-thread-execution/index.html#cache-operators">Cache Operators</a> 章节）。在本实验的输出中，所使用的缓存行为差异以 <b>Cached Loads</b>（带缓存的加载）和 <b>Uncached Loads</b>（不带缓存的加载）来标识。前者先经过 L1 缓存或纹理缓存（取决于数据通路），再经过 L2 缓存；后者仅经过 L2 缓存。
+        </p>
+        <p>
+          L1 缓存行为 128 字节，对应设备内存中一个 128 字节对齐的段。同时缓存在 L1 和 L2 中的内存访问（通用数据通路上的带缓存加载）以 128 字节的内存事务提供服务，而仅缓存在 L2 中的内存访问（通用数据通路上的不带缓存加载）以 32 字节的内存事务提供服务。因此，仅缓存到 L2 可以减少过度获取（over-fetch），例如在分散访问的情况下。
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h3><a id="page-12-Chart"></a>图表</h3>
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/memorystatisticsglobalchart.png" style="float: right;mc-thumbnail: none;" alt="内存统计 — 全局内存图表" / onclick="lbShow(this.src)">
+                    <p>
+                    </p>
+                    <h5>全局只读</h5>
+                    <p>
+          计算能力 3.5 的设备支持通过纹理流水线所使用的同一缓存来读取全局内存。由于纹理缓存的合并规则与数据缓存有很大不同，使用这条内存通路可能提升性能——对于高度非均匀的内存访问模式尤其如此。对于受数据缓存读写带宽限制的 kernel，将部分流量通过全局只读数据通路路由还能带来额外的性能收益，因为纹理缓存是一个独立的物理单元，具有独立的数据通路；但请注意，全局只读内存访问与所有通过纹理获取产生的流量共享纹理缓存。
+        </p>
+                    <p>
+          如果目标是支持该特性的计算设备，编译器会在合适时自动使用全局只读数据访问。为符合全局只读访问条件的内存指针添加 <code>const __restrict__</code> 类型修饰符，或使用 <code>__ldg()</code> 内置函数进行显式控制。要验证某次内存访问所用的数据通路，请查看<a href="#page-4-top">源代码视图</a>页面。全局只读内存访问会显示为 <code>LDG</code> 指令；通过数据缓存进行的全局内存读取则表示为 <code>LD</code> 指令。
+        </p>
+                    <p>
+          对于不支持全局只读数据通路的设备，图表的上半部分会显示为灰色。
+        </p>
+                    <h5>全局内存</h5>
+                    <p>
+          当一个 warp 执行访问通用全局内存的指令（<code>LD</code> 或 <code>ST</code> 汇编指令）时，会根据每个线程所访问字（word）的大小以及内存地址在各线程间的分布，将 warp 内各线程的内存访问合并为一个或多个这样的内存事务。一般来说，所需事务越多，除线程实际访问的字之外被传输的无用字就越多，相应地会降低指令吞吐量。此外，每多一次内存事务都需要将汇编指令重新发射；当满足一个 warp 的请求需要不止一次事务时，就会产生指令重放。关于指令重放及其性能影响的更多细节，可在<a href="#page-4-top">指令统计</a>实验的相关说明中查阅。
+        </p>
+                    <p>
+          <b>每请求事务数（Transactions Per Request）</b>图表显示每条已执行的全局内存指令平均所需的 L1 事务数，分别针对加载和存储操作。数值越低越好；对于一个满 warp 的单次内存操作，目标值为：4 字节访问 1 个事务，8 字节访问 2 个事务，16 字节访问 4 个事务。实际所需事务数取决于该次内存操作的访问模式，也取决于目标设备的计算能力。CUDA C Programming Guide 对每种计算架构的合并规则给出了详细信息（<a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#global-memory-2-x">计算能力 2.x</a>、<a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#global-memory-3-0">计算能力 3.x</a>）。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <h3><a id="page-12-Analysis"></a>分析</h3>
+        <ul style="list-style-type:none">
+            <li value="1">
+            如果每请求事务数偏高 ……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                …… 检查所使用的内存访问模式，并尝试结合目标计算设备的合并规则优化数据访问（更多详情参见 CUDA C Programming Guide 的<a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#global-memory-3-0">全局内存</a>章节）。运行<a href="#page-4-top">内存事务</a> 实验以查看每行源代码所对应的事务数。这有助于将优化精力优先投入到问题最严重的位置。
+              </li><li style="text-indent:-20px;" value="2">
+                …… 如果 kernel 在整个 grid 启动期间对某些数据是只读访问的，请确认目标设备是否支持全局只读数据通路。若支持，请仔细检查相应数据指针是否带有 <code>const __restrict__</code> 类型修饰符，或考虑对这些内存操作使用 <code>__ldg()</code> 内置函数。<a href="#page-4-top">源代码视图</a>页面有助于定位并核实具体的内存指令。
+              </li><li style="text-indent:-20px;" value="3">
+                …… 运行<a href="#page-4-top">内存事务</a> 实验，分析已执行内存事务的类型和宽度。随着全局内存操作宽度的增加，理想的事务数也会随之增加。因此，理解内存操作的组合情况，对于得出对理想事务数的合理预期至关重要。还需注意：在大多数情况下，每线程读取 4 个连续的 4 字节值时，使用单次 16 字节加载比执行 4 次独立的 4 字节加载更高效；即便前者每请求最终对应 4 次事务，而后者每次请求只需 1 次事务（共四次请求）。
+              </li><li style="text-indent:-20px;" value="4">
+                …… 如果内存访问模式已无法进一步优化，可以考虑为地址分歧（address divergence）很高的内存操作更改缓存运算符。仅在 L2 中缓存数据可以减少总体数据流量，因为 L1 事务为 128 字节，而 L2 事务以 32 字节为段执行。考虑一个满 warp，每个线程以 128 字节步长访问一个数据元素：若缓存在 L1 中，将产生 32 次 128 字节的事务（假设 L1 全部未命中），总传输 4096 字节。相比之下，仅缓存在 L2 中，则只需 32 次 32 字节的事务，总共仅 1024 字节。
+              </li></ul></li>
+            <li value="2">
+            如果 L1 缓存命中率偏低 ……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                …… 检查 kernel 启动时所选用的缓存配置。计算能力 2.x 及更高的设备允许不同的缓存配置，即在 L1 缓存与共享内存之间对片上内存进行不同比例的划分。如果 kernel 不使用共享内存，或减少共享内存不会显著改变占用率，可尝试调整缓存配置以偏向更大的 L1 缓存。更大的 L1 缓存可增加缓存中保存数据的数量和生命周期，从而提高数据命中缓存的可能性。
+              </li></ul></li>
+        </ul>
+</section>
+<div class="chapter-sep" style="margin:52px 0;padding:24px 0;border-top:2px solid var(--rule);border-bottom:2px solid var(--rule);text-align:center;font-family:-apple-system,sans-serif;"><span style="font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);">第 12 / 18 页</span></div><section class="page" id="page-13-top">
+  <h2 class="section-h lv1" style="font-size:24px;margin-top:0;padding-top:0;"><span style="color:var(--muted);font-size:14px;font-weight:500;margin-right:8px;">13</span>内存统计 — 本地内存</h2>
+  <p class="kicker" style="font-family:-apple-system,sans-serif;font-size:11px;letter-spacing:.6px;color:var(--muted);margin-top:-6px;margin-bottom:18px;text-transform:uppercase;">内存统计 — 本地内存 · 原文 memorystatisticslocal.htm</p>
+<h3><a id="page-13-Overview"></a>概述</h3>
+        <p>
+          本地内存空间位于设备内存中，因此本地内存访问与全局内存访问一样具有高延迟和低带宽，并且适用于在 <a href="#page-12-top">内存统计 — 全局内存</a> 实验中讨论过的相同合并访问要求。然而，本地内存的组织方式使得连续的 32 位字由连续的线程 ID 访问。因此，只要 warp 中所有线程访问相同的相对地址（例如，数组变量中的同一索引、结构体变量中的同一成员），访问就是完全合并的。
+        </p>
+        <p>
+          本地内存访问仅针对某些自动变量发生，详细说明见 CUDA C Programming Guide 的 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#variable-type-qualifiers">Variable Type Qualifiers</a> 章节。编译器可能放置在本地内存中的自动变量包括：
+          <ul style="list-style-type: square;"><li value="1">
+              无法确定是否使用常量索引访问的数组；
+            </li><li value="2">
+              占用过多寄存器空间的大型结构体或数组；
+            </li><li value="3">
+              当 kernel 使用的寄存器超过可用数量时的任何变量（也称为寄存器溢出）。
+            </li></ul></p>
+        <p> 此外，某些数学函数的实现路径也可能访问本地内存。运行 <a href="#page-4-top">内存事务</a> 实验可以告知哪些 SASS 指令引起了本地内存事务。在内存事务实验结果上使用 <a href="#page-4-top">Source View</a> 的代码关联功能，可以精确定位某个变量在 kernel 编译期间是否被放入了本地内存。另外，使用 <code>--ptxas-options=-v</code> 选项编译时，编译器会报告每个 kernel 的本地内存总用量（<code>lmem</code>）。
+        </p>
+        <p>
+          在计算能力 2.x 及以上的设备上，所有本地内存访问都始终在 L1 和 L2 中缓存。本实验的输出展示了 kernel 执行期间产生的所有本地内存流量。
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h3><a id="page-13-Chart"></a>图表</h3>
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/memorystatisticslocalchart.png" style="float: right;mc-thumbnail-max-width: 700px;mc-thumbnail: none;" / onclick="lbShow(this.src)">
+                    <p>
+          Load/Store <b>Requests</b>（请求数）等于执行的本地内存指令数量。当一个 warp 执行一条访问本地内存的指令时，它会根据每个线程访问的字大小以及线程间内存地址的分布，将 warp 内各线程的内存访问合并为一个或多个 <b>Memory Transactions</b>（内存事务）。一般而言，需要的事务越多，除了线程访问的字以外还要额外传输的未使用字也越多，相应地降低了指令吞吐量。此外，每个内存事务都要求该汇编指令被重复发射；如果完成一个 warp 的请求需要多于一个事务，就会导致指令重放。关于指令重放及其性能影响的更多细节，可参阅 <a href="#page-4-top">指令统计</a> 实验中的相关介绍。
+        </p>
+                    <p>
+          <b>Transactions Per Request</b>（每请求事务数）图表分别针对加载和存储操作，显示每条执行的本地内存指令所需的平均 L1 事务数。数值越低越好；对于一个完整 warp 的单次本地内存操作，目标是 4 字节访问 1 个事务、8 字节访问 2 个事务、16 字节访问 4 个事务。warp 与 L1 缓存之间本地内存流量的 <b>Transaction Size</b>（事务大小）等于一整条 L1 缓存行的大小；一条 L1 缓存行为 128 字节。注意，无论 warp 中的线程是请求了缓存行中的全部数据还是仅请求了其子集，都会传输一整条缓存行。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <h3><a id="page-13-Analysis"></a>分析</h3>
+        <ul style="list-style-type:none">
+            <li value="1">
+            如果 <b>Load/Store Requests</b>（加载/存储请求数）较高……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……运行 <a href="#page-4-top">内存事务</a> 实验，定位触发本地内存操作的源代码行。尝试调查前述哪些原因导致编译器使用了本地数据访问。
+              </li><li style="text-indent:-20px;" value="2">
+                ……前往 <a href="#page-2-top">实际占用率</a> 实验，检查该 kernel 是否受寄存器限制和/或使用了非常多的寄存器。使用 <code>--ptxas-options=-v</code> 选项编译 kernel，并重点关注有多少寄存器需要被溢出。尽量减少溢出的寄存器数量，以减少本地内存操作的总数。
+              </li><li style="text-indent:-20px;" value="3">
+                ……运行 <a href="#page-3-top">发射效率</a> 实验，调查运行时合格 warp 的数量是否超过了隐藏该 kernel 指令/数据延迟所必需的数量。如果是，可以考虑减少活跃 warp 数，以便每个 block 有更多可用资源 —— 即便这可能会降低 kernel 的占用率。
+              </li></ul></li>
+            <li value="2">
+            如果 <b>Transactions Per Request</b>（每请求事务数）较高……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……检查使用的内存访问模式，并尝试针对目标计算设备的合并访问规则优化数据访问（更多细节见 CUDA C Programming Guide 的 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#global-memory-3-0">Global Memory</a> 章节）。请记住，本地内存的组织方式使得连续的 32 位字由连续的线程 ID 访问。换句话说：理想的本地内存访问是每个线程在其本地内存窗口中使用完全相同的偏移；这样，warp 中的所有线程访问的数据就在设备内存中是连续存储的。若 warp 中线程使用不同的偏移，总会导致每个请求产生多个事务。
+              </li></ul></li>
+        </ul>
+</section>
+<div class="chapter-sep" style="margin:52px 0;padding:24px 0;border-top:2px solid var(--rule);border-bottom:2px solid var(--rule);text-align:center;font-family:-apple-system,sans-serif;"><span style="font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);">第 13 / 18 页</span></div><section class="page" id="page-14-top">
+  <h2 class="section-h lv1" style="font-size:24px;margin-top:0;padding-top:0;"><span style="color:var(--muted);font-size:14px;font-weight:500;margin-right:8px;">14</span>内存统计 — 共享内存</h2>
+  <p class="kicker" style="font-family:-apple-system,sans-serif;font-size:11px;letter-spacing:.6px;color:var(--muted);margin-top:-6px;margin-bottom:18px;text-transform:uppercase;">内存统计 — 共享内存 · 原文 memorystatisticsshared.htm</p>
+<h3><a id="page-14-Overview"></a>概述</h3>
+        <p>
+          block 内的线程可以通过共享内存共享数据来协作，并通过同步执行来协调内存访问。由于位于片上，共享内存的带宽远高于本地或全局内存，延迟也低得多。在这一点上，共享内存相当于一个用户管理的缓存：由应用程序显式分配并访问。一种典型的编程模式是：将来自设备内存的数据暂存到共享内存中，在共享内存中处理数据并在 block 的各线程之间共享数据视图，然后将结果写回设备内存。
+        </p>
+        <p>
+          为了实现高带宽，共享内存被划分为大小相等的内存模块（称为 bank），可以同时访问。任意由 <i>n</i> 个地址组成、分别落在 <i>n</i> 个不同 bank 上的内存读或写请求，因而可以被同时服务，整体带宽为单个模块带宽的 <i>n</i> 倍。但是，如果一个内存请求的两个地址落在同一个 bank 中，就会产生 bank 冲突，访问必须被串行化。硬件会把一个存在 bank 冲突的内存请求拆分为所需数量的多个互不冲突的独立请求，吞吐量也按拆分后的请求数下降同样倍数。若拆分后的独立内存请求数为 <i>n</i>，则称该初始内存请求引发了 <i>n</i> 路 bank 冲突。为获得最佳性能，理解内存地址如何映射到 bank、以便调度访问以最小化 bank 冲突非常重要。
+        </p>
+        <p>
+          对于计算能力 2.x 的设备，共享内存有 32 个 bank，其组织方式是连续的 32 位字映射到连续的 bank 上。每个 bank 的带宽为每两个时钟周期 32 位。当 warp 中两个线程访问同一个 32 位字内的任意地址时，共享内存请求不会在它们之间产生 bank 冲突（即便两个地址落在同一 bank 中）。关于常见访问模式的更多细节和示例，参见 CUDA C Programming Guide 中针对计算能力 2.x 的 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#shared-memory-3-0">Shared Memory</a> 章节。
+        </p>
+        <p>
+          对于计算能力 3.x 的设备，共享内存有 32 个 bank，并提供两种可通过 <code>cudaDeviceSetSharedMemConfig()</code> 配置的寻址模式。每个 bank 的带宽为每个时钟周期 64 位。在 64 位模式下，连续的 64 位字映射到连续的 bank 上。当 warp 中两个线程访问同一个 64 位字内的任意子字时，共享内存请求不会在它们之间产生 bank 冲突（即便这两个子字的地址落在同一 bank 中）。在 32 位模式（默认）下，连续的 32 位字映射到连续的 bank 上。当 warp 中两个线程访问同一个 32 位字内的任意子字，或访问处于同一 64 字对齐段（即首索引为 64 的倍数的段）内、且索引 <i>i</i> 和 <i>j</i> 满足 <i>j=i+32</i> 的两个 32 位字内的任意子字时，共享内存请求不会在它们之间产生 bank 冲突（即便这两个子字的地址落在同一 bank 中）。关于常见访问模式的更多细节和示例，参见 CUDA C Programming Guide 中针对计算能力 3.x 的 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#shared-memory-3-0">Shared Memory</a> 章节。
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h3><a id="page-14-Chart"></a>图表</h3>
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/memorystatisticssharedchart.png" style="float: right;mc-thumbnail: none;" / onclick="lbShow(this.src)">
+                    <p>
+          Load/Store <b>Requests</b>（请求数）等于执行的共享内存指令数量。当 warp 执行一条访问共享内存的指令时，会按前述方式解决 bank 冲突。每次 bank 冲突都会强制产生一次新的内存事务。需要的事务越多，除了线程访问的字以外还要额外传输的未使用字也越多，相应地降低了指令吞吐量。每个内存事务都要求该汇编指令再次发射；如果完成一个 warp 的请求需要多于一个事务，就会导致指令重放。关于指令重放及其性能影响的更多细节，可参阅 <a href="#page-4-top">指令统计</a> 实验中的相关介绍。
+        </p>
+                    <p>
+          <b>Transactions Per Request</b>（每请求事务数）图表分别针对加载和存储操作，显示每条执行的共享内存指令所需的平均共享内存事务数。数值越低越好；对于一个完整 warp 的单次共享内存操作，目标是 4 字节访问和 8 字节访问都为 1 个事务，16 字节访问为 2 个事务。注意，对于给定的访问模式，理想事务数取决于访问宽度、所配置的地址模式（如果可用）以及目标计算能力。可参考 <a href="#page-4-top">内存事务</a> 实验中的 <i>Ideal Shared Memory Transactions</i>，以了解某条指令可能的最低传输次数。共享内存流量的 <b>Transaction Size</b>（事务大小）在计算能力 2.x 上为 128 字节，在计算能力 3.x 上为 256 字节。对于这两类设备，带宽都相当于每个 SM 每时钟周期一个事务。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <h3><a id="page-14-Analysis"></a>分析</h3>
+        <ul style="list-style-type:none">
+            <li value="1">
+            如果 <b>Transactions Per Request</b>（每请求事务数）较高……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……运行 <a href="#page-4-top">内存事务</a> 实验，定位触发共享内存操作的源代码行。检查使用的内存访问模式，并尝试以避免 bank 冲突为目标优化数据访问（更多细节见 CUDA C Programming Guide 的 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#shared-memory-3-0">Shared Memory</a> 章节）。
+              </li><li style="text-indent:-20px;" value="2">
+                ……如果目标设备支持配置共享内存寻址模式，尝试切换配置并重新运行实验。CUDA Launches 页面会在 <i>Shared Memory Configuration Executed</i> 列中报告所选择的寻址模式配置。一般来说，64 字节访问模式对所有 8 字节访问都有利。但是，某些针对 32 字节模式优化的访问模式在 64 字节模式下会引入额外的 bank 冲突；因此，选择最佳寻址模式需要理解所有执行的共享内存指令的数量、宽度和访问模式。
+              </li></ul></li>
+            <li value="2">
+            如果 <b>Load/Store Requests</b>（加载/存储请求数）较高……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……且目标设备为计算能力 3.x，请研究能否用 <i>shuffle</i> 操作替代共享内存访问。这一新的 warp 级 intrinsic 允许 warp 内的线程直接相互交换数据，无需经过共享内存（或全局内存）。shuffle 指令的延迟也比共享内存访问更低，且不消耗共享内存空间用于数据交换，因此对于在线程间快速交换数据的应用而言，它可以是一种颇具吸引力的方式。
+              </li></ul></li>
+        </ul>
+</section>
+<div class="chapter-sep" style="margin:52px 0;padding:24px 0;border-top:2px solid var(--rule);border-bottom:2px solid var(--rule);text-align:center;font-family:-apple-system,sans-serif;"><span style="font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);">第 14 / 18 页</span></div><section class="page" id="page-15-top">
+  <h2 class="section-h lv1" style="font-size:24px;margin-top:0;padding-top:0;"><span style="color:var(--muted);font-size:14px;font-weight:500;margin-right:8px;">15</span>内存统计 — 纹理内存</h2>
+  <p class="kicker" style="font-family:-apple-system,sans-serif;font-size:11px;letter-spacing:.6px;color:var(--muted);margin-top:-6px;margin-bottom:18px;text-transform:uppercase;">内存统计 — 纹理内存 · 原文 memorystatisticstexture.htm</p>
+<h3><a id="page-15-Overview"></a>概述</h3>
+        <p>
+          纹理内存是只读的设备内存，可以使用 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#texture-functions">Texture Functions</a> 中描述的设备函数进行访问。使用其中一个函数读取纹理称为 <i>texture fetch</i>（纹理取数）。纹理内存的流量经由纹理缓存（独立于 L1 数据缓存）和 L2 缓存路由。纹理内存系统在设计上对二维数组中具有空间局部性的访问效率较高。GPU 的纹理硬件支持还提供了超出典型内存系统的特性，例如越界读取时的可定制行为，以及在数组元素坐标之间读取时的过滤插值。纹理内存的设计目标是以恒定延迟进行流式取数；纹理缓存命中可以减少设备内存带宽占用，但不会降低取数延迟。
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h3><a id="page-15-Chart"></a>图表</h3>
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/memorystatisticstexturechart.png" style="float: right;mc-thumbnail: none;" / onclick="lbShow(this.src)">
+                    <p>
+                    </p>
+                    <h5>纹理（Texture）</h5>
+                    <p>
+          每当一个 warp 执行一次纹理函数来从纹理内存读取时，就计为一次取数（fetch）。Texture 图表显示取数次数和取数速率。一次 texture fetch 是一次内存请求，会从纹理缓存中产生事务。来自纹理缓存的事务以 32 字节为单位。
+        </p>
+                    <p>
+          注意，本图表不包括全局只读数据访问（使用 <code>const __restrict__</code> 或 <code>__ldg()</code> intrinsic），后者同样使用纹理缓存。对于这些访问，请参见 <a href="#page-12-top">内存统计 — 全局内存</a>。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <h3><a id="page-15-Analysis"></a>分析</h3>
+        <ul style="list-style-type:none">
+            <li value="1">
+            如果纹理缓存命中率较低……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……说明访问模式与纹理缓存针对二维空间局部性所做的优化不匹配。尝试修改访问模式，使空间上相邻的读取更紧凑地聚集在一起。或者，对于一维线性访问模式，全局内存可能比纹理内存更高效。
+              </li></ul></li>
+            <li value="2">
+            如果纹理内存带宽成为性能瓶颈……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……考虑使用更简单的纹理过滤模式，或更低分辨率的纹理。
+              </li></ul></li>
+        </ul>
+</section>
+<div class="chapter-sep" style="margin:52px 0;padding:24px 0;border-top:2px solid var(--rule);border-bottom:2px solid var(--rule);text-align:center;font-family:-apple-system,sans-serif;"><span style="font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);">第 15 / 18 页</span></div><section class="page" id="page-16-top">
+  <h2 class="section-h lv1" style="font-size:24px;margin-top:0;padding-top:0;"><span style="color:var(--muted);font-size:14px;font-weight:500;margin-right:8px;">16</span>内存统计 — 原子操作</h2>
+  <p class="kicker" style="font-family:-apple-system,sans-serif;font-size:11px;letter-spacing:.6px;color:var(--muted);margin-top:-6px;margin-bottom:18px;text-transform:uppercase;">内存统计 — 原子操作 · 原文 memorystatisticsatomics.htm</p>
+<h3><a id="page-16-Overview"></a>概述</h3>
+        <p>
+          原子函数对位于全局或共享内存中的一个 32 位或 64 位字执行一次读—改—写的原子操作。例如，<code>atomicAdd()</code> 读取全局或共享内存中某个地址上的一个字，对其加上一个数，再将结果写回到同一地址。所谓原子，是指该操作保证不会被其他线程干扰地完成；换言之，在操作完成之前，没有其他线程可以访问该地址。如果一个 warp 执行的原子指令对全局内存中的同一位置进行读、改、写操作，并且 warp 中有不止一个线程访问该位置，则对该位置的每一次读/改/写都会发生且全部被串行化，但发生的顺序是未定义的。
+        </p>
+        <p>
+          全局内存原子操作在计算能力 3.x 的设备上的吞吐量远高于之前的架构。在早期的 GPU 上，需要多个线程并发更新内存中同一位置的算法有时不得不依赖复杂的数据重排，以尽量减少所需原子操作的数量。鉴于全局内存原子操作性能的提升，在计算能力 3.x 的设备上，许多原子操作的执行速度几乎可与内存加载相当。这可能简化需要原子性的实现，或使先前被认为不切实际的算法变得可行。
+        </p>
+        <p>
+          Nsight 将原子函数区分为两类操作：标准原子操作（<b>ATOMs</b>）会将应用原子操作之前的数据值返回给调用线程。因此会产生双向的数据流量，即进出 L1 缓存。相比之下，归约（<b>REDs</b>）没有返回值，数据仅从 warp 流向 L1。可以使用 <a href="#page-4-top">Source View</a> 页面来调查编译器使用了哪种类型的操作。
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h3><a id="page-16-Chart"></a>图表</h3>
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/memorystatisticsatomicschart.png" style="float: right;mc-thumbnail: none;" / onclick="lbShow(this.src)">
+                    <p>
+          <b>Requests</b>（请求数）等于执行的原子指令数量。每个请求由一个或多个事务服务。实际所需的事务数量取决于操作宽度、访问的内存空间（全局或共享）以及目标计算能力。所采用的合并访问规则与对相应内存空间的内存访问行为一致（更多细节见 <a href="#page-12-top">内存统计 — 全局内存</a> 实验和 <a href="#page-14-top">内存统计 — 共享内存</a> 实验中的讨论）。一般而言，需要的事务越多，除了线程访问的字以外还要额外传输的未使用字也越多，相应地降低了指令吞吐量。此外，每个事务都要求该汇编指令再次发射；如果完成一个 warp 的请求需要多于一个事务，就会导致指令重放。
+        </p>
+                    <p>
+          <b>Transactions Per Request</b>（每请求事务数）图表显示每条执行的原子指令所需的平均 L1 事务数。数值越低越好。最优目标范围为每请求 1—2 个事务。具体的最优目标值取决于所执行原子指令的组合，即使用的内存空间和操作宽度。warp 与 L1 缓存之间流量的 <b>Transaction Size</b>（事务大小）等于一整条 L1 缓存行的大小；一条 L1 缓存行为 128 字节。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <h3><a id="page-16-Analysis"></a>分析</h3>
+        <ul style="list-style-type:none">
+            <li value="1">
+            如果 <b>Transactions Per Request</b>（每请求事务数）较高……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……检查原子操作的访问模式，并尝试针对目标计算设备的合并访问规则优化数据访问（更多细节见 CUDA C Programming Guide 的 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#global-memory-3-0">Global Memory</a> 章节或 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#shared-memory-3-0">Shared Memory</a> 章节）。
+              </li></ul></li>
+            <li value="2">
+            如果 <b>Requests</b>（请求数）较高……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……请确认在适用的场景中都使用了归约。归约操作不向线程返回任何数据，可以节省一些内存流量。<a href="#page-4-top">Source View</a> 页面可以告诉你执行了哪些操作。
+              </li></ul></li>
+        </ul>
+</section>
+<div class="chapter-sep" style="margin:52px 0;padding:24px 0;border-top:2px solid var(--rule);border-bottom:2px solid var(--rule);text-align:center;font-family:-apple-system,sans-serif;"><span style="font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);">第 16 / 18 页</span></div><section class="page" id="page-17-top">
+  <h2 class="section-h lv1" style="font-size:24px;margin-top:0;padding-top:0;"><span style="color:var(--muted);font-size:14px;font-weight:500;margin-right:8px;">17</span>反汇编正则匹配</h2>
+  <p class="kicker" style="font-family:-apple-system,sans-serif;font-size:11px;letter-spacing:.6px;color:var(--muted);margin-top:-6px;margin-bottom:18px;text-transform:uppercase;">反汇编正则匹配 · 原文 disassemblyregexmatch.htm</p>
+<h3><a id="page-17-Overview"></a>概述</h3>
+        <p>
+          Disassembly Regex（反汇编正则匹配）实验是一个用于创建自定义实验、对指令类别进行计数的框架。该实验通过脚本进行配置：用正则表达式指定要对哪些汇编指令计数，并将这些计数的加权和命名为指定的名字。结果以图表方式呈现，图表的属性可由脚本控制。Activity 页面上的脚本编辑器提供交互式指引，以确保脚本格式正确。本实验为捕获那些定义可能各异的指标（例如每秒浮点运算次数 FLOPS）提供了一种便捷方式。
+        </p>
+        <h5><a id="page-17-Background"></a>背景</h5>
+        <p>
+          统计某一类指令的执行频率是衡量性能的常用方法。像 IPC（每周期指令数）和 FLOPS 这样的通用指标之所以流行，是因为它们概念简单、在所有架构上都可用；但即使是如此简单的指标，要做精确定义也可能并不容易。例如，在统计浮点运算时，一次融合乘加（fused-multiply-add）可以算作一次操作，也可以算作两次；精度转换可以算作零次、一次或某个分数值。能够快速重新定义要统计哪些指令以及它们的权重，就可以快速尝试不同定义的指标。本实验使用一种易于学习的脚本语言，在便利性和灵活性之间取得平衡。该语言定义了以下几类对象及其关系：
+        </p>
+        <h5><a id="page-17-Regex"></a>[Regex]</h5>
+        <p>
+          一个命名对象，表示一个符合 ECMAscript 标准的正则表达式。本实验会把 kernel 反汇编为 SASS，生成 <a href="#page-4-top">Source View</a> 页面中所显示的字符串值。正则表达式会被应用到每条反汇编指令上，匹配该正则的指令会被打补丁，使得每次该指令执行时都为某个计数加一。还可通过额外选项控制正则的应用方式。Search/Match 决定是在该行中搜索匹配，还是要求正则必须匹配整行。Predicate/Opcode/Instruction/Args/Comment 选择要匹配该行的哪一部分（注意 Instruction 是 Source View 中显示的完整指令助记符，而 Opcode 是指令中第一个点之前的那部分）。计数可以按线程或按 warp 进行。例如，一条在循环中执行 100 次的指令，在按 warp 模式下会使计数增加 100；在按线程模式下，若所有线程都活跃，则会增加 3200。
+        </p>
+        <h5><a id="page-17-Counter"></a>[Counter]</h5>
+        <p>
+          一个命名对象，表示若干 [Regex] 计数的加权和。Regex 对象按名称指定，每行一个，前面跟有权重。权重可以是任意正负整数或浮点数值。Regex 对象可以被多个 Counter 对象使用。
+        </p>
+        <h5><a id="page-17-Group"></a>[Group]</h5>
+        <p>
+          一个命名对象，表示要在报告页上以图表形式显示的一组 [Counter] 值。Counter 对象按名称指定，每行一个。Counter 对象可以被多个 Group 对象使用。图表类型是 Group 的一个选项。可以是柱状图（每个 counter 各为一根柱）、堆叠柱状图（每根柱由指定相同堆叠名的多个 counter 段组成）或饼图（每个 counter 占饼图的一块）。是显示计数值还是显示速率（计数除以时间）也是 Group 的一个选项。关于图表外观示例，请参见 <a href="#page-5-top">实际 FLOPS</a> 实验。
+        </p>
+        <h5><a id="page-17-ScriptSyntax"></a>脚本语法</h5>
+        <p>
+          每个对象在一行中以方括号指定，括号内是类型，后接名称。名称可以包含空格以及除方括号外的任意字符。该对象的选项可以追加在该行末尾。对于 Regex 对象，定义行紧接着的一行是正则字符串，可以使用任意字符（转义按预期方式工作）。对于 Counter 和 Group 对象，从定义行往下、直到下一个定义行之间的所有行用于指定其成员（Counter 指定一组 Regex，Group 指定一组 Counter）。除了定义正则字符串的行之外（其中所有字符都被视为正则的一部分），脚本格式会忽略空白字符以及以 # 开头的行（用于书写注释）。Activity 页面上的脚本编辑器会在你修改时即时解析，并在出现错误时给出说明。如果脚本无效，Activity 将不允许启动。
+        </p>
+        <div style="text-align: center;">
+            <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/disassemblyregexmatchparseerror.png" style="mc-thumbnail: none;" / onclick="lbShow(this.src)">
+            <p><i>在第 3 行输入 [foo] 后，脚本编辑器说明 'foo' 不是 Regex 对象的有效选项，并列出了所有合法选项。</i>
+            </p>
+        </div>
+        <h5><a id="page-17-ScriptExamples"></a>脚本示例</h5>
+        <p>
+          新建一个 Disassembly Regex 实验时显示的文本就是一个带有详细注释的示例，可用于演示语法。更复杂的示例由 <a href="#page-5-top">实际 FLOPS</a> 和 <a href="#page-6-top">实际 IOPS</a> 实验提供，它们都基于 Disassembly Regex 实验。可以把它们脚本的内容复制并粘贴到一个新的 Disassembly Regex 实验中进行修改。
+        </p>
+        <h3><a id="page-17-Analysis"></a>分析</h3>
+        <ul style="list-style-type:none">
+            <li value="1">
+            如果指令执行速率低于预期……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……如果可能，尝试增加活跃 warp 的数量。使用 <a href="#page-2-top">实际占用率</a>、<a href="#page-3-top">发射效率</a> 和 <a href="#page-4-top">指令统计</a> 实验来判断指令发射率是否偏低。
+                     </li></ul></li>
+            <li value="2">
+            尝试复制一个 Regex，一个使用 [PerThread]，另一个使用 [PerWarp]。为每个分别添加一个 Counter，并按设备的 warp 大小对按 warp 的值加权。如果按线程的值更低……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……使用 <a href="#page-8-top">分支统计</a> 实验来调查为什么会经常出现 warp 中许多线程被谓词屏蔽的情况。
+              </li></ul></li>
+        </ul>
+</section>
+<div class="chapter-sep" style="margin:52px 0;padding:24px 0;border-top:2px solid var(--rule);border-bottom:2px solid var(--rule);text-align:center;font-family:-apple-system,sans-serif;"><span style="font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);">第 17 / 18 页</span></div><section class="page" id="page-18-top">
+  <h2 class="section-h lv1" style="font-size:24px;margin-top:0;padding-top:0;"><span style="color:var(--muted);font-size:14px;font-weight:500;margin-right:8px;">18</span>性能计数器</h2>
+  <p class="kicker" style="font-family:-apple-system,sans-serif;font-size:11px;letter-spacing:.6px;color:var(--muted);margin-top:-6px;margin-bottom:18px;text-transform:uppercase;">性能计数器 · 原文 performancecounters.htm</p>
+<h3><a id="page-18-Overview"></a>概述</h3>
+        <p>
+          提供在 kernel 执行期间从目标设备上收集性能计数器值的能力。
+          大多数其他实验都会使用 Performance Counters 实验所暴露的部分计数器。本实验有助于收集其他实验未涵盖的数据、计算额外的派生指标，或获取实际的原始计数器值以便用外部工具做进一步处理或比较。在同一个 Profile 会话中，可以为不同的目标架构或计数器配置多次实例化该实验。
+        </p>
+        <h5><a id="page-18-Background"></a>背景</h5>
+        <p>
+          CUDA 设备的各个硬件单元能够在 kernel 执行期间跟踪一组计数器。这些计数器在运行时更新，可在执行完成后被查询。所观测到的数值代表了硬件单元所看到的实际负载，因此通常被称为原始计数器值。许多性能指标都是直接由一个或多个原始计数器值推导得出的。
+        </p>
+        <p>
+          能够同时收集的计数器总数受硬件和数据收集机制的限制。每种收集机制都各有优缺点：<b>HWPM</b> provider 可以从 CUDA 设备上任意类型的硬件单元收集数据；但对于许多单元，它一次只能对芯片中现有硬件单元的一个子集进行采样。要完整覆盖某种单元类型的所有实例，需要多次重放（replay）通道；这会减慢数据收集速度，并存在跨多次通道错误计入工作量的风险。相比之下，<b>SMPC</b> provider 仅能从流多处理器（SM）收集数据，但它能够同时从所有现有 SM 上收集。如果上述两种机制都无法提供所关注的数据，<b>SW</b> provider 会对实际的 kernel 代码进行插桩，将信息收集作为 kernel 执行的一部分。代码插桩可以一次性从所有活跃 SM 上收集任意数量的计数器，但整体性能开销最高。而且，由于实际的 kernel 代码被修改了，收集 SW 计数器时无法在同一通道中收集其他 provider 的数据。
+        </p>
+        <p>
+          无论是比较来自不同通道的性能计数器值，还是计算带有多输入值的派生指标，考虑调度和 kernel 重放对所获计数器结果的影响都至关重要。虽然每次重放通道都使用完全相同的输入并执行相同的计算，但每次运行在芯片上的执行可能略有不同。差异可能包括：小 kernel 网格使用的硬件单元的差异、实际取得的负载分布的差异，或 warp 调度器执行指令的顺序的差异。尽管这些差异都不会影响 kernel 结果的正确性，但可能会导致所收集的性能计数器值发生变化，特别是当某一硬件单元的所有实例无法被同时观测时。出于这一原因，只有当所有相关计数器结果都来自同一次重放通道时，比较或组合性能计数器值的正确性才能得到保证。如果做不到这一点而必须从多次通道中取数据，建议只组合那些在各自通道中完整覆盖了所有现有单元的性能计数器结果。
+        </p>
+        <h3><a id="page-18-Configuration"></a>配置</h3>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/rawcountersconfiguration.png" style="float: right;mc-thumbnail: none;" / onclick="lbShow(this.src)">
+                    <p>
+          列出所选目标硬件架构上可用的计数器。默认情况下，本实验允许选择尽可能多、可在一次通道中一起收集的计数器。无法再加入当前选择的计数器会变为不可用状态，显示为灰色。
+        </p>
+                    <p style="margin:5px;padding:10px;background-color:#eaefe0">
+          只有当所配置的架构与启动 kernel 网格的 CUDA 设备相匹配时，Performance Counters 实验的实例才会被执行；否则该实验实例会被忽略。如果报告输出中没有显示任何性能计数器信息，请仔细检查架构的配置。
+        </p>
+                    <h5>选项</h5>
+                    <p><b>Architecture</b>
+          实验实例的目标架构。当需要在一次 Profile 捕获中记录来自多个不同 CUDA 设备的 kernel 启动时，可使用不同的目标架构实例化多个 Performance Counters 实验。不同架构上可用的计数器列表各不相同。
+        </p>
+                    <p><b>Collect from all Units</b>
+          通过 HWPM provider 提供的计数器可能无法在一次通道中从所有现有硬件单元上收集。如果禁用该选项，所配置的 HWPM 计数器会在一次通道中从尽可能多的硬件单元上采样，优先考虑收集速度而非整体单元覆盖率。如果启用该选项，会执行多次 kernel 重放通道以确保该计数器从所有现有单元上都被收集到。虽然这会增加额外开销，但可以提供更准确的结果。报告输出中的 <a href="#page-18-OutputColumnCoverage">Coverage</a> 列显示数据收集期间被观测到的单元百分比。本选项不会影响来自其他 provider 的计数器。
+        </p>
+                    <p><b>Auto Scheduling</b>
+          可在一次通道中收集的计数器数量受硬件限制；因此，计数器可能变为不可选（变灰）。启用 Auto Scheduling 后，会使用多次通道来收集所请求的数据，从而解除这一限制。所使用的通道数以及计数器到重放通道的实际映射未做进一步规定。如果需要特定的调度方式，请添加多个 Performance Counters 实验实例，每个仅执行一次重放通道。
+</p>
+                    <p>注意，收集所有计数器需要进行多次 kernel 重放通道，可能比较慢。</p>
+                </td>
+            </tr>
+        </table>
+        <p>
+        </p>
+        <h3><a id="page-18-Output"></a>输出</h3>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <img src="content/developertools/desktop/analysis/report/cudaexperiments/kernellevel/rawcountersoutput.png" style="float: right;mc-thumbnail: none;" / onclick="lbShow(this.src)">
+                    <p>
+          在一个表格中报告该 kernel 启动所有适用的 Performance Counters 实验所收集到的信息。每个配置的计数器在表中显示为单独的一行。对于每次执行的重放通道，也会一并报告 kernel 的整体执行时间。
+        </p>
+                    <p style="margin:5px;padding:10px;background-color:#eaefe0">
+          从 SW 计数器 provider 收集计数器可能会显著影响 kernel 的整体性能。这可能导致不同重放通道之间所报告的 kernel 持续时间出现较大波动。但实际的计数器结果并不会受此影响。
+        </p>
+                    <h5>列</h5>
+                    <p><a id="page-18-OutputColumnPass"></a><b>Pass</b>
+          该计数器是在哪一次 kernel 重放迭代中被收集到的。便于理解计数器调度，并按本文 <a href="#page-18-Background">背景</a> 章节所述确保派生指标的正确性。所有需要多次通道才能从全部硬件单元收集到的 HWPM 计数器都会被报告在 'Pass 0' 上。
+        </p>
+                    <p><a id="page-18-OutputColumnGpuValue"></a><b>GPU Value</b>
+          按比例放大到始终覆盖目标设备所有现有单元后的计数器结果值。仅在两种情况下该值是一个估计值：第一，计数器值是跨多个通道的聚合（适用于在 'Pass 0' 中报告的所有计数器）；第二，该计数器未覆盖所有现有硬件单元（适用于覆盖率小于 100% 的所有计数器）。在这两种情况下，估计都假设负载在硬件单元间均匀分布。
+        </p>
+                    <p><a id="page-18-OutputColumnCoverage"></a><b>Coverage</b>
+          该计数器观测到的现有硬件单元的百分比。覆盖率越低，对整体 GPU Value 的估计不确定性就越高。
+        </p>
+                    <p><a id="page-18-OutputColumnMin"></a><b>Min</b>
+          所观测到的所有硬件单元中报告的最小计数器值。
+        </p>
+                    <p><a id="page-18-OutputColumnMax"></a><b>Max</b>
+          所观测到的所有硬件单元中报告的最大计数器值。
+        </p>
+                    <p><a id="page-18-OutputColumnAvg"></a><b>Avg</b>
+          所观测到的硬件单元上报告的平均计数器值。
+        </p>
+                    <p><a id="page-18-OutputColumnStdDev"></a><b>StdDev</b>
+          所观测到的所有硬件单元中所报告值的标准差。
+        </p>
+                </td>
+            </tr>
+        </table>
+</section>
+<div class="chapter-sep" style="margin:52px 0;padding:24px 0;border-top:2px solid var(--rule);border-bottom:2px solid var(--rule);text-align:center;font-family:-apple-system,sans-serif;"><span style="font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);">第 18 / 18 页</span></div>
+
+  </div>
+</div>
+</div>
+
+<script>
+function lbShow(src){ const lb=document.getElementById('lb'); document.getElementById('lb-img').src=src; lb.classList.add('open'); }
+function lbClose(e){ if(e.target===document.getElementById('lb')||e.target===document.getElementById('lb-close')) lbHide(); }
+function lbHide(){ document.getElementById('lb').classList.remove('open'); document.getElementById('lb-img').src=''; }
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') lbHide(); });
+
+// Sidebar active-link tracking on scroll inside #reader
+(function(){
+  const reader = document.getElementById('reader');
+  const links = Array.from(document.querySelectorAll('#sb a[href^="#"]'));
+  const targets = links.map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+  function update(){
+    const top = reader.scrollTop + 100;
+    let active = targets[0];
+    for(const t of targets){ if(t.offsetTop <= top) active = t; }
+    if(!active) return;
+    links.forEach(a => a.classList.toggle('active', a.getAttribute('href')==='#'+active.id));
+  }
+  reader.addEventListener('scroll', update, {passive:true});
+  update();
+})();
+
+// Smooth scroll for in-sidebar links — Reader is the scrolling container, not window
+document.querySelectorAll('#sb a[href^="#"]').forEach(a => {
+  a.addEventListener('click', e => {
+    const id = a.getAttribute('href').slice(1);
+    const el = document.getElementById(id);
+    if(el){ e.preventDefault(); document.getElementById('reader').scrollTo({top: el.offsetTop - 40, behavior:'smooth'}); history.replaceState(null,'','#'+id); }
+  });
+});
+</script>
+</body>
+</html>

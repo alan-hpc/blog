@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html xmlns:MadCap="http://www.madcapsoftware.com/Schemas/MadCap.xsd" lang="en-us" xml:lang="en-us" data-mc-search-type="Stem" data-mc-help-system-file-name="index.xml" data-mc-path-to-help-system="../../../../../../../" data-mc-target-type="WebHelp2" data-mc-runtime-file-type="Topic" data-mc-preload-images="false" data-mc-in-preview-mode="false" data-mc-toc-path="Developer Tools|Desktop Developer Tools|NVIDIA Nsight Visual Studio Edition|NVIDIA Nsight Visual Studio Edition 4.7|Analysis Tools|CUDA Experiments|Kernel-Level Experiments|Memory Statistics">
+    <!-- saved from url=(0016)http://localhost -->
+    <head>
+        <meta charset="utf-8" />
+        <meta name="googlebot" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><title>内存统计 — 缓冲区</title>
+        <link rel="shortcut icon" href="../../../../../../Resources/MasterPages/nvidia.ico" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/Slideshow.css" rel="stylesheet" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/TextEffects.css" rel="stylesheet" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/Topic.css" rel="stylesheet" />
+        <link href="../../../../../../resources/stylesheets/style.css" rel="stylesheet" />
+        <style>/*&lt;meta /&gt;*/
+
+.button.previous-topic-button
+{
+	-pie-background: url('../../../../../../../Skins/Default/Stylesheets/Images/navigate-previous.png') no-repeat center center, linear-gradient(#ffffff, #ececec);
+}
+
+.button.current-topic-index-button
+{
+	-pie-background: linear-gradient(#ffffff, #ececec);
+}
+
+.button.next-topic-button
+{
+	-pie-background: url('../../../../../../../Skins/Default/Stylesheets/Images/navigate-next.png') no-repeat center center, linear-gradient(#ffffff, #ececec);
+}
+
+.needs-pie
+{
+	behavior: url('../../../../../../../Resources/Scripts/PIE.htc');
+}
+
+</style>
+        <script src="../../../../../../../Resources/Scripts/custom.modernizr.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/jquery.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/foundation.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/plugins.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/require.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/require.config.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/MadCapAll.js">
+        </script>
+        <script src="../../../../../../../Skins/Default/Scripts/Toolbar.js">
+        </script>
+    </head>
+    <body>
+        <p class="MCWebHelpFramesetLink MCWebHelpFramesetLinkTop"><a href="../../../../../../../index.html#developertools/desktop/analysis/report/cudaexperiments/kernellevel/memorystatisticsbuffers.htm">打开带导航的主题视图</a>
+        </p>
+        <div class="MCBreadcrumbsBox_site.css_0"><span class="MCBreadcrumbsPrefix">当前位置： </span><a class="MCBreadcrumbsLink" href="../../../../../developer_tools.htm">开发者工具</a><span class="MCBreadcrumbsDivider"> &gt; </span><a class="MCBreadcrumbsLink" href="../../../../../desktop_devtools.htm">桌面开发者工具</a><span class="MCBreadcrumbsDivider"> &gt; </span><a class="MCBreadcrumbsLink" href="../../../../nvidia_nsight.htm">NVIDIA Nsight Visual Studio Edition</a><span class="MCBreadcrumbsDivider"> &gt; </span><span class="MCBreadcrumbs">内存统计 — 缓冲区</span>
+        </div><a name="kanchor147"></a>
+        <div id="pageheader">
+            <h1><span class="SystemTitle">内存统计 — 缓冲区</span>
+            </h1>
+            <p style="font-size: 8pt; color: #a9a9a9;"><span style="font-weight: normal; color: #808080;" class="MyVariablesNsightVSEMainHeader"></span>
+                <br /><span id="feedbacklink" style="font-size: 8pt; font-weight: normal;"><a href="mailto:devtools-support@nvidia.com?subject=Documentation Feedback: Parallel Nsight User Guide">发送反馈</a></span>
+                <br />
+            </p>
+            <hr width="100%" size="0" align="center" />
+        </div>
+        <h3><a id="Overview"></a>概述</h3>
+        <p>
+          缓冲区是位于 CUDA 设备上或系统内存中的内存。到设备内存的带宽高于到系统内存的带宽，但各级缓存和共享内存能够提供更低得多的延迟和更高的带宽。因此，访问设备内存和系统内存的最高效方式，是在数据可以存放到共享内存或缓存中时，避免对同一缓冲区数据进行多次重复访问。由于对设备内存和系统内存的初次访问无法避免，这些访问往往会成为性能瓶颈，因此监控缓冲区的带宽十分重要。
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h3><a id="Chart"></a>图表</h3>
+                    <img src="memorystatisticsbufferschart.png" style="float: right;mc-thumbnail: none;" alt="内存统计 — 缓冲区图表" />
+                    <p>
+                    </p>
+                    <h5>缓冲区</h5>
+                    <p>
+          GPU 对缓冲区的所有访问都通过 L2 写回缓存路由。CUDA kernel 可以通过 zero-copy 直接访问系统内存——使用 CUDA API 分配的系统内存会被映射到 CUDA 设备的地址空间。缓冲区图表分别展示加载（load）与存储（store）的数据量、System Memory（系统内存）和 Device Memory（设备内存）区域中加载与存储之和，以及整体带宽利用率的百分比。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <h3><a id="Analysis"></a>分析</h3>
+        <ul style="list-style-type:none">
+            <li value="1">
+            如果与系统内存之间的传输速率低于预期 ……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                …… 尝试进行更大块的传输。小而稀疏的传输可能有较高的开销。
+              </li></ul></li>
+            <li value="2">
+            如果与设备内存之间的传输速率已达到 GPU 极限，但仍是瓶颈 ……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                …… 尝试提高缓存效率，以减少所需的带宽。
+              </li><li style="text-indent:-20px;" value="2">
+                …… 检查并确保带宽没有因低效的访问模式而被浪费——这类模式会引发大量缓存事务。
+              </li><li style="text-indent:-20px;" value="3">
+                …… 考虑使用更低分辨率的数据，或可以在共享内存中暂存的压缩数据。
+              </li><li style="text-indent:-20px;" value="4">
+                …… 考虑采用多 GPU 或集群方案。
+              </li></ul></li>
+            <li value="3">
+            如果与系统内存之间的传输速率已达到 PCI 极限，但仍是瓶颈 ……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                …… 尝试通过让传输与并发计算或反方向传输重叠来隐藏传输延迟。
+              </li><li style="text-indent:-20px;" value="2">
+                …… 尝试提高缓存效率，以减少所需的带宽。
+              </li><li style="text-indent:-20px;" value="3">
+                …… 检查并确保带宽没有因低效的访问模式而被浪费——这类模式会引发大量缓存事务。
+              </li><li style="text-indent:-20px;" value="4">
+                …… 确保 CUDA 设备使用受支持的最高 PCI-Express 版本。
+              </li><li style="text-indent:-20px;" value="5">
+                …… 考虑使用具有更大设备内存的 GPU，使大规模问题能够完整放入单个设备的内存中。
+              </li><li style="text-indent:-20px;" value="6">
+                …… 考虑使用更低分辨率的数据，或可在设备内存、共享内存中暂存的压缩数据。
+              </li><li style="text-indent:-20px;" value="7">
+                …… 考虑采用多 GPU 或集群方案。
+              </li></ul></li>
+        </ul>
+        <div id="pagefooter">
+            <br />
+        </div>
+        <hr style="height: 1px;" width="100%" size="0" align="center" />
+        <script type="text/javascript" src="../../../../../../resources/stylesheets/run_prettify.js?lang=vb" autoload="true">
+        </script>
+        <p>
+        </p>
+        <div class="buttons inline-buttons clearfix topicToolbarProxy topicToolbarProxysite.css" style="mc-topic-toolbar-items: ;">
+            <div class="button-group-container-left">
+                <button class="button needs-pie previous-topic-button" type="button" title="上一主题">
+                    <img src="../../../../../../../Skins/Default/Stylesheets/Images/transparent.gif" alt="上一主题" />
+                </button>
+                <div class="button current-topic-index-button disabled"><span class="sequence-index"></span> / <span class="sequence-total"></span></div>
+                <button class="button needs-pie next-topic-button" type="button" title="下一主题">
+                    <img src="../../../../../../../Skins/Default/Stylesheets/Images/transparent.gif" alt="下一主题" />
+                </button>
+            </div>
+        </div>
+        <p> <![CDATA[ ]]></p>
+        <p><span style="color: #696969; font-size: 8pt;">NVIDIA GameWorks Documentation Rev. 1.0.150630 ©2015. NVIDIA Corporation. All Rights Reserved.</span>
+        </p>
+    </body>
+</html>
