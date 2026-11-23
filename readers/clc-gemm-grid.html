@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Blackwell GPU 上的动态持久化 Tile 调度与 CLC</title>
+  <!-- Fonts: JetBrains Mono for code -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+  <!-- Highlight.js: Monokai Sublime theme -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/monokai-sublime.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <!-- KaTeX -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+  <!-- Shared reader styles -->
+  <link rel="stylesheet" href="/blog/readers/reader.css">
+</head>
+<body>
+
+<div id="lb" onclick="lbClose(event)">
+  <span id="lb-close" onclick="lbHide()">&#x2715;</span>
+  <img id="lb-img" src="" alt="">
+</div>
+
+<nav id="sb">
+  <div id="sb-title">
+    <p>Colfax Research · 中文阅读版</p>
+    <h2>GEMM Grid 调度<br>持久化 Kernel<br>Stream-K 与 CLC</h2>
+  </div>
+  <div class="ti tl1" style="padding-top:6px;font-size:10px;color:#504a4b;padding-left:15px;letter-spacing:.8px;text-transform:uppercase;">前置：持久化 Kernel</div>
+  <div class="ti tl1"><a href="#p-wq">Wave Quantization</a></div>
+  <div class="ti tl2"><a href="#p-persistent">持久化 Kernel</a></div>
+  <div class="ti tl1"><a href="#p-strategies">分块调度策略</a></div>
+  <div class="ti tl2"><a href="#p-dp">数据并行</a></div>
+  <div class="ti tl2"><a href="#p-splitk">Split-K</a></div>
+  <div class="ti tl2"><a href="#p-streamk">Stream-K</a></div>
+  <div class="ti tl2"><a href="#p-hybrid">混合 Stream-K</a></div>
+  <div class="ti tl1"><a href="#p-scheduler">Tile 调度器抽象</a></div>
+  <div class="ti tl1"><a href="#p-conclusion">结论（持久化篇）</a></div>
+  <div class="ti tl1"><a href="#p-appendix">附录：CUTLASS Stream-K</a></div>
+  <div class="ti tl2"><a href="#p-api">使用 Stream-K API</a></div>
+  <div class="ti tl2"><a href="#p-perf">Stream-K 性能</a></div>
+  <div class="ti tl2"><a href="#p-impl">CUTLASS 实现细节</a></div>
+  <div class="ti tl1"><a href="#s-clc-chapter">CLC：动态持久化调度</a></div>
+  <div class="ti tl1"><a href="#s-motivation">动机</a></div>
+  <div class="ti tl1"><a href="#s-single">单 Tile 调度</a></div>
+  <div class="ti tl1"><a href="#s-static">静态持久化调度</a></div>
+  <div class="ti tl1"><a href="#s-dynamic">动态持久化调度</a></div>
+  <div class="ti tl2"><a href="#s-standard-impl">标准实现方式</a></div>
+  <div class="ti tl1"><a href="#s-clc">Cluster Launch Control</a></div>
+  <div class="ti tl2"><a href="#s-clc-why">长尾问题 → CLC 解法</a></div>
+  <div class="ti tl2"><a href="#s-ptx">PTX 指令</a></div>
+  <div class="ti tl2"><a href="#s-walkthrough">代码 Walkthrough</a></div>
+  <div class="ti tl3"><a href="#s-compute-grid">_compute_grid</a></div>
+  <div class="ti tl3"><a href="#s-clc-pipeline">CLC Pipeline</a></div>
+  <div class="ti tl3"><a href="#s-sched-warp">调度 Warp</a></div>
+  <div class="ti tl3"><a href="#s-consumer">消费者端</a></div>
+  <div class="ti tl2"><a href="#s-multistage">多阶段 CLC Pipeline</a></div>
+  <div class="ti tl2"><a href="#s-preemption">并发 Kernel 与抢占</a></div>
+  <div class="ti tl2"><a href="#s-balanced">均衡负载下的对比</a></div>
+  <div class="ti tl1"><a href="#s-conclusion">结论（CLC 篇）</a></div>
+  <div class="ti tl1" style="padding-top:10px;font-size:10px;color:#504a4b;padding-left:15px;letter-spacing:.8px;text-transform:uppercase;">延伸：FA4 CLC PR</div>
+  <div class="ti tl1"><a href="#s-fa4-clc">FA4 CLC 实现</a></div>
+  <div class="ti tl2"><a href="#s-fa4-viewer">Work Distribution 可视化</a></div>
+  <div class="ti tl2"><a href="#s-fa4-perf">性能结果</a></div>
+</nav>
+
+<div id="reader">
+  <div id="reader-inner">
+
+    <header class="book-header">
+      <p class="kicker">Colfax Research · Dec 2024 + May 2026 · 中文阅读版</p>
+      <h1>GEMM Grid 调度全解：持久化 Kernel、Stream-K 与 Blackwell CLC</h1>
+      <p class="sub">Persistent Kernels &amp; Stream-K (Part 3 GEMM Tutorial) + Dynamic Tile Scheduling with CLC on Blackwell</p>
+      <div style="margin-top:16px;padding:12px 16px;background:var(--paper);border-left:3px solid var(--rule);border-radius:0 4px 4px 0;font-family:-apple-system,sans-serif;font-size:12px;color:var(--muted);line-height:1.9;">
+        <span style="text-transform:uppercase;letter-spacing:.8px;font-size:10px;display:block;margin-bottom:4px;">原文来源</span>
+        <a href="https://research.colfax-intl.com/cutlass-tutorial-persistent-kernels-and-stream-k/" target="_blank" style="color:var(--accent);text-decoration:none;border-bottom:1px solid rgba(29,79,124,.25);">① Persistent Kernels and Stream-K — GEMM Tutorial Part 3</a>
+        <span style="color:var(--rule);margin:0 6px;">·</span>Colfax Research, Dec 2024<br>
+        <a href="https://research.colfax-intl.com/dynamic-persistent-tile-scheduling-with-cluster-launch-control-clc-on-nvidia-blackwell-gpus/" target="_blank" style="color:var(--accent);text-decoration:none;border-bottom:1px solid rgba(29,79,124,.25);">② Dynamic Persistent Tile Scheduling with CLC on NVIDIA Blackwell GPUs</a>
+        <span style="color:var(--rule);margin:0 6px;">·</span>Colfax Research, May 2026<br>
+        <span style="color:var(--muted);font-size:11px;">本文将两篇原文合并为中文阅读版：①为前置背景（持久化 Kernel、Wave Quantization、Stream-K），②为主体（Blackwell CLC 硬件实现与性能分析）。</span>
+      </div>
+    </header>
+
+    <!-- ════════════════════════════════════════════════════════════
+         前置篇：持久化 Kernel 与 Stream-K（Hopper, 2024）
+         原文：https://research.colfax-intl.com/cutlass-tutorial-persistent-kernels-and-stream-k/
+         ════════════════════════════════════════════════════════════ -->
+
+    <!-- ─── Wave Quantization ──────────────────────────────────────────── -->
+    <section id="p-wq">
+      <h2 class="section-h lv1">前置篇：Wave Quantization 问题</h2>
+      <p class="zh">本篇是 GEMM 教程系列第三部分（前两部分聚焦单个 threadblock 的 WGMMA、流水线与 warp 特化），转而从整个 grid 的视角审视 GEMM。在这个尺度上，主要有两类优化：一是利用 threadblock swizzling 和 cluster 最大化 L2 cache 命中率；二是更好地将工作分配到各 threadblock，以充分利用 GPU 的计算资源并实现良好的负载均衡。本篇聚焦后者。</p>
+      <p class="zh">具体来说，我们将讨论一种名为 <b>Stream-K</b> 的分块策略，它解决了<b>Wave Quantization</b>问题——当工作 tile 的总数无法被 SM 数量整除时就会出现这一问题。Stream-K 在 M、N 较小但 K 较大导致标准 tile 分块无法充满 GPU 时同样适用。</p>
+      <p class="zh">NVIDIA GPU 由若干个 SM（流式多处理器）组成，每个 SM 有独立的共享内存、寄存器堆、Tensor Core 等，相互独立运行。理想的工作负载能最大化 SM 间的并行性——均匀分配工作，使所有 SM 在整个 kernel 期间保持忙碌。若部分 SM 比其他 SM 更早完成任务，就会出现<b>负载不均衡</b>。</p>
+      <p class="zh">考虑一个可以被分解为等大小<b>工作单元</b>的计算（如 GEMM 中每个工作单元计算一个 bM×bN 的输出 tile），这些工作单元被分配给各 threadblock，每个 threadblock 在可用的 SM 上完成其任务。若工作单元总数超过可用 SM 数，则工作单元将分多个 <b>wave</b> 处理——每个 wave 对应所有可用 SM 各完成一个工作单元。</p>
+      <p class="zh"><b>Wave Quantization</b>发生在工作单元总数不能被 SM 数整除时。例如，假设有 10 个工作单元和 4 个 SM，执行时间线如下：</p>
+      <figure>
+        <img src="https://i0.wp.com/research.colfax-intl.com/wp-content/uploads/2024/12/quantization.png?ssl=1" alt="Wave Quantization示意图">
+        <figcaption>图：10 个工作单元在 4 个 SM 上的执行时间线。前两个 wave 是满 wave，最后一个 wave 只有 2 个 SM 工作（部分 wave）。</figcaption>
+      </figure>
+      <p class="zh">当工作单元总数相对于 SM 数量较少时，Wave Quantization会严重拖累性能。例如，在拥有 114 个 SM 的 H100 PCIe GPU 上，115 个工作单元所需的 wave 数与 228 个完全相同——都是 2 个 wave！换句话说，从第 114 个增加到第 115 个工作单元，设备利用率几乎减半。</p>
+      <p class="zh">以下基准测试（固定 M=1024、K=4096，按步长 bN=192 变化 N）展示了Wave Quantization的实际影响：</p>
+      <figure>
+        <img src="https://i0.wp.com/research.colfax-intl.com/wp-content/uploads/2024/12/m1024-wave-quantization-time-tflops.png?ssl=1" alt="Wave Quantization性能图">
+        <figcaption>图：H100 PCIe GPU 上，TFLOPs/s（左）与耗时（右）随 tiles-per-SM 变化的曲线。竖向虚线为 wave 边界，性能在越过 wave 边界时出现急剧下降。</figcaption>
+      </figure>
+
+      <h3 class="section-h lv2" id="p-persistent">持久化 Kernel（Persistent Kernels）</h3>
+      <p class="zh">为解决Wave Quantization，需要更好的分块与调度方案。传统 kernel 的 grid 大小依赖于问题维度，每个 CTA 处理一个工作单元。在持久化 kernel 中，<b>grid 大小是固定值</b>，通常等于可用 SM 数，使每个 CTA 独占一个 SM。可以用以下 CUDA 代码获取 SM 数：</p>
+      <pre class="code-block">int num_SMs;
+cudaGetDeviceAttribute(&num_SMs, cudaDevAttrMultiProcessorCount, device_id);
+dim3 dimGrid(num_SMs);</pre>
+      <p class="zh">每个 CTA 持续驻留在其 SM 上，循环处理多个工作单元直到所有工作完成。这种设计给程序员提供了对调度的更大控制权，可以通过<b>tile scheduler</b>（本质上是一个迭代器，告知每个 CTA 下一个工作单元在哪里以及何时停止）来实现更复杂的策略，例如 Stream-K。</p>
+    </section>
+
+    <!-- ─── 分块调度策略 ───────────────────────────────────────────── -->
+    <section id="p-strategies">
+      <h2 class="section-h lv1">分块调度策略</h2>
+      <p class="zh">为逐步引出 Stream-K，先来了解几种更简单但存在不足的Wave Quantization处理方案。以下以一个假想的 GPU「Hipparchus H10」（仅有 4 个 SM）为例说明。</p>
+
+      <h3 class="section-h lv2" id="p-dp">数据并行（Data Parallel）</h3>
+      <p class="zh">最基础的方案是在 M 和 N 方向均匀切分 tile，以轮询（round-robin）方式分配。这与非持久化的工作 tile 网格 kernel 本质相同，唯一区别是保证了顺序。工作单元之间无依赖，因此称为<b>数据并行</b>工作调度。</p>
+      <figure>
+        <img src="https://i0.wp.com/research.colfax-intl.com/wp-content/uploads/2024/12/split-mn.png?ssl=1" alt="图1：数据并行分配">
+        <figcaption>图 1：GEMM 工作负载被划分为 9 个工作 tile，由 H10 的 4 个 SM 分 3 个 wave 处理（2 个满 wave + 1 个只有 1 个 SM 的部分 wave）。整体利用率 2.25/3 = 75%。</figcaption>
+      </figure>
+      <p class="zh">直接的改进是增加工作单元数量（减小 tile 大小），从而提高利用率。</p>
+      <figure>
+        <img src="https://i0.wp.com/research.colfax-intl.com/wp-content/uploads/2024/12/split-mn-more-tiles.png?ssl=1" alt="图2：更多 tile 的数据并行">
+        <figcaption>图 2：将 bN 减半，得到 18 个工作 tile，分 5 个 wave（4 个满 wave + 1 个半满 wave），利用率 4.5/5 = 90%。</figcaption>
+      </figure>
+      <p class="zh">然而，减小 tile 大小会带来代价：<b>算术强度</b>（Arithmetic Intensity）下降——每次全局内存访问对应的计算量减少；每个 warp 的指令数减少，降低了流水线延迟隐藏机会；还有 MMA atom 对 tile 大小的约束（如 H100 要求 128×128×16 的 WGMMA atom）。这些权衡没有显而易见的最优解，通常需要结合 CUTLASS Profiler 进行实验。</p>
+
+      <h3 class="section-h lv2" id="p-splitk">Split-K</h3>
+      <p class="zh">除了在 M、N 方向切分，还可以沿 <b>K 方向</b>切分——在 K 较大时最为有效。Split-K 将每个 tile 沿 K 方向切成固定数量的片段：</p>
+      <figure>
+        <img src="https://i0.wp.com/research.colfax-intl.com/wp-content/uploads/2024/12/split-k.png?ssl=1" alt="图3：Split-K">
+        <figcaption>图 3：沿 K 方向切成 2 份。协作处理同一输出 tile 的 CTA 需通过全局内存 workspace 的"轮转规约（turnstile reduction）"合并部分结果。</figcaption>
+      </figure>
+      <p class="zh">Split-K 引入了新的超参数——切分数，存在以下权衡：</p>
+      <ul class="zh-list">
+        <li>切分数增大 → wave 数增多 → Wave Quantization效应减小，SM 利用率可能提升；</li>
+        <li>切分数增大 → K 方向 tile 变小 → 全局内存访问与计算的比率上升；</li>
+        <li>切分数增大 → 每个 CTA 的指令数减少 → 延迟隐藏机会降低；</li>
+        <li>引入了同步与规约开销，Split-MN 中不存在这一成本。</li>
+      </ul>
+
+      <h3 class="section-h lv2" id="p-streamk">Stream-K</h3>
+      <p class="zh">上述策略改善了Wave Quantization，但并未消除它。回到 9 个工作 tile、4 个 SM 的例子，理想情况是每个 SM 运行 2.25 个 wave——这正是 <b>Stream-K</b> 的动机。</p>
+      <p class="zh">Stream-K 为每个 SM 分配一个持久化 CTA，每个 CTA 被分配<b>分数个</b>工作 tile（tile 在 K 方向被切分）。与 Split-K 类似，对于被切分的 tile，协作处理的 CTA 通过全局内存 workspace 的轮转规约合并结果。</p>
+      <figure>
+        <img src="https://i0.wp.com/research.colfax-intl.com/wp-content/uploads/2024/12/stream-k.png?ssl=1" alt="图4：Stream-K">
+        <figcaption>图 4：SM0 上的持久化 CTA 计算完整的工作 tile 0、tile 1，以及 tile 2 的 1/4；SM1 计算 tile 2 的剩余部分、完整 tile 3，以及 tile 4 的一半……以此类推，每个 SM 处理约 2.25 个工作单元。</figcaption>
+      </figure>
+      <p class="zh">与之前策略相比，Stream-K 的优势：</p>
+      <ul class="zh-list">
+        <li><b>消除量化</b>：无 wave 概念，每个 CTA 处理 2.25 个工作 tile，计算量约为原来的 2.25/3；</li>
+        <li><b>保留大 tile 优势</b>：大多数原始 128×128×128 tile 由单个 CTA 完整处理，保持高算术强度；</li>
+        <li><b>同步开销低**：早期片段的计算可远早于最终片段，epilogue CTA 无需长时间等待；</li>
+        <li><b>代价</b>：需额外全局内存传输以共享部分 tile 数据。</li>
+      </ul>
+
+      <h3 class="section-h lv2" id="p-hybrid">混合 Stream-K（Hybrid Stream-K）</h3>
+      <p class="zh">Stream-K 有一个隐藏代价：<b>缓存性能下降</b>。在数据并行调度中，同一行或列的多个输出 tile 同时被处理，对操作数矩阵的请求在时间上对齐，容易命中 L2 cache。</p>
+      <figure>
+        <img src="https://i0.wp.com/research.colfax-intl.com/wp-content/uploads/2024/12/dp-reuse.png?ssl=1" alt="图5：数据并行缓存复用">
+        <figcaption>图 5：数据并行中，输出 tile 0、1、2 同时处理，对操作数 tile B0 的请求时间对齐，L2 cache 命中率高。</figcaption>
+      </figure>
+      <p class="zh">而 Stream-K 引入了<b>相位偏移（skew）</b>：由于每个 SM 从大小不同的部分 tile 开始，它们在同一时刻处理不同的 K 偏移，导致 cache 命中率大幅下降。</p>
+      <p class="zh">解决方法是将持久化 kernel 与普通数据并行 kernel 混合调度：尽量使用数据并行，只保留足够处理Wave Quantization尾部的工作量给 Stream-K。具体来说，将 1 至 2 个完整 wave 的计算分配给 Stream-K 阶段，剩余工作（数量可被 SM 数整除）采用数据并行。</p>
+      <figure>
+        <img src="https://i0.wp.com/research.colfax-intl.com/wp-content/uploads/2024/12/hybrid.png?ssl=1" alt="图6：混合Stream-K">
+        <figcaption>图 6：混合 Stream-K 调度示意。Stream-K 阶段处理 1~2 个 wave 以消除量化尾部，随后切换为数据并行阶段（tile 数可被 SM 数整除），后者无量化问题且缓存性能更好。</figcaption>
+      </figure>
+    </section>
+
+    <!-- ─── Tile 调度器抽象 ─────────────────────────────────────────── -->
+    <section id="p-scheduler">
+      <h2 class="section-h lv1">Tile 调度器抽象</h2>
+      <p class="zh">由于工作分块与调度的问题在很大程度上与每个 CTA 内部的内存和计算操作是独立的，GEMM 实现（如 CUTLASS）通常将其封装在一个称为 <b>tile scheduler</b> 的抽象中——本质上是一个迭代器，告知每个 CTA 下一个工作单元在哪里以及何时停止。</p>
+      <p class="zh">Tile scheduler 的核心职责：</p>
+      <ul class="zh-list">
+        <li><b>决定 grid 大小</b>：非持久化 kernel 中与问题大小相关；持久化 kernel 中固定为 SM 数量。</li>
+        <li><b>提供工作迭代接口</b>：</li>
+      </ul>
+      <pre class="code-block">for (auto worktile = scheduler.get_initial_tile();
+     scheduler.is_valid(worktile);
+     worktile = scheduler.get_next_tile(worktile)) {
+    auto [m_block, n_block, k_block_start, k_block_stop] = worktile.get_block_coord();
+    for (k_block = k_block_start; k_block &lt; k_block_stop; ++k_block) {
+        // mainloop
+    }
+    // epilogue
+}</pre>
+      <p class="zh">对于 Stream-K 和 Split-K，scheduler 还需处理以下额外职责：分配并管理全局内存 workspace（用于存储部分结果和同步 barrier）；告知每个 CTA 当前 tile 是完整输出还是部分输出；指定哪个 CTA 负责执行 epilogue（最终规约并写入输出张量）。</p>
+      <p class="zh">作者在 <a href="https://github.com/ColfaxResearch/cfx-article-src/tree/master/gemm-3" target="_blank">GitHub 示例代码</a>中提供了三种调度器：一个简单的非持久化调度器；一个数据并行持久化调度器；以及一个混合 Stream-K 调度器（包含 CUTLASS 部分但非全部优化）。</p>
+      <figure>
+        <img src="https://i0.wp.com/research.colfax-intl.com/wp-content/uploads/2024/12/image-1.png?ssl=1" alt="Stream-K性能对比">
+        <figcaption>图：Stream-K vs 数据并行 vs Heuristic 调度器性能对比（H100 PCIe）。Stream-K 在每个 wave 开始时性能出色，消除了量化效应；Heuristic 曲线（在尾部 wave 至少半满时切换为数据并行）表现最佳。</figcaption>
+      </figure>
+    </section>
+
+    <!-- ─── 结论（持久化篇） ────────────────────────────────────────── -->
+    <section id="p-conclusion">
+      <h2 class="section-h lv1">结论（持久化 Kernel 篇）</h2>
+      <p class="zh">本篇讨论了Wave Quantization及其对 GEMM 性能的影响，介绍了持久化 kernel 的概念，并系统梳理了数据并行、Split-K、Stream-K 和混合 Stream-K 四种分块策略。Stream-K 通过消除 wave 边界实现了更均匀的负载分配，是 Hopper 时代 GEMM 内核调度的重要进步。</p>
+    </section>
+
+    <!-- ─── 附录：CUTLASS Stream-K ─────────────────────────────────── -->
+    <section id="p-appendix">
+      <h2 class="section-h lv1">附录：CUTLASS 中的 Stream-K</h2>
+
+      <h3 class="section-h lv2" id="p-api">通过 CUTLASS GEMM API 使用 Stream-K</h3>
+      <p class="zh">以下基于 CUTLASS 3.x GEMM API（示例 48）介绍如何启用 Stream-K 调度器。首先指定 <code class="ic">GemmKernel</code> 使用 <code class="ic">StreamKScheduler</code>：</p>
+      <pre class="code-block">using GemmKernel = cutlass::gemm::kernel::GemmUniversal&lt;
+    Shape&lt;int,int,int&gt;,
+    CollectiveMainloop,
+    CollectiveEpilogue,
+    cutlass::gemm::StreamKScheduler
+&gt;;</pre>
+      <p class="zh">Stream-K 只支持特定的 mainloop 和 epilogue schedule，需使用 <code class="ic">TmaWarpSpecializedCooperative</code>。通过 scheduler arguments 设置分解模式：</p>
+      <pre class="code-block">using DecompositionMode = typename cutlass::gemm::kernel::detail::
+    PersistentTileSchedulerSm90StreamKParams::DecompositionMode;
+
+typename Gemm::GemmKernel::TileScheduler::Arguments scheduler_args;
+scheduler_args = { splits, swizzle, raster, DecompositionMode::StreamK };</pre>
+      <p class="zh">CUTLASS scheduler 支持四种分解模式：<code class="ic">DataParallel</code>、<code class="ic">SplitK</code>（需指定切分数）、<code class="ic">StreamK</code>、<code class="ic">Heuristic</code>（默认，由 CUTLASS 自动选择最优）。</p>
+
+      <h3 class="section-h lv2" id="p-perf">Stream-K 性能（H100 PCIe）</h3>
+      <figure>
+        <img src="https://i0.wp.com/research.colfax-intl.com/wp-content/uploads/2024/12/m1024-no-heuristic.png?ssl=1" alt="Stream-K vs Split-K vs DataParallel">
+        <figcaption>图：Stream-K、Split-K 与 DataParallel 三种模式性能对比（H100 PCIe，固定 M=1024，变化 N）。DataParallel 在波浪边界出现急剧下降；Stream-K 几乎无量化效应；Split-K 在极端小问题时有优势，但整体规约开销偏大。</figcaption>
+      </figure>
+      <figure>
+        <img src="https://i0.wp.com/research.colfax-intl.com/wp-content/uploads/2024/12/m1024-w-heuristic.png?ssl=1" alt="CUTLASS Heuristic模式">
+        <figcaption>图：加入 CUTLASS Heuristic 模式后的对比。Heuristic 在量化效应低时选择 DataParallel，量化效应高时选择 Stream-K，几乎总能命中最优方案。</figcaption>
+      </figure>
+
+      <h3 class="section-h lv2" id="p-impl">CUTLASS 实现细节</h3>
+      <p class="zh"><b>调度方案</b>：CUTLASS 实现了上述混合调度，将最多两个 wave 的工作分配给 Stream-K 阶段，其余采用数据并行，改善 L2 cache 性能。</p>
+      <p class="zh"><b>规约方式</b>：默认使用轮转（turnstile）规约——CTA 0 先写入全局内存 workspace，CTA 1 等待后累加规约，……最后一个 CTA 从 workspace 规约到累加器并执行 epilogue。可选非确定性模式（<code class="ic">ReductionMode::Nondeterministic</code>），中间 CTA 原子规约，无需相互等待（但浮点加法不具结合律，结果可能有数值差异）。</p>
+      <p class="zh"><b>Threadblock 光栅化（Rasterization）</b>：持久化 kernel 的优势之一是可以控制 tile 的启动顺序，使同行或同列的 tile 接近同时被处理，提高 L2 命中率。CUTLASS 提供 <code class="ic">RasterOrderOptions::AlongM</code>、<code class="ic">AlongN</code>、<code class="ic">Heuristic</code>（自动选短边方向）。</p>
+      <figure>
+        <img src="https://i0.wp.com/research.colfax-intl.com/wp-content/uploads/2024/12/rasterization-2.png?ssl=1" alt="图7：Threadblock光栅化">
+        <figcaption>图 7：M&lt;N 时、6 个 SM 的 threadblock 光栅化示意（AlongM 方向）。Wave 0 的 SM 处理 tile 0~5，全局内存读取量从 12 次降至 6 次（假设数据能放入 L2）。</figcaption>
+      </figure>
+      <p class="zh"><b>Swizzling</b>：在光栅化基础上进一步考虑两个维度的邻近性。<code class="ic">max_swizzle_size</code> 参数可设为 1（无 swizzle）、2、4 或 8，表示在光栅方向行进多少个 tile 后再向另一维度推进。</p>
+      <figure>
+        <img src="https://i0.wp.com/research.colfax-intl.com/wp-content/uploads/2024/12/swizzle-2.png?ssl=1" alt="图8：Swizzle对比">
+        <figcaption>图 8：AlongM + swizzle=2 vs swizzle=1 的工作 tile 处理顺序对比。swizzle=2 时每个 wave 加载 5 个操作数 tile，swizzle=1 时加载 7 个，6 个 wave 总计分别 30 次 vs 42 次操作数 tile 加载。</figcaption>
+      </figure>
+      <figure>
+        <img src="https://i0.wp.com/research.colfax-intl.com/wp-content/uploads/2024/12/swizzle-3.png?ssl=1" alt="Swizzle cutoff图">
+        <figcaption>图：不同 swizzle 大小的适用阈值。在 114 个 SM 上，swizzle=2、4、8 的推荐 M tile 数阈值分别为 57、31、15。建议使用 CUTLASS Profiler 确定最优 swizzle 大小。</figcaption>
+      </figure>
+      <p class="zh"><b>Cluster 与 multicast</b>：Hopper 引入的 threadblock cluster 允许同一 GPC 内的 CTA 共享 SMEM，TMA load 可以 multicast 到 cluster 内所有 CTA。CUTLASS 通过以 cluster 为单位（而非单个 tile）构建调度表来优雅处理这一特性，在 Stream-K 阶段也会将 cluster 分组，使每组在同一时刻处理相同的 K 偏移，避免相位偏移导致的 cache 失效。</p>
+    </section>
+
+    <div id="s-clc-chapter" style="margin:3em 0;padding:1.2em 1.6em;background:var(--paper);border-top:2px solid var(--rule);border-bottom:2px solid var(--rule);">
+      <p class="zh no-indent" style="text-indent:0;font-family:-apple-system,sans-serif;font-size:13px;color:var(--muted);margin:0;">以下为第二篇：<b>Blackwell GPU 上的动态持久化 Tile 调度与 CLC</b>（2026年5月）——在上述持久化调度基础上，介绍 Blackwell 提供的硬件级动态调度机制 Cluster Launch Control。</p>
+    </div>
+
+    <!-- ─── 动机 ─────────────────────────────────────────────────── -->
+    <section id="s-motivation">
+      <h2 class="section-h lv1">动机</h2>
+      <p class="zh">考虑矩阵乘法（GEMM）问题 $C = AB$，其中 $A \in \mathbb{R}^{M \times K}$，$B \in \mathbb{R}^{K \times N}$，$C \in \mathbb{R}^{M \times N}$。$C$ 的计算通过将问题形状 $(M, N, K)$ 按 tile 形状 $(\text{bM}, \text{bN}, \text{bK})$ 进行切分来并行化，每个 $\text{bM} \times \text{bN}$ 的输出 tile 按如下方式计算：</p>
+      <div class="math-block">$$C^{[i,j]} = \sum_k A^{[i,k]} B^{[k,j]}$$</div>
+      <p class="zh">每个<b>工作 tile</b> $C^{[i,j]}$ 必须分配给某个处理单元——具体来说，是 CUDA 执行模型中的一个 CTA 或一组 CTA（cluster）。<b>Tile 调度</b>问题就是确定如何将工作 tile 集合最优地分配到各处理单元上。</p>
+      <p class="zh">本文讨论 <b>Cluster Launch Control（CLC）</b>——NVIDIA Blackwell GPU 上一个硬件支持的特性，用于实现最优的 tile 调度，尤其是在<b>负载均衡</b>方面。为提供背景，我们先梳理几种常见的调度策略及 CLC 所针对的不足，然后深入讲解在 CuTe DSL kernel 中使用 CLC 的实现细节，最后给出 GEMM kernel 的性能对比。</p>
+    </section>
+
+    <!-- ─── 单 Tile 调度 ───────────────────────────────────────────── -->
+    <section id="s-single">
+      <h2 class="section-h lv1">单 Tile 调度（Single Tile Scheduling）</h2>
+      <p class="zh">最朴素的 tile 调度方案是启动一个形状为 $(M/\text{bM},\ N/\text{bN})$ 的 cluster 网格，将每个工作 tile 分配给唯一的 cluster。这对负载均衡有利：网格中的 cluster 数量多于 SM 组数，当每个 cluster 退出时，硬件调度器会将排队中的 cluster 分发到空闲的 SM 组上。</p>
+      <p class="zh">然而，这种策略整体上往往不够优，因为每个 cluster 要支付固定的启动开销——流水线初始化、描述符设置等——而这些开销只被单个 tile 摊销。此外，单 tile 调度无法跨工作 tile 进行重叠以隐藏延迟，例如无法将一个工作 tile 的 epilogue 与另一个的 mainloop 重叠执行。</p>
+    </section>
+
+    <!-- ─── 静态持久化 ─────────────────────────────────────────────── -->
+    <section id="s-static">
+      <h2 class="section-h lv1">静态持久化 Tile 调度（Static Persistent Tile Scheduling）</h2>
+      <p class="zh">另一种方案是使用持久化 tile 调度方案。我们在此简要回顾持久化 tile 调度的概念，详细说明请参阅 Colfax 的<a href="https://research.colfax-intl.com/cutlass-tutorial-persistent-kernels-and-stream-k/" target="_blank">前一篇文章</a>。</p>
+      <p class="zh">在持久化方案中，我们启动恰好等于 GPU 可并发调度数量的 cluster 网格。一旦某个 cluster 被启动，它将"持久"驻留在 GPU 上，计算一批工作 tile。例如，假设有 148 个 SM，cluster 大小为 2，则可在 GPU 上并发启动 74 个 cluster。对于包含 512 个工作 tile 的 GEMM kernel，可以对工作 tile 做线性排序，让每个 cluster 计算编号为其索引的每第 74 个工作 tile。</p>
+      <figure>
+        <img src="https://i0.wp.com/research.colfax-intl.com/wp-content/uploads/2026/05/image-30.png?ssl=1" alt="图1：GEMM工作tile网格分配">
+        <figcaption>图 1：GEMM 输出 C 被划分为 5×6 的工作 tile 网格，每个工作 tile 由 8 个 cluster 中的某一个计算。每个工作 tile 标有其所属 cluster 编号，cluster 0 负责的工作 tile 被高亮显示。</figcaption>
+      </figure>
+      <p class="zh">持久化 tile 调度的主要优点是可以将一个 tile 的 epilogue 与下一个 tile 的 mainloop 重叠执行；同时避免了启动新 cluster 的延迟。然而，<b>静态</b>持久化 tile 调度会导致负载不均衡问题。</p>
+      <p class="zh">例如，考虑分组 GEMM（grouped GEMM），它计算一组 GEMM：</p>
+      <div class="math-block">$$C_i = A_i B_i, \quad i = 0, 1, \dots, \text{num\_problems} - 1$$</div>
+      <p class="zh">假设分组 GEMM 包含四个如下形状的问题：</p>
+      <pre class="code-block">Problem 0: (256, 256, 128)
+Problem 1: (256, 256, 2048)
+Problem 2: (256, 256, 128)
+Problem 3: (256, 256, 2048)</pre>
+      <p class="zh">注意每个 GEMM 的 $M = N = 256$，但 contracting 维度 K 有的很小（$K=128$），有的很大（$K=2048$）。考虑使用 tile 形状 $(\text{bM}, \text{bN}, \text{bK}) = (128, 128, 128)$ 计算此分组 GEMM 的 kernel。若 GPU 上可并发启动 8 个 cluster，工作 tile 分配给各 cluster 的方式如下图所示：</p>
+      <figure>
+        <img src="https://i0.wp.com/research.colfax-intl.com/wp-content/uploads/2026/05/image-21.png?ssl=1" alt="图2：静态持久化分组GEMM tile分配">
+        <figcaption>图 2：分组 GEMM 中每个工作 tile 被分配给 8 个 cluster 中的某一个。静态持久化情形下，将所有问题的工作 tile 线性排序，然后每隔 8 个分配给一个 cluster。</figcaption>
+      </figure>
+      <p class="zh">乍看之下，每个 cluster 恰好计算 2 个工作 tile，分配似乎完全均衡。然而，不同工作 tile 所需的计算量因问题而异：来自 problem 0 和 2 的工作 tile 需要：</p>
+      <div class="math-block">$$2 \times \text{bM} \times \text{bN} \times K = 2 \times 2^7 \times 2^7 \times 2^7 = 2^{22}\ \text{FLOPs}$$</div>
+      <p class="zh">而来自 problem 1 和 3 的工作 tile 需要：</p>
+      <div class="math-block">$$2 \times \text{bM} \times \text{bN} \times K = 2 \times 2^7 \times 2^7 \times 2^{11} = 2^{26}\ \text{FLOPs}$$</div>
+      <p class="zh">因此，考察每个 cluster 实际计算的 FLOPs，会发现严重的负载不均衡：</p>
+      <figure>
+        <img src="https://i0.wp.com/research.colfax-intl.com/wp-content/uploads/2026/05/image-27.png?ssl=1" alt="图3：静态持久化各cluster FLOPs分布">
+        <figcaption>图 3：静态持久化情形下，每个 cluster 完成的工作量（以 FLOPs 计）示意图。</figcaption>
+      </figure>
+      <p class="zh">这种不均衡促使我们考虑动态持久化调度。</p>
+    </section>
+
+    <!-- ─── 动态持久化 ─────────────────────────────────────────────── -->
+    <section id="s-dynamic">
+      <h2 class="section-h lv1">动态持久化 Tile 调度（Dynamic Persistent Tile Scheduling）</h2>
+      <p class="zh">在这种调度方案中，每个 cluster 先计算某个初始工作 tile，完成后继续获取并处理新的工作 tile（如果还有的话）。在合理假设下（即处理 problem 0 和 2 的 tile 所需时间远少于处理 problem 1 和 3 的 tile），工作 tile 到 cluster 的分配可能如下：</p>
+      <figure>
+        <img src="https://i0.wp.com/research.colfax-intl.com/wp-content/uploads/2026/05/image-22.png?ssl=1" alt="图4：动态持久化分组GEMM tile分配">
+        <figcaption>图 4：动态持久化情形下，分组 GEMM 的工作 tile 分配示意图。将所有问题的工作 tile 线性排序，先给每个 cluster 分配初始工作 tile，再允许 cluster 在完成当前工作后自行获取新的工作 tile。</figcaption>
+      </figure>
+      <p class="zh">注意：程序员无法控制哪些工作 tile 由哪些 cluster 计算（初始分配除外）。这些分配在运行时由 cluster 完成工作的顺序决定。可以看到，此情形下每个 cluster 计算的 FLOPs 分布更加均匀：</p>
+      <figure>
+        <img src="https://i0.wp.com/research.colfax-intl.com/wp-content/uploads/2026/05/image-29.png?ssl=1" alt="图5：动态持久化各cluster FLOPs分布">
+        <figcaption>图 5：动态持久化情形下，每个 cluster 完成的工作量（以 FLOPs 计）示意图。</figcaption>
+      </figure>
+      <p class="zh">负载均衡的改善带来了 kernel 性能的提升。例如，可以在 B200 上对以下分组 GEMM 进行基准测试（可并发支持 74 个形状为 (2,1) 的 cluster）：</p>
+      <pre class="code-block">Problem 0: (1024, 1024, 1024)
+Problem 1: (1024, 1024, K)
+Problem 2: (1024, 1024, 1024)
+Problem 3: (1024, 1024, K)</pre>
+      <p class="zh">对 K 取越来越大的值进行测试，静态与动态情形的结果如下：</p>
+      <figure>
+        <img src="https://i0.wp.com/research.colfax-intl.com/wp-content/uploads/2026/05/image-23.png?ssl=1" alt="图6：不均衡负载下静态与动态调度性能对比">
+        <figcaption>图 6：高度负载不均衡的分组 GEMM 在静态与动态调度下的性能对比。测试配置：操作数数据类型 mxfp4，MMA tile 大小 256×128，使用 2CTA MMA 指令。</figcaption>
+      </figure>
+      <p class="zh">正如预期，当工作 tile 的负载高度不均衡时，动态调度器的性能显著优于静态调度器。</p>
+
+      <h3 class="section-h lv2" id="s-standard-impl">动态持久化 Tile 调度的标准实现</h3>
+      <p class="zh">为实现动态持久化 tile 调度，需保证两条性质：</p>
+      <ol class="zh-list">
+        <li>每个 tile 最终都会被某个 cluster 处理；</li>
+        <li>没有任何 tile 被超过一个 cluster 处理。</li>
+      </ol>
+      <p class="zh">一种标准策略是维护一个全局原子计数器（即信号量锁），跟踪下一个未分配的 tile。当 cluster 完成当前 tile 后，对该计数器执行原子 fetch-and-increment 操作来认领下一个 tile 的索引。每个 cluster 持续申请工作，直到返回的 tile 索引大于等于总 tile 数为止，从而保证性质 (1)。由于原子操作具有线性化特性，每个 cluster 获得唯一的 tile 索引，从而保证性质 (2)。这一策略例如在 <a href="https://github.com/Dao-AILab/quack/blob/d898157f6761759161c48af94be1332dfd00697e/quack/tile_scheduler.py#L393" target="_blank">quack tile scheduler</a> 中有所实现。</p>
+      <p class="zh">quack 的实现位于 <code class="ic">_fetch_next_work_idx</code>（<code class="ic">PersistenceMode.DYNAMIC</code> 分支）。每个 cluster 的 <b>scheduler warp</b> 由 lane 0 负责执行原子操作，结果通过 <code class="ic">shuffle_sync</code> 广播给 warp 内所有 32 条 lane：</p>
+<pre class="code-block"><code># quack/tile_scheduler.py  L393–L409  (PersistenceMode.DYNAMIC)
+elif const_expr(params.persistence_mode == PersistenceMode.DYNAMIC):
+    next_work_linear_idx = Int32(0)
+    if cute.arch.lane_idx() == 0:
+        # 固定 M：atomic_inc 在到达 limit 时自动归零
+        next_work_linear_idx = num_persistent_clusters + utils.atomic_inc_i32(
+            cute.size(params.problem_shape_ncluster_mnl) - 1,   # limit = 总 tile 数 - 1
+            params.tile_count_semaphore,                         # 全局内存中的计数器
+        )
+        # varlen_m（序列长度可变）：改用 atomic_add，kernel 结束后手动归零
+        # next_work_linear_idx = num_persistent_clusters + utils.atomic_add_i32(1, ...)
+    return cute.arch.shuffle_sync(next_work_linear_idx, 0)      # 广播给全 warp</code></pre>
+      <p class="zh"><b>atomic_inc 与 atomic_add 的区别</b>：固定问题尺寸时，<code class="ic">atomic_inc_i32(limit, ptr)</code> 在计数器达到 <code class="ic">limit</code> 后自动循环归零，不需要 kernel 外部显式清零；而可变 M（varlen）场景因为 tile 总数在运行时才确定，改用 <code class="ic">atomic_add_i32</code> 并要求 kernel 结束后将信号量手动复位。<b>lane 0 独占写全局内存、warp 内用寄存器广播</b>——这是最小化全局内存往返次数的经典 warp-level 协作模式。</p>
+      <p class="zh">这种方案简单且与体系结构无关，但并非没有缺陷：所有 cluster 必须反复对同一个全局计数器执行原子操作，这在 cluster 之间引入了一定程度的串行化，并需要反复往返全局内存。此外，全局计数器在每次 kernel 启动前都必须清零（<code class="ic">atomic_inc</code> 版本自动处理，<code class="ic">atomic_add</code> 版本需要手动）。</p>
+      <p class="zh">幸运的是，Blackwell 提供了动态持久化调度的硬件实现，即 <b>Cluster Launch Control（CLC）</b>。它简化了软件层面动态持久化调度的实现，并提供了若干其他优势，将在下文描述。</p>
+    </section>
+
+    <!-- ─── CLC ────────────────────────────────────────────────────── -->
+    <section id="s-clc">
+      <h2 class="section-h lv1">Blackwell 的 Cluster Launch Control（CLC）</h2>
+      <p class="zh">CLC 是从 Blackwell 架构起支持的动态持久化 tile 调度的硬件实现。它的启动网格与单 tile 调度器相同（即基于问题的工作 tile 数量——见 walkthrough 中对 <code class="ic">__compute_grid</code> 的讨论），但<b>第一波活跃的 cluster 会反复尝试"抢夺"尚未启动的 cluster 的工作</b>——取消它们的启动并获取其 tile 坐标，由自己来完成这些工作。因此，第一波 cluster 可能会持续存活并完成所有工作，网格中其他 cluster 可能永远不会被启动。另一方面，CLC 也具有灵活性，可以动态允许 cluster 在未完成所有 tile 的情况下退出，并在之后启动新的 cluster 继续处理（详见"CLC 与并发 kernel 及抢占"一节）。</p>
+      <!-- ── 插入：静态调度长尾问题 → CLC 解法对比 ── -->
+      <h3 id="s-clc-why" class="section-h lv2">为什么需要 CLC：静态调度的长尾问题</h3>
+      <div class="callout" style="margin-bottom:1.4em;">
+        <p class="zh no-indent" style="margin-bottom:.5em;"><b>SM 被抢占有哪些情况？</b></p>
+        <ul class="zh-list" style="margin:0 0 0 1.2em;">
+          <li><b>多 kernel 并发</b>（最常见）：应用同时向多个 CUDA stream 提交 kernel，GPU 调度器可能把同一个 SM 先后分配给不同 kernel，正在运行的低优先级 kernel 就被"切走"了</li>
+          <li><b>高优先级 kernel 插入</b>：用 <code class="ic">cudaStreamCreateWithPriority</code> 设置了更高优先级的 kernel，Pascal 架构之后支持指令级抢占，不需要等当前 thread block 跑完就能切换</li>
+          <li><b>MPS 多进程</b>：多个进程共享同一张 GPU 时，不同进程的 kernel 会竞争 SM 资源</li>
+        </ul>
+        <p class="zh no-indent" style="margin-top:.6em;margin-bottom:0;">不过 CLC 更核心的价值不只是对抗抢占——即使没有抢占，只要 <b>tile 间计算量本来就不均等</b>（比如 Attention causal mask 下靠后的 tile 几乎是空 tile），静态分配下早做完的 SM 也会白白空等。这正是 FA4 引入 CLC 的主要动机。</p>
+      </div>
+
+      <p class="zh">在 Hopper 的 Static Persistent Scheduling 模型中，<b>每个 output tile 在 kernel launch 时就被静态映射到固定的 SM</b>：persistent CTA 数 = SM 数，每个 SM 负责自己的那份 tile 列表，全程不变。这套模型在 workload 均衡时表现良好，但一旦某个 SM 被更高优先级的 kernel 或上下文切换"抢占"，它手上的 tile 不会自动迁移给空闲的 SM——整个 grid 的完成时间由最慢的那个 SM 决定。Tensor Core 越快，这条"长尾"越显著。</p>
+
+      <!-- GTC 2025 原图 -->
+      <figure>
+        <img src="https://alan-hpc.github.io/blog/figures/2026-05-04-blackwell-gpu-deep-dive-hardware-cuda-gemm-flashattention-v4/image37.png"
+             alt="P24 Static Tile Scheduling — CUTLASS Hopper 静态持久化调度与长尾问题"
+             onclick="lbShow(this.src)">
+        <figcaption>P24 · Static Tile Scheduling — CUTLASS Hopper Static Persistent Scheduling：output tile→SM 映射在 launch 时固定；若 SM2 被其他 kernel 抢占（右下"Other Grid"），其 tile 不会被 remap，整个 kernel 被这个 SM 拖到队尾。图源：NVIDIA GTC 2025 · Programming Blackwell Tensor Cores with CUTLASS</figcaption>
+      </figure>
+      <figure>
+        <img src="https://alan-hpc.github.io/blog/figures/2026-05-04-blackwell-gpu-deep-dive-hardware-cuda-gemm-flashattention-v4/image71.png"
+             alt="P25 Dynamic Tile Scheduling — Blackwell CLC 动态调度解决方案"
+             onclick="lbShow(this.src)">
+        <figcaption>P25 · Dynamic Tile Scheduling — Blackwell 通过 PTX <code class="ic">clusterlaunchcontrol</code> 让用户编程式动态获取下一个 tile；CUTLASS 4.x Dynamic Persistent Scheduler 实现 tile→SM fully dynamic mapping，在 Blackwell 上默认开启。图源：NVIDIA GTC 2025 · Programming Blackwell Tensor Cores with CUTLASS</figcaption>
+      </figure>
+
+      <!-- 时间线对比：静态 vs CLC 动态 (Gantt 风格) -->
+      <div style="font-family:-apple-system,sans-serif;margin:1.8em 0;">
+
+        <!-- BEFORE 时间线 -->
+        <div style="font-size:10px;letter-spacing:.9px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">Before · Hopper 静态调度（16 tiles，4 SMs）</div>
+        <div style="border:1px solid var(--rule);border-radius:6px;overflow:hidden;margin-bottom:4px;">
+          <!-- 刻度行 -->
+          <div style="display:flex;padding:3px 6px 3px 38px;background:var(--paper);border-bottom:1px solid var(--rule);gap:2px;">
+            <div style="flex:4;font-size:9.5px;color:var(--muted);text-align:center;">正常执行期</div>
+            <div style="flex:3;font-size:9.5px;color:#b04040;text-align:center;font-weight:600;">长尾：等 SM2 回来</div>
+          </div>
+          <!-- SM0 -->
+          <div style="display:flex;align-items:stretch;border-bottom:1px solid var(--rule);">
+            <span style="width:38px;font-size:10px;color:var(--muted);display:flex;align-items:center;padding:0 6px;flex-shrink:0;background:var(--paper);">SM0</span>
+            <div style="flex:1;display:flex;gap:2px;padding:5px 6px;background:#fff;">
+              <div style="flex:1;background:#3a6ea8;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T0</div>
+              <div style="flex:1;background:#3a6ea8;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T4</div>
+              <div style="flex:1;background:#3a6ea8;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T8</div>
+              <div style="flex:1;background:#3a6ea8;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T12</div>
+              <div style="flex:1;background:#ede8e0;color:var(--muted);font-size:9.5px;padding:5px 0;text-align:center;border-radius:2px;">空等</div>
+              <div style="flex:1;background:#ede8e0;color:var(--muted);font-size:9.5px;padding:5px 0;text-align:center;border-radius:2px;">空等</div>
+              <div style="flex:1;background:#ede8e0;color:var(--muted);font-size:9.5px;padding:5px 0;text-align:center;border-radius:2px;">空等</div>
+            </div>
+          </div>
+          <!-- SM1 -->
+          <div style="display:flex;align-items:stretch;border-bottom:1px solid var(--rule);">
+            <span style="width:38px;font-size:10px;color:var(--muted);display:flex;align-items:center;padding:0 6px;flex-shrink:0;background:var(--paper);">SM1</span>
+            <div style="flex:1;display:flex;gap:2px;padding:5px 6px;background:var(--paper);">
+              <div style="flex:1;background:#3a6ea8;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T1</div>
+              <div style="flex:1;background:#3a6ea8;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T5</div>
+              <div style="flex:1;background:#3a6ea8;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T9</div>
+              <div style="flex:1;background:#3a6ea8;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T13</div>
+              <div style="flex:1;background:#ede8e0;color:var(--muted);font-size:9.5px;padding:5px 0;text-align:center;border-radius:2px;">空等</div>
+              <div style="flex:1;background:#ede8e0;color:var(--muted);font-size:9.5px;padding:5px 0;text-align:center;border-radius:2px;">空等</div>
+              <div style="flex:1;background:#ede8e0;color:var(--muted);font-size:9.5px;padding:5px 0;text-align:center;border-radius:2px;">空等</div>
+            </div>
+          </div>
+          <!-- SM2 被抢占 -->
+          <div style="display:flex;align-items:stretch;border-bottom:1px solid var(--rule);">
+            <span style="width:38px;font-size:10px;color:#b04040;display:flex;align-items:center;padding:0 6px;flex-shrink:0;background:var(--paper);font-weight:600;">SM2</span>
+            <div style="flex:1;display:flex;gap:2px;padding:5px 6px;background:#fff;">
+              <div style="flex:1;background:#3a6ea8;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T2</div>
+              <div style="flex:3;background:#b04040;color:#fff;font-size:9.5px;padding:5px 0;text-align:center;border-radius:2px;">被其他 kernel 抢占</div>
+              <div style="flex:1;background:#3a6ea8;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T6</div>
+              <div style="flex:1;background:#3a6ea8;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T10</div>
+              <div style="flex:1;background:#3a6ea8;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T14</div>
+            </div>
+          </div>
+          <!-- SM3 -->
+          <div style="display:flex;align-items:stretch;">
+            <span style="width:38px;font-size:10px;color:var(--muted);display:flex;align-items:center;padding:0 6px;flex-shrink:0;background:var(--paper);">SM3</span>
+            <div style="flex:1;display:flex;gap:2px;padding:5px 6px;background:var(--paper);">
+              <div style="flex:1;background:#3a6ea8;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T3</div>
+              <div style="flex:1;background:#3a6ea8;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T7</div>
+              <div style="flex:1;background:#3a6ea8;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T11</div>
+              <div style="flex:1;background:#3a6ea8;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T15</div>
+              <div style="flex:1;background:#ede8e0;color:var(--muted);font-size:9.5px;padding:5px 0;text-align:center;border-radius:2px;">空等</div>
+              <div style="flex:1;background:#ede8e0;color:var(--muted);font-size:9.5px;padding:5px 0;text-align:center;border-radius:2px;">空等</div>
+              <div style="flex:1;background:#ede8e0;color:var(--muted);font-size:9.5px;padding:5px 0;text-align:center;border-radius:2px;">空等</div>
+            </div>
+          </div>
+        </div>
+        <p style="font-size:12.5px;color:var(--muted);margin:0 0 1.6em;line-height:1.65;">SM0/1/3 第 4 步完成各自全部 tile，却被迫等 SM2 恢复后再做完 T6/T10/T14 三块。<b>3 个 SM 白白空转 3 步</b>，整个 kernel 延误到第 7 步才结束，是理论最短时间（4 步）的 1.75×。</p>
+
+        <!-- AFTER 时间线 -->
+        <div style="font-size:10px;letter-spacing:.9px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">After · Blackwell CLC 动态调度（同样 16 tiles，4 SMs）</div>
+        <div style="border:1px solid var(--rule);border-radius:6px;overflow:hidden;margin-bottom:4px;">
+          <div style="display:flex;align-items:stretch;background:var(--paper);border-bottom:1px solid var(--rule);">
+            <span style="width:38px;padding:0 6px;flex-shrink:0;"></span>
+            <div style="flex:1;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;padding:3px 6px;">
+              <div style="grid-column:1/5;font-size:9.5px;color:var(--muted);text-align:center;"></div>
+              <div style="grid-column:5/6;font-size:9.5px;color:#2e6e3a;text-align:center;font-weight:600;">← 完成</div>
+              <div style="grid-column:6/8;font-size:9.5px;color:#2e6e3a;text-align:center;font-weight:600;border-left:2px solid #2e6e3a;background:#edf7ef;border-radius:2px;">快 2 步</div>
+            </div>
+          </div>
+          <!-- SM0：T0/T4/T8/T12，再偷 T6★ -->
+          <div style="display:flex;align-items:stretch;border-bottom:1px solid var(--rule);">
+            <span style="width:38px;font-size:10px;color:var(--muted);display:flex;align-items:center;padding:0 6px;flex-shrink:0;background:var(--paper);">SM0</span>
+            <div style="flex:1;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;padding:5px 6px;background:#fff;">
+              <div style="flex:1;background:#3a6ea8;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T0</div>
+              <div style="flex:1;background:#3a6ea8;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T4</div>
+              <div style="flex:1;background:#3a6ea8;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T8</div>
+              <div style="flex:1;background:#3a6ea8;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T12</div>
+              <div style="flex:1;background:#2e6e3a;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T6★</div>
+              <div style="background:#edf7ef;border-left:2px solid #2e6e3a;border-radius:2px;"></div>
+              <div style="background:#edf7ef;border-radius:2px;"></div>
+            </div>
+          </div>
+          <!-- SM1：T1/T5/T9/T13，再偷 T10★ -->
+          <div style="display:flex;align-items:stretch;border-bottom:1px solid var(--rule);">
+            <span style="width:38px;font-size:10px;color:var(--muted);display:flex;align-items:center;padding:0 6px;flex-shrink:0;background:var(--paper);">SM1</span>
+            <div style="flex:1;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;padding:5px 6px;background:var(--paper);">
+              <div style="flex:1;background:#3a6ea8;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T1</div>
+              <div style="flex:1;background:#3a6ea8;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T5</div>
+              <div style="flex:1;background:#3a6ea8;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T9</div>
+              <div style="flex:1;background:#3a6ea8;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T13</div>
+              <div style="flex:1;background:#2e6e3a;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T10★</div>
+              <div style="background:#edf7ef;border-left:2px solid #2e6e3a;border-radius:2px;"></div>
+              <div style="background:#edf7ef;border-radius:2px;"></div>
+            </div>
+          </div>
+          <!-- SM2 退出 -->
+          <div style="display:flex;align-items:stretch;border-bottom:1px solid var(--rule);">
+            <span style="width:38px;font-size:10px;color:var(--muted);display:flex;align-items:center;padding:0 6px;flex-shrink:0;background:var(--paper);">SM2</span>
+            <div style="flex:1;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;padding:5px 6px;background:#fff;">
+              <div style="flex:1;background:#3a6ea8;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T2</div>
+              <div style="grid-column:2/5;background:#b04040;color:#fff;font-size:9.5px;padding:5px 0;text-align:center;border-radius:2px;">被抢占 → 直接退出</div>
+              <div style="flex:1;background:#ede8e0;color:var(--muted);font-size:9.5px;padding:5px 0;text-align:center;border-radius:2px;font-style:italic;">—</div>
+              <div style="background:#edf7ef;border-left:2px solid #2e6e3a;border-radius:2px;"></div>
+              <div style="background:#edf7ef;border-radius:2px;"></div>
+            </div>
+          </div>
+          <!-- SM3：T3/T7/T11/T15，再偷 T14★ -->
+          <div style="display:flex;align-items:stretch;">
+            <span style="width:38px;font-size:10px;color:var(--muted);display:flex;align-items:center;padding:0 6px;flex-shrink:0;background:var(--paper);">SM3</span>
+            <div style="flex:1;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;padding:5px 6px;background:var(--paper);">
+              <div style="flex:1;background:#3a6ea8;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T3</div>
+              <div style="flex:1;background:#3a6ea8;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T7</div>
+              <div style="flex:1;background:#3a6ea8;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T11</div>
+              <div style="flex:1;background:#3a6ea8;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T15</div>
+              <div style="flex:1;background:#2e6e3a;color:#fff;font-size:10px;padding:5px 0;text-align:center;border-radius:2px;">T14★</div>
+              <div style="background:#edf7ef;border-left:2px solid #2e6e3a;border-radius:2px;"></div>
+              <div style="background:#edf7ef;border-radius:2px;"></div>
+            </div>
+          </div>
+        </div>
+        <p style="font-size:12.5px;color:var(--muted);margin:0 0 0.6em;line-height:1.65;">★ = 通过 <code style="font-family:monospace;font-size:11px;">try_cancel</code> 接管的 tile。SM2 被抢占后直接退出；SM0/SM1/SM3 各发一次 <code style="font-family:monospace;font-size:11px;">try_cancel</code>，取消 SM2 本该做的 T6/T10/T14，5 步全部完成。对比 Before：节省 2 步（7→5），加速 1.4×。</p>
+      </div>
+
+      <div class="callout">
+        <p class="zh no-indent"><b>怎么理解 CLC</b>：不是把"软件任务队列 + 全局原子计数器"搬进硬件。更直接的理解是——<b>grid 本身就是任务列表</b>；还没被硬件调度器发射的 cluster，就是还没人领的活；<code class="ic">try_cancel</code> 就是一个 SM 把别人还没开始做的活抢过来自己做。失败了就说明所有活都已经有人领了，当前 cluster 正常退出即可。</p>
+      </div>
+
+      <h3 class="section-h lv2" style="margin-top:1.6em;">三种调度方式对比</h3>
+      <div style="overflow-x:auto;margin:1em 0 1.6em;">
+        <table style="width:100%;border-collapse:collapse;font-family:-apple-system,sans-serif;font-size:12.5px;line-height:1.75;">
+          <thead>
+            <tr style="border-bottom:2px solid var(--rule);">
+              <th style="padding:8px 12px;text-align:left;color:var(--muted);font-weight:600;white-space:nowrap;">调度方式</th>
+              <th style="padding:8px 12px;text-align:left;color:var(--muted);font-weight:600;">Grid 形状</th>
+              <th style="padding:8px 12px;text-align:left;color:var(--muted);font-weight:600;">优点</th>
+              <th style="padding:8px 12px;text-align:left;color:var(--muted);font-weight:600;">局限</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom:1px solid var(--rule);">
+              <td style="padding:10px 12px;font-weight:600;white-space:nowrap;vertical-align:middle;">Single tile</td>
+              <td style="padding:10px 12px;vertical-align:middle;font-family:monospace;font-size:11.5px;white-space:nowrap;">grid = (num_tiles, 1, 1)<br>每 CTA 处理 1 个 tile</td>
+              <td style="padding:10px 12px;vertical-align:middle;">硬件 launch queue 天然做 work distribution；无需软件 work-stealing；tile 间负载自动均衡</td>
+              <td style="padding:10px 12px;vertical-align:middle;">每个 tile 独立 launch，每次付完整 pipeline setup（mbarrier init、TMA descriptor、SMEM 初始化）；epilogue（SMEM→GMEM store）与下一 tile mainloop（global load + MMA）<b>无法通过 warp-specialization 交叠</b></td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--rule);">
+              <td style="padding:10px 12px;font-weight:600;white-space:nowrap;vertical-align:middle;">Static persistent</td>
+              <td style="padding:10px 12px;vertical-align:middle;font-family:monospace;font-size:11.5px;white-space:nowrap;">grid = (num_sms, 1, 1)<br>每 CTA 以 gridDim.x<br>为步长 grid-stride<br>循环处理多 tile</td>
+              <td style="padding:10px 12px;vertical-align:middle;">CTA 常驻 SM，相邻 tile 间可把 epilogue 与下一 tile mainloop 通过 warp-specialization 交叠（hiding store latency）；减少 kernel launch overhead</td>
+              <td style="padding:10px 12px;vertical-align:middle;">tile→SM 映射在 launch 时静态决定（<code style="font-family:monospace;font-size:11px;">tile_idx = blockIdx.x + k·gridDim.x</code>）；SM 被抢占或 tile 计算量不均（variable-length attention、grouped GEMM、causal mask）时出现 wave tail；无法动态重新分配</td>
+            </tr>
+            <tr>
+              <td style="padding:10px 12px;font-weight:600;white-space:nowrap;vertical-align:middle;">CLC dynamic persistent</td>
+              <td style="padding:10px 12px;vertical-align:middle;font-family:monospace;font-size:11.5px;white-space:nowrap;">grid = (num_tiles, 1, 1)<br>第一波 cluster 通过<br>try_cancel PTX<br>持续 steal 未发射 cluster</td>
+              <td style="padding:10px 12px;vertical-align:middle;">保留 warp-specialization persistent overlap；tile 分配由完成顺序驱动（completion-ordered），消除 wave tail；SM 被抢占后剩余 cluster 可被其他 SM 接管</td>
+              <td style="padding:10px 12px;vertical-align:middle;"><code style="font-family:monospace;font-size:11px;">try_cancel</code> response 为 16B opaque 编码，必须用 <code style="font-family:monospace;font-size:11px;">query_cancel</code> 解析，有额外协议开销；调度顺序不可预测（破坏 L2 swizzle 等确定顺序优化）；balanced workload 下 CLC overhead 可能反超 static persistent；多 stage pipeline 增加 SMEM 压力</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="zh no-indent">本文参考资料：</p>
+      <ul class="zh-list">
+        <li><a href="https://docs.nvidia.com/cuda/parallel-thread-execution/#parallel-synchronization-and-communication-instructions-clusterlaunchcontrol-try-cancel" target="_blank">PTX 文档</a></li>
+        <li><a href="https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/cluster-launch-control.html" target="_blank">NVIDIA CUDA 编程指南第 4.12 节</a></li>
+        <li><a href="https://docs.nvidia.com/cutlass/latest/media/docs/cpp/blackwell_cluster_launch_control.html" target="_blank">NVIDIA CUTLASS 文档</a></li>
+      </ul>
+
+      <!-- PTX 指令 -->
+      <h3 class="section-h lv2" id="s-ptx">PTX 指令：<code class="ic">try_cancel</code> 与 <code class="ic">query_cancel</code></h3>
+      <p class="zh">PTX 层面上用于 CLC 逻辑的主要指令有两组。</p>
+      <p class="zh">第一组是 <code class="ic">clusterlaunchcontrol.try_cancel</code>，它发出一个原子请求，尝试取消一个尚未启动的 cluster，并获得编码后的响应数据。然后可以用 <code class="ic">clusterlaunchcontrol.query_cancel</code> 对该数据进行解码，以判断取消是否成功，并在成功时获取被取消 cluster 的 tile 坐标（用于"抢夺"其工作）。</p>
+      <p class="zh"><code class="ic">clusterlaunchcontrol.try_cancel</code> 的语法如下：</p>
+      <pre class="code-block">clusterlaunchcontrol.try_cancel.async{.space}.completion_mechanism{.multicast::cluster::all}.b128 [addr], [mbar];
+
+.completion_mechanism = { .mbarrier::complete_tx::bytes };
+.space = { .shared::cta };</pre>
+      <p class="zh">此指令可以与 TMA 做类比：</p>
+      <ul class="zh-list">
+        <li><b>与 TMA 类似</b>，只有一个线程应发起 <code class="ic">try_cancel</code> 操作。但 TMA multicast 中每个参与的 CTA 各发出一条 TMA 指令，而 <code class="ic">try_cancel</code> 整个 cluster 中只能有一个线程发起。多个线程提交 <code class="ic">try_cancel</code> 会导致多个 cluster 被取消。</li>
+        <li><b>与 TMA 类似</b>，该操作会将一些数据异步写入 SMEM（由 <code class="ic">[addr]</code> 指定的地址）。若使用 multicast，数据必须广播给 cluster 中的所有 CTA；而 TMA 可以选择只广播给 cluster 中的一个子集。对于 cluster 内有多个 CTA 的情况（cluster_shape &gt; 1×1×1，如 2-CTA cluster），若 <code class="ic">try_cancel</code> 不使用 multicast，则只有发出指令的 warp 拿到了响应；它需要自行从 SMEM 读取响应、计算工作 tile 坐标，再写回 SMEM，让 cluster 内其他 CTA 也能读到。</li>
+        <li><b>与 TMA 类似</b>，使用事务屏障（transaction barrier）来跟踪 <code class="ic">try_cancel</code> 操作的完成状态。但任何 <code class="ic">try_cancel</code> 操作始终传输 <b>16 字节</b>。</li>
+        <li>作为 cluster 范围的操作，在带 multicast 的 <code class="ic">try_cancel</code> 中，需确保 cluster 中其他 CTA 均未退出，以避免未定义行为。</li>
+      </ul>
+      <p class="zh"><code class="ic">clusterlaunchcontrol.query_cancel</code> 的语法如下：</p>
+      <pre class="code-block">clusterlaunchcontrol.query_cancel.is_canceled.pred.b128 pred, try_cancel_response;
+
+clusterlaunchcontrol.query_cancel.get_first_ctaid.v4.b32.b128 {xdim, ydim, zdim, _}, try_cancel_response;
+
+clusterlaunchcontrol.query_cancel.get_first_ctaid{::dimension}.b32.b128 reg, try_cancel_response;
+
+::dimension = { ::x, ::y, ::z };</pre>
+      <p class="zh">使用方式如下：</p>
+      <ul class="zh-list">
+        <li>观察到 <code class="ic">try_cancel</code> 完成后，可以对其返回的 16 字节数据发出 <code class="ic">query_cancel</code> 系列指令。PTX 文档将该数据描述为"opaque（不透明）"，编程指南称其为"encoded（编码）"，这意味着 <code class="ic">query_cancel</code> 是获取有用信息的唯一方式。</li>
+        <li><code class="ic">.is_canceled</code> 返回一个谓词，表示所请求的取消是否成功。注意：若 <code class="ic">.is_canceled</code> 返回 false，则发出除 <code class="ic">.is_canceled</code> 之外的 <code class="ic">query_cancel</code> 指令会导致未定义行为，因此应<b>始终先检查 <code class="ic">.is_canceled</code></b>。</li>
+        <li>进一步注意：如果 CTA 已观察到 <code class="ic">try_cancel</code> 失败，再次发出 <code class="ic">try_cancel</code> 同样会导致未定义行为。因此，在此之后，该 CTA 不能再使用 CLC，只能在处理完当前工作队列后退出。</li>
+        <li><code class="ic">try_cancel</code> 失败通常并不表示错误，而是调度逻辑的一部分——最常见的失败原因是网格中已没有更多未启动的 cluster。</li>
+        <li><code class="ic">.get_first_ctaid</code> 可用于获取被取消 cluster 的第一个 CTA 在网格中的坐标，使用 <code class="ic">.v4</code> 可获取全部三个维度（第四个元素内容未指定），也可用 <code class="ic">::dimension</code> 指定某个特定维度。</li>
+      </ul>
+
+      <!-- Walkthrough -->
+      <h3 class="section-h lv2" id="s-walkthrough">CLC 实现 Walkthrough（CuTeDSL 示例）</h3>
+      <p class="zh">Blackwell CuTeDSL 示例 <a href="https://github.com/NVIDIA/cutlass/blob/main/examples/python/CuTeDSL/cute/blackwell/kernel/dense_gemm/dense_gemm_persistent_dynamic.py" target="_blank">dense_gemm_persistent_dynamic.py</a> 实现了一个标准的稠密 GEMM，CLC 的 try-cancel 由每个 cluster 中的单个调度 warp 执行，调度 warp 与 cluster 中其他 warp 之间的通信通过 CLC pipeline 处理。每个 CTA 启动的 warp 编号（在 <code class="ic">__init__</code> 方法中定义）如下：</p>
+      <pre class="code-block">self.epilogue_warp_id = (0, 1, 2, 3)
+self.mma_warp_id = 4
+self.tma_warp_id = 5
+self.sched_warp_id = 6</pre>
+
+      <h4 class="section-h lv3" id="s-compute-grid">_compute_grid：网格大小计算</h4>
+      <p class="zh">在 <code class="ic">__call__</code> 方法中，通过 <code class="ic">_compute_grid</code> 确定 kernel 启动参数中的 grid 变量：</p>
+      <pre class="code-block">def __call__(...):
+    ...
+    # Compute grid size
+    self.tile_sched_params, grid = self._compute_grid(
+        c, self.cta_tile_shape_mnk, self.cluster_shape_mn
+    )
+    self.kernel(...).launch(
+        grid=grid,
+        block=[self.threads_per_cta, 1, 1],
+        cluster=(*self.cluster_shape_mn, 1),
+        stream=stream,
+    )
+
+def _compute_grid(
+    c: cute.Tensor,
+    cta_tile_shape_mnk: Tuple[int, int, int],
+    cluster_shape_mn: Tuple[int, int],
+) -> Tuple[utils.ClcDynamicPersistentTileSchedulerParams, Tuple[int, int, int]]:
+    c_shape = cute.slice_(cta_tile_shape_mnk, (None, None, 0))
+    gc = cute.zipped_divide(c, tiler=c_shape)
+    num_ctas_mnl = gc[(0, (None, None, None))].shape
+    cluster_shape_mnl = (*cluster_shape_mn, 1)
+
+    tile_sched_params = utils.ClcDynamicPersistentTileSchedulerParams(
+        num_ctas_mnl, cluster_shape_mnl
+    )
+    # will round up to a whole number of clusters
+    grid = utils.ClcDynamicPersistentTileScheduler.get_grid_shape(tile_sched_params)
+    return tile_sched_params, grid</pre>
+      <p class="zh"><code class="ic">cta_tile_shape_mnk</code> 从 MMA tiler 推导，统一支持 1CTA 和 2CTA MMA 模式：</p>
+      <pre class="code-block">self.cta_tile_shape_mnk = (
+    self.mma_tiler[0] // cute.size(tiled_mma.thr_id.shape),
+    self.mma_tiler[1],
+    self.mma_tiler[2],
+)</pre>
+      <p class="zh">网格计算将 C 按 CTA tiler 切分以确定初步网格形状，再将其向上取整到 cluster 形状的整数倍以满足网格的 cluster 可整除性要求。这一计算与单 tile 调度器完全相同，尤其是<b>不涉及 SM 数量</b>。</p>
+
+      <h4 class="section-h lv3" id="s-clc-pipeline">CLC Pipeline 初始化</h4>
+      <p class="zh">与其他标准 GEMM pipeline 一同，CLC pipeline 在 kernel 调用的开头附近创建：</p>
+      <pre class="code-block"># Initialize clc_pipeline (barrier) and states
+clc_pipeline_producer_group = pipeline.CooperativeGroup(pipeline.Agent.Thread)
+cluster_size = cute.size(self.cluster_shape_mn)
+# 每个 CTA 有 4 个 epilogue warp + 1 个 MMA warp + 1 个 TMA warp
+# 每个 cluster 有 1 个 scheduler warp
+num_clc_consumer_threads = 32 * (
+    1 + cluster_size * (1 + len(self.epilogue_warp_id) + 1)
+)
+clc_pipeline_consumer_group = pipeline.CooperativeGroup(
+    pipeline.Agent.Thread, num_clc_consumer_threads
+)
+clc_pipeline = pipeline.PipelineClcFetchAsync.create(
+    barrier_storage=storage.clc_mbar_ptr.data_ptr(),
+    num_stages=self.num_clc_stage,  # 本例中为 1
+    producer_group=clc_pipeline_producer_group,
+    consumer_group=clc_pipeline_consumer_group,
+    tx_count=self.num_clc_response_bytes,  # 16
+    cta_layout_vmnk=cluster_layout_vmnk,
+    defer_sync=True,
+)</pre>
+      <p class="zh">关于 <code class="ic">num_clc_consumer_threads</code> 的计算：cluster 中所有 CTA 的 TMA、MMA 和 epilogue warp 都需要知道正确的工作 tile 坐标（以及取消是否成功），因此有 <code class="ic">cluster_size * (1 + len(self.epilogue_warp_id) + 1)</code>。调度 warp 本身也是消费者（它需要知道自己的取消请求是否失败作为退出信号），所以再额外加 1。注意，由于所有 CTA 启动相同数量的 warp，cluster 中非 leader CTA 也会启动一个"调度 warp"，但这些 warp 不执行任何工作，既不是 CLC pipeline 的生产者，也不是消费者。</p>
+      <p class="zh">在 CLC pipeline 创建的稍上方，可以看到为 CLC 操作和通信分配的共享内存：</p>
+      <pre class="code-block">class SharedStorage:
+    # ... (TMA load、acc、TMEM 的 mbarrier 存储)
+    clc_mbar_ptr: cute.struct.MemRange[cutlass.Int64, 2]  # 一空一满两个 mbarrier（只有一个 stage）
+    clc_response: cute.struct.MemRange[cutlass.Int32, 4]  # 每个 stage 存储 try_cancel 响应的 16 字节</pre>
+
+      <h4 class="section-h lv3" id="s-sched-warp">调度 Warp 代码块</h4>
+      <pre class="code-block">if warp_idx == self.sched_warp_id and is_first_cta_in_cluster:
+
+    clc_producer_state = pipeline.make_pipeline_state(
+        pipeline.PipelineUserType.ProducerConsumer, self.num_clc_stage
+    )
+
+    while work_tile.is_valid_tile:
+        clc_pipeline.producer_acquire(clc_producer_state)
+        mbarrier_addr = clc_pipeline.producer_get_barrier(clc_producer_state)
+        tile_sched.advance_to_next_work(mbarrier_addr)  # 发出 try_cancel
+        clc_producer_state.advance()
+
+        # 调度 warp 下面也充当消费者
+        clc_pipeline.consumer_wait(clc_consumer_state)
+        work_tile = tile_sched.get_current_work()  # 发出 query_cancel
+        clc_pipeline.consumer_release(clc_consumer_state)
+        clc_consumer_state.advance()
+    clc_pipeline.producer_tail(clc_producer_state)</pre>
+      <ul class="zh-list">
+        <li>第 1 行确认只有每个 cluster 的<b>第一个 CTA</b> 执行此代码块。</li>
+        <li>第 3-5 行，pipeline state 以 <code class="ic">PipelineUserType.ProducerConsumer</code> 定义，起始 phase bit 被翻转，因此调度 warp 不会在 <code class="ic">producer_acquire</code> 处初始等待，可以立即开始获取工作 tile。</li>
+      </ul>
+      <p class="zh">进一步查看 <code class="ic">PipelineClcFetchAsync</code> 的 <code class="ic">producer_acquire</code> 方法（位于 <a href="https://github.com/NVIDIA/cutlass/blob/ae6bccf341fb4410241f696ba06873023d5ce4ed/python/CuTeDSL/cutlass/pipeline/sm100.py#L702" target="_blank">sm100.py</a>）：</p>
+      <pre class="code-block">class PipelineClcFetchAsync:
+    ...
+    def producer_acquire(...):
+        if_generate(
+            try_acquire_token is None or try_acquire_token == 0,
+            lambda: self.sync_object_empty.wait(...)
+        if_generate(
+            self.is_signalling_thread,
+            lambda: self.sync_object_full.arrive(
+                state.index, self.producer_mask, loc=loc, ip=ip
+            ),...)
+
+    def _init_full_barrier_arrive_signal(cta_layout_vmnk: cute.Layout, tidx: Int32):
+        dst_rank = tidx % 32
+        is_signalling_thread = dst_rank &lt; cute.size(cta_layout_vmnk)
+        return dst_rank, is_signalling_thread
+
+    def create(...)
+        consumer_mask = 0
+        ...
+        (producer_mask, is_signalling_thread) = (
+            PipelineClcFetchAsync._init_full_barrier_arrive_signal(
+                cta_layout_vmnk, tidx
+            )
+        )</pre>
+      <p class="zh">调度 warp 中前 <code class="ic">cluster_size</code> 个线程各自负责向 cluster 中的不同 CTA 发信号（线程 <code class="ic">i</code> 向 CTA <code class="ic">i</code> 发信号）。<code class="ic">consumer_mask = 0</code> 允许所有消费者在 release 时向 cluster 中的第一个 CTA 发信号。</p>
+      <p class="zh">调度 warp 代码块中的 <code class="ic">tile_sched.advance_to_next_work(mbarrier_addr)</code> 会导致 <code class="ic">try_cancel</code> 被发出——它调用来自单个选定线程的 <code class="ic">issue_clc_query</code>，最终对应 PTX 指令 <code class="ic">clusterlaunchcontrol.try_cancel</code>。</p>
+
+      <h4 class="section-h lv3" id="s-consumer">消费者端：<code class="ic">get_current_work</code></h4>
+      <p class="zh">调度 warp 的消费者部分，与所有其他消费者 warp（TMA、MMA、epilogue warp）共用相同的代码：</p>
+      <pre class="code-block">clc_pipeline.consumer_wait(clc_consumer_state)
+work_tile = tile_sched.get_current_work()  # 发出 query_cancel
+clc_pipeline.consumer_release(clc_consumer_state)
+clc_consumer_state.advance()</pre>
+      <p class="zh"><code class="ic">get_current_work</code> 本质上是 <code class="ic">work_tile_info_from_clc_response</code> 的封装（均在 <a href="https://github.com/NVIDIA/cutlass/blob/f74fea9ce35868d3ae9f8d1dce1969d7250d3f90/python/CuTeDSL/cutlass/utils/dynamic_persistent_tile_scheduler.py" target="_blank">dynamic_persistent_tile_scheduler.py</a> 中）：</p>
+      <pre class="code-block">def work_tile_info_from_clc_response(
+    self, result_addr: cute.Pointer, *, loc=None, ip=None
+) -> WorkTileInfo:
+    m_idx, n_idx, l_idx, vld = cute.arch.clc_response(result_addr, loc=loc, ip=ip)
+    cute.arch.fence_proxy(
+        "async.shared",
+        space="cta",
+    )
+    cta_idx_in_cluster, cta_idy_in_cluster, _ = self.cta_id_in_cluster
+    cur_tile_coord = (m_idx + cta_idx_in_cluster, n_idx + cta_idy_in_cluster, l_idx)
+    return WorkTileInfo(cur_tile_coord, vld)</pre>
+      <p class="zh">第 4 行的 <code class="ic">clc_response</code> 对应 PTX 指令 <code class="ic">clusterlaunchcontrol.query_cancel</code>，对响应数据进行解码。由于 <code class="ic">query_cancel</code> 得到的是被取消 cluster 的<b>第一个 CTA 在网格中的坐标</b>，需要加上当前 CTA 在其 cluster 内的坐标偏移，才能正确得到其 tile 坐标。</p>
+      <div class="callout">
+        <p class="zh">第 5-8 行的 shared async proxy fence 看起来不寻常。在标准 GEMM kernel 中，这类 fence 仅在 TMA store 之前出现。而这里唯一相关的 async-proxy 操作是 <code class="ic">try_cancel</code> 将响应数据写入 SMEM，fence 是在响应数据解码之后才调用的。因此，这个 fence 实际上是在保护：<b>防止下一次迭代的 <code class="ic">try_cancel</code> 在当前迭代还未读取完 SMEM 之前就覆盖该位置的数据。</b>另外注意 <code class="ic">clc_response</code> 调用之前没有 proxy fence——类比 TMA load，<code class="ic">try_cancel</code> 的响应数据传输完成后很可能也隐式执行了 proxy fence。</p>
+      </div>
+
+      <!-- 多阶段 -->
+      <h3 class="section-h lv2" id="s-multistage">多阶段 CLC Pipeline</h3>
+      <p class="zh">虽然本示例不支持，但可以通过为 CLC pipeline 设置多个 stage 来排队多个工作 tile（例如，<a href="https://github.com/NVIDIA/cutlass/blob/main/include/cutlass/gemm/kernel/sm100_gemm_tma_warpspecialized.hpp" target="_blank">CUTLASS C++ kernel</a> 中深度为 3）。这在某些情况下有助于隐藏调度延迟，尤其是当某些工作 tile 完成极快时（例如，变长 attention 中某些工作 tile 可能甚至是空的）。</p>
+      <p class="zh">然而，深层 CLC pipeline 也有一个隐患——通过为不同 SM 排队不等量的工作负载，<b>动态负载均衡效果会变差</b>。实际上，stage 数越多，CLC 的行为就越像静态持久化调度。此外，对于 wave 数很少且负载不均衡的问题，即使只有 1 个 stage，我们可能也希望阻止调度 warp 在 MMA mainloop 结束之前就发出 <code class="ic">try_cancel</code>——否则被分配了大 K tile 的 cluster 可能立即获取另一个大 K tile，最终导致与静态持久化调度器相似的高度不均衡的工作分配。</p>
+
+      <!-- 抢占 -->
+      <h3 class="section-h lv2" id="s-preemption">CLC 与并发 Kernel 及抢占</h3>
+      <p class="zh">根据<a href="https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/cluster-launch-control.html" target="_blank">编程指南</a>，除了 kernel 中没有更多未启动 cluster 之外，<code class="ic">try_cancel</code> 失败的另一个原因可能是：在第一个 kernel 已开始执行之后，又启动了一个更高优先级的第二个 kernel。在观察到 <code class="ic">try_cancel</code> 失败后，第一个 kernel 的 CTA 将退出，为第二个 kernel 腾出 GPU 资源。待高优先级 kernel 执行完毕后，若第一个 kernel 还未执行完其完整网格，则会启动新的 cluster 继续完成剩余工作。</p>
+      <p class="zh">允许这种"<b>抢占</b>"是 CLC 比静态持久化调度更灵活的另一个体现——静态持久化调度在 kernel 启动后无法动态重新分配资源。</p>
+
+      <!-- 均衡负载对比 -->
+      <h3 class="section-h lv2" id="s-balanced">CLC 与静态持久化及单 Tile 调度的对比——均衡工作负载</h3>
+      <p class="zh">尽管 CLC 被推广为在工作负载不均衡时优于静态持久化调度，对标准 GEMM kernel（均衡负载）上的 CLC、静态持久化和单 tile 调度进行基准测试和对比仍有意义。</p>
+      <p class="zh">本节实验在 B200 上进行，B200 有 148 个 SM，可配置为 74 个大小为 2 的 cluster。实验使用 batch size 为 1，配置如下：</p>
+      <pre class="code-block">ab_dtype: Float8E4M3FN, c_dtype: Float32, acc_dtype: Float32
+a_major: k, b_major: k, c_major: n
+mma_tiler_mn: (256, 256), cluster_shape_mn: (2, 1)
+use_2cta_instrs: True, use_tma_store: True
+预热迭代：500 次
+正式迭代：100 次
+跳过参考校验：True
+使用冷 L2：True</pre>
+      <p class="zh">对 $M=N$ 从 1024 到 32768（2 的幂次）以及这些值的 1.5 倍，$K \in \{2048, 8192\}$ 的问题形状进行基准测试，结果如下图所示：</p>
+      <figure>
+        <img src="https://i0.wp.com/research.colfax-intl.com/wp-content/uploads/2026/05/image-24.png?ssl=1" alt="均衡负载K=2048性能对比">
+        <figcaption>图（K=2048）：三种调度器在不同问题规模下的性能对比。</figcaption>
+      </figure>
+      <figure>
+        <img src="https://i0.wp.com/research.colfax-intl.com/wp-content/uploads/2026/05/image-25.png?ssl=1" alt="均衡负载K=8192性能对比">
+        <figcaption>图（K=8192）：三种调度器在不同问题规模下的性能对比。</figcaption>
+      </figure>
+      <p class="zh">持久化调度器优于单 tile 调度器的结果并不意外，因为前者能够将 epilogue 与 MMA mainloop 重叠执行。K 较小时，epilogue 占单个工作 tile 运行时间的比例相对较大；K 较大时，epilogue 的占比较小，因此单 tile 调度因缺乏 epilogue 重叠而损失的效率相对较少。对于小问题规模，各调度器之间几乎没有差异，因为此时工作量不足一个完整的 cluster wave。</p>
+      <p class="zh">然而，CLC 与静态持久化之间观察到的性能差异显得更为难以解释，CLC 在较大工作负载时总体上表现稍差。为深入理解，我们从 Nsight Compute PM sampling 比较两者的 tensor pipe 吞吐量图（x 轴为时间，y 轴为利用率百分比）。</p>
+      <p class="zh">对于问题形状 <b>(16384, 16384, 2048)</b>，CLC 的 tensor pipe 吞吐量图在结尾无明显下降，而静态持久化在结尾存在逐渐下降的过程——说明部分 SM 比其他 SM 先完成并进入空闲，因此<b>CLC 能更好地利用所有 GPU 资源</b>。</p>
+      <figure>
+        <img src="https://i0.wp.com/research.colfax-intl.com/wp-content/uploads/2026/05/image-28.png?ssl=1" alt="CLC tensor pipe吞吐量 (16384,16384,2048)">
+        <figcaption>图：问题形状 (16384, 16384, 2048) 下，CLC 的 tensor pipe 吞吐量。</figcaption>
+      </figure>
+      <figure>
+        <img src="https://i0.wp.com/research.colfax-intl.com/wp-content/uploads/2026/05/image-26.png?ssl=1" alt="静态持久化 tensor pipe吞吐量 (16384,16384,2048)">
+        <figcaption>图：问题形状 (16384, 16384, 2048) 下，静态持久化的 tensor pipe 吞吐量（结尾有明显下降）。</figcaption>
+      </figure>
+      <p class="zh">对于 <b>(32768, 32768, 2048)</b>，情况恰好相反：静态调度的结尾下降反而更不明显，而 CLC 的 tensor pipe 吞吐量始终偏低。与此相关的一个指标是：NCU 报告 CLC 的 L2 命中率仅为 <b>35%</b>，而静态持久化为 <b>52%</b>。造成这一差异的原因尚不清楚。注意这两个 kernel 均未使用工作 tile swizzling；而对于 (16384, 16384, 2048)，NCU 显示两个 kernel 的 L2 命中率均约为 60%。</p>
+      <figure>
+        <img src="https://i0.wp.com/research.colfax-intl.com/wp-content/uploads/2026/05/image-31.png?ssl=1" alt="CLC tensor pipe吞吐量 (32768,32768,2048)">
+        <figcaption>图：问题形状 (32768, 32768, 2048) 下，CLC 的 tensor pipe 吞吐量（整体偏低）。</figcaption>
+      </figure>
+      <figure>
+        <img src="https://i0.wp.com/research.colfax-intl.com/wp-content/uploads/2026/05/image-32.png?ssl=1" alt="静态持久化 tensor pipe吞吐量 (32768,32768,2048)">
+        <figcaption>图：问题形状 (32768, 32768, 2048) 下，静态持久化的 tensor pipe 吞吐量。</figcaption>
+      </figure>
+      <p class="zh">上述实验表明，即使对于均衡工作负载，也应同时保留静态调度和 CLC 以用于调优。另外需要注意的是，这些示例 kernel 未包含工作 tile swizzling、block scaling 或复杂 epilogue（如 bias、activation）等特性，加入这些特性后对比结论可能会发生变化。</p>
+      <p class="zh">鉴于 CLC 不存在 tensor pipe 吞吐量结尾下降，我们还统计了每个 SM 计算的 tile 数。静态持久化调度器下，各 SM 计算的 tile 数最多相差 1；而 CLC 并非如此。例如，对于问题形状 <b>(16384, 16384, 2048)</b>，各 SM 处理的 tile 数在 54 到 59 之间，其频率分布直方图（以 SM pair 为单位，因使用 2CTA MMA）如下：</p>
+      <figure>
+        <img src="https://i0.wp.com/research.colfax-intl.com/wp-content/uploads/2026/05/image-33.png?ssl=1" alt="各SM处理tile数直方图 (16384,16384,2048)">
+        <figcaption>图：(16384, 16384, 2048) 下各 SM pair 处理 tile 数的频率直方图（CLC）。</figcaption>
+      </figure>
+      <p class="zh">对于 <b>(32768, 32768, 2048)</b>，直方图如下：</p>
+      <figure>
+        <img src="https://i0.wp.com/research.colfax-intl.com/wp-content/uploads/2026/05/image-34.png?ssl=1" alt="各SM处理tile数直方图 (32768,32768,2048)">
+        <figcaption>图：(32768, 32768, 2048) 下各 SM pair 处理 tile 数的频率直方图（CLC）。</figcaption>
+      </figure>
+      <p class="zh">上述直方图表明：由于某些原因（可能在硬件层面或其他层面），某些 SM 最终能够比其他 SM 多计算多达 5% 的 tile。因此，即使在均衡的情况下，强制所有 SM 计算（几乎）完全相同数量的 tile 也可能略有不优。关于注意力机制场景下工作分配直方图的另一个实例，可参考<a href="https://github.com/Dao-AILab/flash-attention/pull/2218" target="_blank">这个向 FlashAttention-4 添加 CLC 的 PR</a>。</p>
+    </section>
+
+    <!-- ─── 结论 ─────────────────────────────────────────────────── -->
+    <section id="s-conclusion">
+      <h2 class="section-h lv1">结论（CLC 篇）</h2>
+      <p class="zh">本文探讨了 CLC——Blackwell GPU 上引入的动态持久化调度的硬件实现。CLC 综合了单 tile 调度和静态持久化调度这两种传统方案各自的优势。</p>
+      <p class="zh">我们考察了 CLC 所需的低级 PTX 指令 <code class="ic">try_cancel</code> 和 <code class="ic">query_cancel</code>，并逐步讲解了 CuTeDSL 实现（示例 <code class="ic">dense_gemm_persistent_dynamic.py</code>）——每个 cluster 使用单个 scheduler warp 尝试 steal 工作 tile，并通过 CLC pipeline 将结果传递给其他 warp。</p>
+      <p class="zh">对于不均衡工作负载，CLC 明显优于静态持久化；但我们也发现，即使在均衡工作负载下，CLC 与静态持久化之间仍存在微小差异，两者并没有明显的绝对赢家——建议在实际调优时同时保留两种方案。</p>
+    </section>
+
+    <!-- ════════════════════════════════════════════════════════════
+         延伸阅读：FlashAttention-4 中的 CLC 实现（PR #2218）
+         原始 PR：https://github.com/Dao-AILab/flash-attention/pull/2218
+         ════════════════════════════════════════════════════════════ -->
+    <section id="s-fa4-clc">
+      <h2 class="section-h lv1">延伸：FlashAttention-4 的 CLC 实现（PR #2218）</h2>
+      <div style="margin-bottom:1.4em;padding:10px 16px;background:var(--paper);border-left:3px solid var(--rule);border-radius:0 4px 4px 0;font-family:-apple-system,sans-serif;font-size:12px;color:var(--muted);line-height:1.8;">
+        <span style="text-transform:uppercase;letter-spacing:.8px;font-size:10px;display:block;margin-bottom:2px;">原始来源</span>
+        <a href="https://github.com/Dao-AILab/flash-attention/pull/2218" target="_blank" style="color:var(--accent);text-decoration:none;border-bottom:1px solid rgba(29,79,124,.25);">Dao-AILab/flash-attention PR #2218 · Add CLC work-stealing tile scheduler to FA4</a>
+        <span style="display:block;margin-top:4px;">状态：已合入主线 · 对应 SM100/SM110（B200/B100）</span>
+      </div>
+
+      <h3 class="section-h lv2">背景：为什么 Attention 更需要动态调度</h3>
+      <p class="zh">GEMM 的工作 tile 计算代价大致均等，而 Attention 面临<b>天然的负载不均衡</b>：causal masking 让靠近序列末尾的 tile 计算量远少于前端 tile；document mask、变长序列（varlen）、GQA 的不同 head 分组更会让不同 tile 的实际工作量差异悬殊。静态 grid-stride 分配下，完成快的 SM 会空转等待慢的 SM，拖长整体延迟。CLC 的 work-stealing 机制正好解决这一问题。</p>
+
+      <h3 id="s-fa4-viewer" class="section-h lv2">Work Distribution 可视化工具</h3>
+      <p class="zh">PR 附带了一个基于 <code class="ic">printf</code> 日志重建的 Work Distribution Viewer，用于直观展示 CLC work-stealing 的执行轨迹：每一行对应一个 SM，每个格子对应一个 tile，颜色区分"初始分配"、"被 steal"、"已完成/无效"状态。Histogram 展示各 SM 完成的 tile 数分布，可快速发现负载不均衡。</p>
+      <figure>
+        <img src="https://github.com/user-attachments/assets/68246389-88c8-4896-b64a-712dac220910" alt="CLC Work Distribution Viewer — work-stealing 执行轨迹可视化" onclick="lbShow(this.src)" style="border-radius:4px;">
+        <figcaption>CLC Work Distribution Viewer：基于 printf 日志重建的 work-stealing 追踪视图。每行为一个 SM，每格为一个 tile；上方 Histogram 展示 tile 分布均衡性（SMs: 148，Total tiles: 8340）。</figcaption>
+      </figure>
+
+      <h3 class="section-h lv2">改动文件概览</h3>
+      <div class="callout"><span class="label" style="font-family:ui-monospace,monospace;font-size:10px;background:var(--rule);padding:1px 6px;border-radius:2px;margin-right:8px;">核心</span><code class="ic">flash_attn/cute/tile_scheduler.py</code> +294 / -35 — 调度器抽象与 CLC 实现</div>
+      <div class="callout"><span class="label" style="font-family:ui-monospace,monospace;font-size:10px;background:var(--rule);padding:1px 6px;border-radius:2px;margin-right:8px;">集成</span><code class="ic">flash_attn/cute/flash_fwd_sm100.py</code> +156 / -46 — Kernel 入口集成</div>
+      <div class="callout"><span class="label" style="font-family:ui-monospace,monospace;font-size:10px;background:var(--rule);padding:1px 6px;border-radius:2px;margin-right:8px;">测试</span><code class="ic">tests/cute/test_clc_fuzz.py</code> 394 行新增 — 针对 imbalanced workload 的 fuzz 测试</div>
+
+      <h3 class="section-h lv2">改动前：静态 Grid-Stride 调度</h3>
+      <p class="zh">改动前，每个 CTA 的工作 tile 由以下公式静态决定：起始 tile 索引 = <code class="ic">blockIdx.x</code>，每次步进 <code class="ic">gridDim.x</code>（SM 数）。L2 cache swizzle 和 LPT（Longest-Processing-Time-first，逆序排布使长 tile 优先）作为启发式优化内嵌在坐标映射中，但本质仍是静态分配：</p>
+      <pre class="code-block"># 改动前（静态）
+tile_scheduler = TileSchedulerCls()          # 每次调用都创建新实例
+work_tile = tile_scheduler.initial_work_tile_info()
+while work_tile.is_valid_tile:
+    # prefetch_next_work() → no-op（静态模式下什么都不做）
+    tile_scheduler.prefetch_next_work()
+    tile_scheduler.advance_to_next_work()    # tile_idx += gridDim.x
+    work_tile = tile_scheduler.get_current_work()</pre>
+      <p class="zh">问题：所有 CTA 以固定步长遍历 tile，快 SM 在完成本轮 tile 后只能等待，无法去处理慢 SM 积压的工作。</p>
+
+      <h3 class="section-h lv2">改动后：CLC 动态 Work-Stealing</h3>
+      <p class="zh">PR 引入了三个核心抽象：</p>
+      <ul class="zh-list">
+        <li><b><code class="ic">SchedulingMode</code> 枚举</b>：<code class="ic">NONE / STATIC / DYNAMIC / CLC</code>，通过环境变量 <code class="ic">FA_CLC=1</code> 启用 CLC 路径。</li>
+        <li><b><code class="ic">ClcState</code></b>：封装硬件调度器 <code class="ic">ClcDynamicPersistentTileScheduler</code>、异步 pipeline <code class="ic">PipelineClcFetchAsync</code> 以及 producer/consumer barrier state，与 GEMM CLC 示例结构相同。</li>
+        <li><b><code class="ic">TileSchedulerProtocol</code></b>：统一接口，<code class="ic">prefetch_next_work()</code> 和 <code class="ic">producer_tail()</code> 在静态模式为 no-op，CLC 模式才真正工作。</li>
+      </ul>
+      <pre class="code-block"># 改动后（CLC）——Kernel 初始化阶段
+clc = ClcState.create(
+    hw_scheduler=ClcDynamicPersistentTileScheduler.create(...),
+    pipeline=PipelineClcFetchAsync.create(
+        barrier_storage=clc_mbar_ptr,
+        num_stages=self.sched_stages,   # 通常为 1
+        producer_group=...,             # scheduler warp
+        consumer_group=...,             # 所有 compute warp
+    ), ...
+)
+tile_scheduler = SingleTileLPTScheduler.create(tile_sched_params, clc=clc)
+
+# Scheduler warp（独立运行，持续向硬件请求新 tile）
+def clc_scheduler_warp(self, tile_scheduler):
+    work_tile = tile_scheduler.initial_work_tile_info()
+    while work_tile.is_valid_tile:
+        tile_scheduler.prefetch_next_work()   # → producer_acquire + try_cancel PTX
+        work_tile = tile_scheduler.advance_to_next_work()
+    tile_scheduler.producer_tail()
+
+# Compute warp（消费者，等待 scheduler warp 填充结果）
+def advance_to_next_work(self):
+    if const_expr(self.params.scheduling_mode == SchedulingMode.CLC):
+        self.clc.consumer_wait()      # 等待 mbarrier
+        work = self.get_current_work()   # query_cancel 解码坐标
+        self.clc.consumer_release()
+        return work
+    # 静态路径：tile_idx += gridDim.x</pre>
+
+      <h3 class="section-h lv2">坐标映射：CLC 返回值 → Attention tile 坐标</h3>
+      <p class="zh">CLC 硬件返回的是原始 grid 坐标 <code class="ic">(block, head, batch_split)</code>，FlashAttention 需要通过 <code class="ic">clc_work_to_coords()</code> 将其映射为语义坐标：</p>
+      <pre class="code-block">def clc_work_to_coords(self, work) -> WorkTileInfo:
+    block_idx = work.tile_idx[0]
+    if const_expr(self.params.cluster_shape_m > 1):
+        block_idx = block_idx // self.params.cluster_shape_m  # 2-CTA 模式
+    if const_expr(self.params.lpt):
+        block_idx = self.params.num_block - 1 - block_idx    # LPT 逆序
+    # split_kv 解包 ...
+    return WorkTileInfo(..., work.is_valid_tile)</pre>
+
+      <h3 class="section-h lv2">Shared Memory 新增字段</h3>
+      <p class="zh">CLC 需要在 shared memory 中额外分配 mbarrier 和响应缓冲区，与 GEMM CLC kernel 一致：</p>
+      <pre class="code-block">class SharedStorage:
+    # ... 原有字段 ...
+    clc_mbar_ptr : MemRange[Int64, clc_mbar_size]    # 2×sched_stages 个 mbarrier
+    clc_response : MemRange[Int32, clc_response_size] # 每个 stage 16 字节响应</pre>
+
+      <h3 id="s-fa4-perf" class="section-h lv2">性能结果</h3>
+      <p class="zh">PR 作者预期在负载最不均衡的 workload 上收益最大，实测结果与预期基本吻合。由于当时 LPT（Longest-Processing-Time-first）调度尚未启用，Alibi 和 Causal 的收益相近；Document mask 看到了明显提升。</p>
+      <figure>
+        <img src="https://github.com/user-attachments/assets/36ca0a9c-3381-4ac3-917d-38dfdc1b53e1" alt="CLC vs Base 性能对比图：Alibi、Causal、Document Mask" onclick="lbShow(this.src)">
+        <figcaption>CLC vs Base 吞吐量对比（TFLOPS）— Alibi masking、Causal masking、Document mask。负载不均衡场景下 CLC 普遍领先。</figcaption>
+      </figure>
+      <figure>
+        <img src="https://github.com/user-attachments/assets/ebc67d23-0e8b-491c-a13b-bdde41f043c0" alt="CLC vs Base 性能对比图：Noop、Sliding Window" onclick="lbShow(this.src)">
+        <figcaption>CLC vs Base — Noop（稠密 MHA）和 Sliding Window。稠密 MHA 在 hdim=64 非 GQA 路径上有轻微退化，作者认为规律性太强不像随机误差。</figcaption>
+      </figure>
+      <figure>
+        <img src="https://github.com/user-attachments/assets/522e49d8-d922-4e4f-8471-4b244f027165" alt="CLC 额外性能数据" onclick="lbShow(this.src)">
+        <figcaption>补充性能数据。</figcaption>
+      </figure>
+      <ul class="zh-list">
+        <li><b>收益明显</b>：Alibi masking、document mask、causal masking + 非均匀序列长度；</li>
+        <li><b>持平或略退</b>：稠密 MHA（无 mask/sparsity），尤其 hdim=64 非 GQA 路径，作者认为规律性太强不像随机误差，原因待查。</li>
+      </ul>
+
+      <h3 class="section-h lv2">合入时遗留问题</h3>
+      <ul class="zh-list">
+        <li><b>遗留问题 1 — 竞争条件</b>：128×128 测试中，部分 consumer warp 在 scheduler warp 填充响应前就读取了 SMEM。作者推测：<code class="ic">num_tiles &lt; num_sms</code> 时只需初始 work，query CLC 后在 warp 15 的 <code class="ic">consumer_wait</code> 后打印显示"no more work / all invalid"，但其他 consumer warp 没有正确 sync，导致它们读到了未初始化的随机响应数据。Racecheck 能检测到错误但无法定位根源。</li>
+        <li><b>遗留问题 2 — 寄存器溢出</b>：no-op 稠密 MHA 下 NCU 显示异常大量 register spill，PTXas 编译（含 13.1 版本）显示 SASS 无溢出，作者认为可能是 PTXas 的边界情况，但不完全确定；ptxas patch 也未能彻底解决。</li>
+        <li><b>遗留问题 3 — 抽象泄漏</b>：调度逻辑散落在多处，作者希望找到更好的封装方式后再正式 land（事实上 PR 已合入，后续会持续改进）。</li>
+        <li><b>后续计划</b>：统一 API + 环境变量开关（<code class="ic">FA_CLC=1</code>），对所有 Flex 场景默认启用；bwd 路径集成（当前仅 fwd）。</li>
+      </ul>
+      <p class="zh">测试文件 <code class="ic">test_clc_fuzz.py</code> 覆盖了大量 adversarial 场景：Q/K 序列长度不匹配（如 1 vs 4096）、非对齐 tile 边界（质数、奇数尺寸）、GQA 多种 head 比、2-CTA 配置、minimal 问题（1×1×1）、causal masking + 不均衡形状、大规模（batch=32、head=8、seqlen=4096）等。</p>
+
+      <div class="callout">
+        <p class="zh" style="text-indent:0;margin:0;"><b>与 GEMM CLC 的关键区别</b>：GEMM 的所有 tile 计算代价均等，CLC 的 work-stealing 仅针对 Wave Quantization；而 Attention 中即使 Wave Quantization 效应很弱，tile 间的<b>内在计算量差异</b>（causal mask 导致的有效序列长度不同）也足以让动态调度带来收益。这使 CLC 在 Attention kernel 中的适用价值比在 GEMM 中更广泛。</p>
+      </div>
+    </section>
+
+  </div><!-- /reader-inner -->
+</div><!-- /reader -->
+
+
+  <script src="/blog/readers/reader.js"></script>
+</body>
+</html>

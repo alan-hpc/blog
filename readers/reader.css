@@ -1,0 +1,677 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   reader.css  —  Yang Min 技术博客阅读器统一样式表
+   所有 static/readers/*.html 共享此文件，修改此处即全局生效
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Reset ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Design tokens ── */
+:root {
+  --bg      : #f0ece4;   /* warm parchment page background */
+  --paper   : #faf8f3;   /* card / figure background */
+  --ink     : #1a1714;   /* primary text */
+  --muted   : #6b6560;   /* captions, metadata */
+  --rule    : #d8d2c8;   /* dividers, borders */
+  --accent  : #1d4f7c;   /* links, highlights */
+  --sidebar : #19171a;   /* sidebar background */
+  --sbtext  : #918b84;   /* sidebar link color */
+  --code-bg : #272822;   /* Monokai dark background */
+  --code-fg : #f8f8f2;   /* Monokai foreground */
+  --mono    : "JetBrains Mono", "Fira Code", "Cascadia Code", "SF Mono",
+              ui-monospace, "Consolas", "Menlo", "Monaco", monospace;
+  --serif   : "PingFang SC", "Hiragino Mincho ProN", "Noto Serif CJK SC",
+              "Source Han Serif SC", "STSong", "SimSun", serif;
+  --sans    : -apple-system, "PingFang SC", "Microsoft YaHei", BlinkMacSystemFont,
+              "Segoe UI", sans-serif;
+}
+
+/* ── Base layout ── */
+html, body { height: 100%; }
+body {
+  font-family: var(--serif);
+  background: var(--bg);
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ════════════════════════════════════════════════════════════
+   SIDEBAR
+   ════════════════════════════════════════════════════════════ */
+#sb {
+  width: 220px; min-width: 220px;
+  background: var(--sidebar);
+  overflow-y: auto;
+  padding: 20px 0 48px;
+  flex-shrink: 0;
+  border-right: 1px solid #111;
+  scrollbar-width: thin;
+  scrollbar-color: #333 transparent;
+}
+#sb::-webkit-scrollbar { width: 4px; }
+#sb::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+
+#sb-title {
+  padding: 0 16px 14px;
+  border-bottom: 1px solid #2e2b2f;
+  margin-bottom: 12px;
+}
+#sb-title p {
+  font-family: var(--sans);
+  font-size: 9.5px; color: #504a4b;
+  letter-spacing: 1px; text-transform: uppercase;
+  margin-bottom: 5px;
+}
+#sb-title p a {
+  color: inherit; text-decoration: none;
+}
+#sb-title p a:hover { color: #c8c0b8; }
+#sb-title h2 {
+  font-family: var(--sans);
+  font-size: 12px; font-weight: 600;
+  color: #c8c0b8; line-height: 1.5;
+}
+
+.ti a {
+  font-family: var(--sans);
+  color: var(--sbtext); text-decoration: none;
+  display: block; padding: 3px 16px;
+  font-size: 11.5px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: color .12s, background .12s;
+}
+.ti a:hover, .ti a.active {
+  color: #e0d8d0; background: rgba(255,255,255,.06);
+}
+.tl1 a { color: #c0b8b0; font-weight: 600; font-size: 12px; padding-top: 8px; }
+.tl2 a { color: #7c7570; }
+.tl3 a { color: #504a4b; font-size: 11px; padding-left: 24px; }
+
+/* ════════════════════════════════════════════════════════════
+   READER AREA
+   ════════════════════════════════════════════════════════════ */
+#reader {
+  flex: 1;
+  min-width: 0;           /* allow flex child to shrink below content width */
+  overflow-x: hidden;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+  background: var(--bg);
+}
+#reader-inner {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 52px 60px 96px;
+}
+
+/* ── Book header ── */
+.book-header {
+  margin-bottom: 52px;
+  padding-bottom: 28px;
+  border-bottom: 2px solid var(--rule);
+}
+.book-header .kicker {
+  font-family: var(--sans);
+  font-size: 10px; color: var(--muted);
+  letter-spacing: 1.4px; text-transform: uppercase;
+  margin-bottom: 12px;
+}
+.book-header .kicker a {
+  color: inherit; text-decoration: none;
+}
+.book-header .kicker a:hover { color: var(--ink); }
+.book-header h1 {
+  font-family: var(--sans);
+  font-size: 26px; font-weight: 700;
+  line-height: 1.35; color: var(--ink);
+  margin-bottom: 8px;
+  letter-spacing: -0.3px;
+}
+.book-header .sub {
+  font-family: var(--sans);
+  font-size: 13px; color: var(--muted);
+  font-style: italic; line-height: 1.6;
+}
+
+/* ── Section headings ── */
+.section-h, h2, h3, h4 {
+  font-family: var(--sans);
+  color: var(--ink);
+}
+.section-h.lv1, h2.section-h {
+  font-size: 20px; font-weight: 700;
+  margin-top: 2.8em; margin-bottom: 0.8em;
+  padding-bottom: 8px;
+  border-bottom: 1.5px solid var(--rule);
+  letter-spacing: -0.3px;
+  scroll-margin-top: 64px;
+}
+.section-h.lv2, h3.section-h {
+  font-size: 16px; font-weight: 600;
+  margin-top: 2.2em; margin-bottom: 0.7em;
+  color: #1a1714;
+  scroll-margin-top: 64px;
+}
+.section-h.lv3, h4.section-h {
+  font-size: 14px; font-weight: 600;
+  margin-top: 1.8em; margin-bottom: 0.6em;
+  color: #3a3530;
+  scroll-margin-top: 64px;
+}
+
+/* ════════════════════════════════════════════════════════════
+   PROSE  —  applies to ALL content inside reader, class or not
+   ════════════════════════════════════════════════════════════ */
+
+/* Universal paragraph: every <p> in reader gets the same treatment */
+#reader-inner p, p.zh {
+  font-family: var(--serif);
+  font-size: 15.5px;
+  line-height: 2.1;
+  color: var(--ink);
+  margin-bottom: 1.15em;
+  text-align: left;
+}
+/* No indent for specific contexts */
+#reader-inner p.no-indent,
+p.zh.no-indent,
+.callout p,
+.book-header p,
+figcaption,
+#reader-inner li p,
+#reader-inner dt,
+#reader-inner dd { text-indent: 0; }
+
+#reader-inner p:last-child, p.zh:last-child { margin-bottom: 0; }
+
+/* Bold / strong in prose — accent color, add hair space to separate from following text */
+#reader-inner b, #reader-inner strong,
+p.zh b, p.zh strong {
+  color: var(--accent);
+  font-weight: 700;
+}
+/* Ensure bold followed by text has visual separation */
+#reader-inner b + *, #reader-inner strong + * { margin-left: .05em; }
+
+/* Links */
+#reader-inner p a, p.zh a {
+  color: var(--accent); text-decoration: none;
+  border-bottom: 1px solid rgba(29,79,124,.28);
+}
+#reader-inner p a:hover, p.zh a:hover { border-bottom-color: var(--accent); }
+
+/* ── Lists — all lists inside reader get unified styling ── */
+#reader-inner ul, #reader-inner ol,
+ul.zh-list, ol.zh-list {
+  margin: .8em 0 1.2em 2.2em;
+  font-family: var(--serif);
+  font-size: 15.5px;
+  line-height: 2.05;
+  color: var(--ink);
+}
+#reader-inner li, ul.zh-list li, ol.zh-list li {
+  margin-bottom: .35em;
+  text-align: left;
+}
+#reader-inner li b, #reader-inner li strong,
+ul.zh-list li b, ol.zh-list li b { color: var(--accent); font-weight: 700; }
+#reader-inner li p { margin-bottom: .3em; }
+
+/* ── Definition lists (dt/dd) ── */
+#reader-inner dl { margin: 1em 0 1.2em 0; }
+#reader-inner dt {
+  font-family: var(--sans);
+  font-size: 14px; font-weight: 600;
+  color: var(--ink); margin-top: .8em;
+}
+#reader-inner dd {
+  font-family: var(--serif);
+  font-size: 15px; line-height: 2.0;
+  color: var(--ink); margin-left: 1.5em;
+}
+
+/* ── Callout ── */
+.callout {
+  margin: 1.8em 0;
+  padding: 16px 20px;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--accent);
+  border-radius: 0 6px 6px 0;
+}
+.callout p, .callout p.zh {
+  text-indent: 0;
+  margin-bottom: .7em;
+  font-size: 15px;
+}
+.callout p:last-child, .callout p.zh:last-child { margin-bottom: 0; }
+
+/* ════════════════════════════════════════════════════════════
+   CODE
+   ════════════════════════════════════════════════════════════ */
+/* Inline code — light warm background */
+code, code.ic {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  background: #eae7e0;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 1px 6px;
+  color: #2a2018;
+  font-feature-settings: "liga" 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Make reader prose tolerant of long unbreakable tokens (URLs, long code) */
+#reader-inner p, #reader-inner li, #reader-inner div {
+  overflow-wrap: anywhere;
+  word-wrap: break-word;
+}
+
+/* Code blocks — dark Monokai container */
+pre, pre.code-block {
+  background: #23241f;          /* Monokai dark — matches hljs theme */
+  color: #f8f8f2;
+  font-family: var(--mono) !important;
+  font-size: 13px !important;
+  line-height: 1.7 !important;
+  tab-size: 4;
+  overflow-x: auto;
+  border-radius: 6px;
+  margin: 1.8em 0;
+  padding: 0;                   /* padding lives on .hljs inner code */
+  -webkit-overflow-scrolling: touch;
+  border: none;
+}
+/* Reset inline code styles when inside a pre block */
+pre code, pre.code-block code {
+  font-family: var(--mono) !important;
+  font-size: inherit !important;
+  background: none !important;
+  border: none !important;
+  padding: 0 !important;
+  color: inherit !important;
+  white-space: pre;
+  border-radius: 0 !important;
+}
+
+/* hljs fills the whole pre — generous padding, Monokai Sublime colors */
+.hljs {
+  display: block;
+  padding: 18px 22px !important;
+  border-radius: 6px !important;
+  font-family: var(--mono) !important;
+  font-size: 13px !important;
+  line-height: 1.7 !important;
+  background: #23241f !important;
+  color: #f8f8f2 !important;
+  overflow-x: auto;
+}
+
+/* ════════════════════════════════════════════════════════════
+   MATH (KaTeX)
+   ════════════════════════════════════════════════════════════ */
+.katex { font-size: 1.05em; }
+.katex-display {
+  margin: 1.6em 0;
+  overflow-x: auto;
+  padding: 4px 0;
+}
+.katex-display > .katex { font-size: 1.1em; }
+
+/* ════════════════════════════════════════════════════════════
+   FIGURES & IMAGES
+   ════════════════════════════════════════════════════════════ */
+figure {
+  margin: 2.2em auto;
+  text-align: center;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 20px 18px 16px;
+  box-shadow: 0 1px 8px rgba(0,0,0,.06);
+}
+figure img {
+  max-width: 100%; height: auto;
+  cursor: zoom-in;
+  display: block;
+  margin: 0 auto;
+  border-radius: 4px;
+  transition: opacity .15s;
+}
+figure img:hover { opacity: .9; }
+figcaption {
+  font-family: var(--sans);
+  font-size: 12px; color: var(--muted);
+  margin-top: 12px;
+  line-height: 1.65;
+  font-style: italic;
+}
+
+/* SVG figures */
+figure svg {
+  max-width: 100%; height: auto;
+  display: block; margin: 0 auto;
+}
+
+/* Strip figure card styling when it wraps a drawio placeholder */
+figure:has(.drawio-box) {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 4px 0;
+  box-shadow: none;
+}
+
+/* Draw.io placeholder — compact single-line strip, no empty box */
+.drawio-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 10px 8px;
+  background: transparent;
+  border: none;
+  cursor: default;
+}
+.drawio-label {
+  font-family: var(--mono);
+  font-size: 9.5px; color: #a8a09a;
+  letter-spacing: .7px; text-transform: uppercase;
+  white-space: nowrap;
+}
+.drawio-fname {
+  font-family: var(--mono);
+  font-size: 12.5px; color: #5a5250;
+  background: rgba(0,0,0,.04);
+  border: 1px solid var(--rule);
+  padding: 3px 10px; border-radius: 3px;
+  display: inline-block;
+}
+
+/* Edit button for SVG figures */
+.fig-edit-btn {
+  display: inline-block; margin-top: 8px;
+  font-family: var(--mono);
+  font-size: 10.5px; color: #5b9bd5;
+  background: rgba(91,155,213,.1);
+  border: 1px solid rgba(91,155,213,.3);
+  border-radius: 3px; padding: 2px 10px;
+  user-select: all; cursor: text;
+}
+
+/* ════════════════════════════════════════════════════════════
+   TABLES
+   ════════════════════════════════════════════════════════════ */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 1.6em 0;
+  border-radius: 6px;
+  border: 1px solid var(--rule);
+}
+.table-scroll table, table.data-table, table.def-table {
+  width: max-content !important;
+  min-width: 100%;
+  margin: 0 !important;
+  border-collapse: collapse;
+  font-family: var(--sans);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+.table-scroll th, table.data-table th, table.def-table th {
+  background: #e8e4dc;
+  font-weight: 600; text-align: left;
+  padding: 8px 14px;
+  border-bottom: 1.5px solid var(--rule);
+  border-right: 1px solid var(--rule);
+  white-space: nowrap;
+}
+.table-scroll td, table.data-table td, table.def-table td {
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--rule);
+  border-right: 1px solid var(--rule);
+  vertical-align: top;
+}
+.table-scroll tr:last-child td, table.data-table tr:last-child td, table.def-table tr:last-child td {
+  border-bottom: none;
+}
+.table-scroll th:last-child, .table-scroll td:last-child,
+table.data-table th:last-child, table.data-table td:last-child,
+table.def-table th:last-child, table.def-table td:last-child {
+  border-right: none;
+}
+.table-scroll tr:nth-child(even) td, table.data-table tr:nth-child(even) td,
+table.def-table tr:nth-child(even) td {
+  background: #f5f2ec;
+}
+.table-scroll td code, table.data-table td code, table.def-table td code {
+  font-size: 12px;
+  white-space: nowrap;
+}
+table.def-table {
+  width: 100% !important;
+  min-width: 0;
+  max-width: 100%;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  margin: 1.6em 0 !important;
+}
+
+@media (max-width: 700px) {
+  table.def-table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════
+   LIGHTBOX
+   ════════════════════════════════════════════════════════════ */
+#lb {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.84);
+  z-index: 9999;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+}
+#lb.open { display: flex; }
+#lb img {
+  max-width: 92vw; max-height: 92vh;
+  object-fit: contain;
+  border-radius: 6px;
+  box-shadow: 0 12px 60px rgba(0,0,0,.7);
+  cursor: default;
+}
+#lb-close {
+  position: fixed; top: 18px; right: 22px;
+  color: #fff; font-size: 30px; line-height: 1;
+  cursor: pointer; opacity: .65;
+  font-family: var(--sans);
+  user-select: none;
+}
+#lb-close:hover { opacity: 1; }
+
+/* ════════════════════════════════════════════════════════════
+   MISC
+   ════════════════════════════════════════════════════════════ */
+/* Chapter separator */
+.chapter-sep {
+  margin: 56px 0;
+  padding: 24px 0;
+  border-top: 2px solid var(--rule);
+  border-bottom: 2px solid var(--rule);
+  text-align: center;
+  font-family: var(--sans);
+}
+
+/* Source attribution block */
+.source-block {
+  margin-top: 16px;
+  padding: 12px 18px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--paper);
+  font-family: var(--sans);
+  font-size: 12.5px;
+  line-height: 2;
+  color: var(--muted);
+}
+.source-block a { color: var(--accent); text-decoration: none; }
+
+/* Horizontal rule */
+hr {
+  border: none;
+  border-top: 1px solid var(--rule);
+  margin: 2em 0;
+}
+
+/* Blockquote */
+blockquote {
+  border-left: 3px solid var(--rule);
+  margin: 1.4em 0;
+  padding: .4em 1.2em;
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* Scrollbar for reader area */
+#reader::-webkit-scrollbar { width: 5px; }
+#reader::-webkit-scrollbar-thumb { background: var(--rule); border-radius: 3px; }
+#reader { scrollbar-width: thin; scrollbar-color: var(--rule) transparent; }
+
+/* ════════════════════════════════════════════════════════════
+   REFERENCES  —  学术论文参考文献模块（统一格式）
+   Usage:
+     <section id="refs">
+       <h2 class="section-h lv1">参考资料</h2>  ← or h3 lv2
+       <div class="kbox">
+         <p class="zh no-indent"><b>Source list.</b>　简短说明。</p>
+         <ol class="zh-list ref-list">
+           <li><a href="…" target="_blank">Author, "Title"</a>，Venue · Year。</li>
+         </ol>
+       </div>
+     </section>
+   Inline citation: <a href="#ref-1" class="ref-cite">[1]</a>
+   ════════════════════════════════════════════════════════════ */
+
+/* Knowledge box — used for references and supplementary blocks */
+.kbox {
+  margin: 1.2em 0 2em;
+  padding: 18px 22px 14px;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--accent);
+  border-radius: 0 6px 6px 0;
+}
+.kbox p.zh, .kbox p { text-indent: 0; margin-bottom: .9em; }
+.kbox p.zh:last-child, .kbox p:last-child { margin-bottom: 0; }
+
+/* Reference list inside .kbox */
+ol.ref-list {
+  list-style: none;
+  counter-reset: ref-counter;
+  margin: .8em 0 0 0 !important;
+  padding: 0;
+  font-family: var(--sans);
+  font-size: 13.5px;
+  line-height: 1.85;
+  color: var(--ink);
+}
+ol.ref-list li {
+  counter-increment: ref-counter;
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--rule);
+}
+ol.ref-list li:last-child { border-bottom: none; padding-bottom: 0; }
+ol.ref-list li::before {
+  content: counter(ref-counter) ".";
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+  min-width: 22px;
+  flex-shrink: 0;
+  text-align: right;
+  padding-top: 1px;
+}
+ol.ref-list li a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(29,79,124,.25);
+  word-break: break-word;
+}
+ol.ref-list li a:hover { border-bottom-color: var(--accent); }
+
+/* Inline citation superscript */
+a.ref-cite {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent);
+  vertical-align: super;
+  line-height: 0;
+  text-decoration: none;
+  border-bottom: none !important;
+}
+a.ref-cite:hover { text-decoration: underline; }
+
+/* Legacy refs-block alias — for backward compat */
+.refs-block {
+  margin-top: 3.5em;
+  padding-top: 2em;
+  border-top: 2px solid var(--rule);
+}
+
+/* ════════════════════════════════════════════════════════════
+   THEME — follow Hugo site's pref-theme localStorage value
+   Reader page chrome (sidebar, bg, ink) shifts to dark mode;
+   inline SVG figures keep their light backgrounds intentionally,
+   so they render as cards on top of the dark canvas.
+   ════════════════════════════════════════════════════════════ */
+[data-theme="dark"] {
+  --bg      : #1a1714;
+  --paper   : #2a2622;
+  --ink     : #e8e2d4;
+  --muted   : #8a847e;
+  --rule    : #3a342e;
+  --accent  : #7eb6e4;
+  --sidebar : #0e0d0e;
+  --sbtext  : #6f6a64;
+}
+/* Figures remain light cards — improves SVG readability on dark bg */
+[data-theme="dark"] figure {
+  background: var(--paper);
+  border-radius: 6px;
+  padding: 8px;
+}
+[data-theme="dark"] figure img,
+[data-theme="dark"] figure svg {
+  background: #faf8f3;
+  border-radius: 4px;
+}
+[data-theme="dark"] .callout {
+  background: #2a2622;
+  border-color: #4a443e;
+  color: var(--ink);
+}
+[data-theme="dark"] .data-table thead {
+  background: #2a2622;
+}
+[data-theme="dark"] .data-table th,
+[data-theme="dark"] .data-table td {
+  border-color: #3a342e;
+  color: var(--ink);
+}

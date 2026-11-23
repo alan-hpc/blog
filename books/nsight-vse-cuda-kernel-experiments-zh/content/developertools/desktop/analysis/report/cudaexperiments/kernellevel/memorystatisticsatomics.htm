@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html xmlns:MadCap="http://www.madcapsoftware.com/Schemas/MadCap.xsd" lang="en-us" xml:lang="en-us" data-mc-search-type="Stem" data-mc-help-system-file-name="index.xml" data-mc-path-to-help-system="../../../../../../../" data-mc-target-type="WebHelp2" data-mc-runtime-file-type="Topic" data-mc-preload-images="false" data-mc-in-preview-mode="false" data-mc-toc-path="Developer Tools|Desktop Developer Tools|NVIDIA Nsight Visual Studio Edition|NVIDIA Nsight Visual Studio Edition 4.7|Analysis Tools|CUDA Experiments|Kernel-Level Experiments|Memory Statistics">
+    <!-- saved from url=(0016)http://localhost -->
+    <head>
+        <meta charset="utf-8" />
+        <meta name="googlebot" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><title>内存统计 — 原子操作</title>
+        <link rel="shortcut icon" href="../../../../../../Resources/MasterPages/nvidia.ico" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/Slideshow.css" rel="stylesheet" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/TextEffects.css" rel="stylesheet" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/Topic.css" rel="stylesheet" />
+        <link href="../../../../../../resources/stylesheets/style.css" rel="stylesheet" />
+        <style>/*&lt;meta /&gt;*/
+
+.button.previous-topic-button
+{
+	-pie-background: url('../../../../../../../Skins/Default/Stylesheets/Images/navigate-previous.png') no-repeat center center, linear-gradient(#ffffff, #ececec);
+}
+
+.button.current-topic-index-button
+{
+	-pie-background: linear-gradient(#ffffff, #ececec);
+}
+
+.button.next-topic-button
+{
+	-pie-background: url('../../../../../../../Skins/Default/Stylesheets/Images/navigate-next.png') no-repeat center center, linear-gradient(#ffffff, #ececec);
+}
+
+.needs-pie
+{
+	behavior: url('../../../../../../../Resources/Scripts/PIE.htc');
+}
+
+</style>
+        <script src="../../../../../../../Resources/Scripts/custom.modernizr.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/jquery.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/foundation.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/plugins.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/require.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/require.config.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/MadCapAll.js">
+        </script>
+        <script src="../../../../../../../Skins/Default/Scripts/Toolbar.js">
+        </script>
+    </head>
+    <body>
+        <p class="MCWebHelpFramesetLink MCWebHelpFramesetLinkTop"><a href="../../../../../../../index.html#developertools/desktop/analysis/report/cudaexperiments/kernellevel/memorystatisticsatomics.htm">打开带导航的主题视图</a>
+        </p>
+        <div class="MCBreadcrumbsBox_site.css_0"><span class="MCBreadcrumbsPrefix">当前位置： </span><a class="MCBreadcrumbsLink" href="../../../../../developer_tools.htm">开发者工具</a><span class="MCBreadcrumbsDivider"> &gt; </span><a class="MCBreadcrumbsLink" href="../../../../../desktop_devtools.htm">桌面开发者工具</a><span class="MCBreadcrumbsDivider"> &gt; </span><a class="MCBreadcrumbsLink" href="../../../../nvidia_nsight.htm">NVIDIA Nsight Visual Studio Edition</a><span class="MCBreadcrumbsDivider"> &gt; </span><span class="MCBreadcrumbs">内存统计 — 原子操作</span>
+        </div><a name="kanchor143"></a>
+        <div id="pageheader">
+            <h1><span class="SystemTitle">内存统计 — 原子操作</span>
+            </h1>
+            <p style="font-size: 8pt;"><span style="color: #696969;">NVIDIA® Nsight™ Development Platform, Visual Studio Edition 4.7 用户指南</span>
+                <br /><span id="feedbacklink" style="font-size: 8pt; font-weight: normal;"><a href="mailto:devtools-support@nvidia.com?subject=Documentation Feedback: Nsight Visual Studio Edition User Guide">发送反馈</a></span>
+                <br />
+            </p>
+            <hr width="100%" size="0" align="center" />
+        </div>
+        <h3><a id="Overview"></a>概述</h3>
+        <p>
+          原子函数对位于全局或共享内存中的一个 32 位或 64 位字执行一次读—改—写的原子操作。例如，<code>atomicAdd()</code> 读取全局或共享内存中某个地址上的一个字，对其加上一个数，再将结果写回到同一地址。所谓原子，是指该操作保证不会被其他线程干扰地完成；换言之，在操作完成之前，没有其他线程可以访问该地址。如果一个 warp 执行的原子指令对全局内存中的同一位置进行读、改、写操作，并且 warp 中有不止一个线程访问该位置，则对该位置的每一次读/改/写都会发生且全部被串行化，但发生的顺序是未定义的。
+        </p>
+        <p>
+          全局内存原子操作在计算能力 3.x 的设备上的吞吐量远高于之前的架构。在早期的 GPU 上，需要多个线程并发更新内存中同一位置的算法有时不得不依赖复杂的数据重排，以尽量减少所需原子操作的数量。鉴于全局内存原子操作性能的提升，在计算能力 3.x 的设备上，许多原子操作的执行速度几乎可与内存加载相当。这可能简化需要原子性的实现，或使先前被认为不切实际的算法变得可行。
+        </p>
+        <p>
+          Nsight 将原子函数区分为两类操作：标准原子操作（<b>ATOMs</b>）会将应用原子操作之前的数据值返回给调用线程。因此会产生双向的数据流量，即进出 L1 缓存。相比之下，归约（<b>REDs</b>）没有返回值，数据仅从 warp 流向 L1。可以使用 <a href="../../../../analysis_source_code_correlation.htm#SourceView">Source View</a> 页面来调查编译器使用了哪种类型的操作。
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h3><a id="Chart"></a>图表</h3>
+                    <img src="memorystatisticsatomicschart.png" style="float: right;mc-thumbnail: none;" />
+                    <p>
+          <b>Requests</b>（请求数）等于执行的原子指令数量。每个请求由一个或多个事务服务。实际所需的事务数量取决于操作宽度、访问的内存空间（全局或共享）以及目标计算能力。所采用的合并访问规则与对相应内存空间的内存访问行为一致（更多细节见 <a href="memorystatisticsglobal.htm">内存统计 — 全局内存</a> 实验和 <a href="memorystatisticsshared.htm">内存统计 — 共享内存</a> 实验中的讨论）。一般而言，需要的事务越多，除了线程访问的字以外还要额外传输的未使用字也越多，相应地降低了指令吞吐量。此外，每个事务都要求该汇编指令再次发射；如果完成一个 warp 的请求需要多于一个事务，就会导致指令重放。
+        </p>
+                    <p>
+          <b>Transactions Per Request</b>（每请求事务数）图表显示每条执行的原子指令所需的平均 L1 事务数。数值越低越好。最优目标范围为每请求 1—2 个事务。具体的最优目标值取决于所执行原子指令的组合，即使用的内存空间和操作宽度。warp 与 L1 缓存之间流量的 <b>Transaction Size</b>（事务大小）等于一整条 L1 缓存行的大小；一条 L1 缓存行为 128 字节。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <h3><a id="Analysis"></a>分析</h3>
+        <ul style="list-style-type:none">
+            <li value="1">
+            如果 <b>Transactions Per Request</b>（每请求事务数）较高……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……检查原子操作的访问模式，并尝试针对目标计算设备的合并访问规则优化数据访问（更多细节见 CUDA C Programming Guide 的 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#global-memory-3-0">Global Memory</a> 章节或 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#shared-memory-3-0">Shared Memory</a> 章节）。
+              </li></ul></li>
+            <li value="2">
+            如果 <b>Requests</b>（请求数）较高……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……请确认在适用的场景中都使用了归约。归约操作不向线程返回任何数据，可以节省一些内存流量。<a href="../../../../analysis_source_code_correlation.htm#SourceView">Source View</a> 页面可以告诉你执行了哪些操作。
+              </li></ul></li>
+        </ul>
+        <div id="pagefooter">
+            <br />
+        </div>
+        <hr style="height: 1px;" width="100%" size="0" align="center" />
+        <script type="text/javascript" src="../../../../../../resources/stylesheets/run_prettify.js?lang=vb" autoload="true">
+        </script>
+        <p>
+        </p>
+        <div class="buttons inline-buttons clearfix topicToolbarProxy topicToolbarProxysite.css" style="mc-topic-toolbar-items: ;">
+            <div class="button-group-container-left">
+                <button class="button needs-pie previous-topic-button" type="button" title="导航到上一篇">
+                    <img src="../../../../../../../Skins/Default/Stylesheets/Images/transparent.gif" alt="上一主题" />
+                </button>
+                <div class="button current-topic-index-button disabled"><span class="sequence-index"></span> / <span class="sequence-total"></span></div>
+                <button class="button needs-pie next-topic-button" type="button" title="导航到下一篇">
+                    <img src="../../../../../../../Skins/Default/Stylesheets/Images/transparent.gif" alt="下一主题" />
+                </button>
+            </div>
+        </div>
+        <p> <![CDATA[ ]]></p>
+        <p><span style="color: #696969; font-size: 8pt;">NVIDIA GameWorks Documentation Rev. 1.0.150630 ©2015. NVIDIA Corporation. All Rights Reserved.</span>
+        </p>
+    </body>
+</html>

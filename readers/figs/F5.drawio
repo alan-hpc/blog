@@ -1,0 +1,92 @@
+<mxfile host="embed.diagrams.net" agent="Codex native-drawio">
+  <diagram id="F5" name="F5">
+    <mxGraphModel dx="1231" dy="1967" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1000" pageHeight="520" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="c2" parent="1" style="text;html=1;strokeColor=none;fillColor=none;whiteSpace=wrap;rounded=0;align=center;verticalAlign=middle;fontSize=24;fontStyle=1;fontColor=#1f2328;fontFamily=Helvetica;" value="F5 · 标准残差：identity 旁路让主状态线性累加" vertex="1">
+          <mxGeometry height="37.2" width="517.8" x="260" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="c3" parent="1" style="text;html=1;strokeColor=none;fillColor=none;whiteSpace=wrap;rounded=0;align=center;verticalAlign=middle;fontSize=16;fontStyle=0;fontColor=#59636e;fontFamily=Helvetica;" value="核心不是“多一条线”，而是 x&lt;sub&gt;l &lt;/sub&gt;的系数始终是 1，不会出现跨层矩阵乘积链。" vertex="1">
+          <mxGeometry height="24.8" width="549" x="253.5" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="c4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef4ff;strokeColor=#5680c2;strokeWidth=2;" value="" vertex="1">
+          <mxGeometry height="80" width="150" x="70" y="127" as="geometry" />
+        </mxCell>
+        <mxCell id="c5" parent="1" style="text;html=1;strokeColor=none;fillColor=none;whiteSpace=wrap;rounded=0;align=center;verticalAlign=middle;fontSize=19;fontStyle=1;fontColor=#27313d;fontFamily=Helvetica;" value="x&lt;sub&gt;l&lt;/sub&gt;" vertex="1">
+          <mxGeometry height="29.45" width="45" x="122.5" y="141.05" as="geometry" />
+        </mxCell>
+        <mxCell id="c6" parent="1" style="text;html=1;strokeColor=none;fillColor=none;whiteSpace=wrap;rounded=0;align=center;verticalAlign=middle;fontSize=14;fontStyle=0;fontColor=#5b6570;fontFamily=Helvetica;" value="T × C" vertex="1">
+          <mxGeometry height="24" width="57.2" x="116.4" y="172.3" as="geometry" />
+        </mxCell>
+        <mxCell id="c7" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff1ef;strokeColor=#b85450;strokeWidth=2;" value="" vertex="1">
+          <mxGeometry height="90" width="210" x="388" y="122" as="geometry" />
+        </mxCell>
+        <mxCell id="c8" parent="1" style="text;html=1;strokeColor=none;fillColor=none;whiteSpace=wrap;rounded=0;align=center;verticalAlign=middle;fontSize=19;fontStyle=1;fontColor=#27313d;fontFamily=Helvetica;" value="sublayer F" vertex="1">
+          <mxGeometry height="29.45" width="124.4" x="430.8" y="132.05" as="geometry" />
+        </mxCell>
+        <mxCell id="c9" parent="1" style="text;html=1;strokeColor=none;fillColor=none;whiteSpace=wrap;rounded=0;align=center;verticalAlign=middle;fontSize=20;fontStyle=1;fontColor=#1f2328;fontFamily=Times New Roman;" value="F(x&lt;sub&gt;l&lt;/sub&gt;, W&lt;sub&gt;l&lt;/sub&gt;)" vertex="1">
+          <mxGeometry height="31" width="126" x="430" y="163" as="geometry" />
+        </mxCell>
+        <mxCell id="c10" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#fff;strokeColor=#d0d7de;strokeWidth=1.6;" value="" vertex="1">
+          <mxGeometry height="50" width="50" x="755" y="142" as="geometry" />
+        </mxCell>
+        <mxCell id="c11" parent="1" style="text;html=1;strokeColor=none;fillColor=none;whiteSpace=wrap;rounded=0;align=center;verticalAlign=middle;fontSize=30;fontStyle=1;fontColor=#1f2328;fontFamily=Helvetica;" value="+" vertex="1">
+          <mxGeometry height="34.1" width="45" x="757.5" y="148.9" as="geometry" />
+        </mxCell>
+        <mxCell id="c12" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef4ff;strokeColor=#5680c2;strokeWidth=2;" value="" vertex="1">
+          <mxGeometry height="80" width="120" x="850" y="127" as="geometry" />
+        </mxCell>
+        <mxCell id="c13" parent="1" style="text;html=1;strokeColor=none;fillColor=none;whiteSpace=wrap;rounded=0;align=center;verticalAlign=middle;fontSize=19;fontStyle=1;fontColor=#27313d;fontFamily=Helvetica;" value="x&lt;sub&gt;l+1&lt;/sub&gt;" vertex="1">
+          <mxGeometry height="29.45" width="60.56" x="879.72" y="141.05" as="geometry" />
+        </mxCell>
+        <mxCell id="c14" parent="1" style="text;html=1;strokeColor=none;fillColor=none;whiteSpace=wrap;rounded=0;align=center;verticalAlign=middle;fontSize=14;fontStyle=0;fontColor=#5b6570;fontFamily=Helvetica;" value="T × C" vertex="1">
+          <mxGeometry height="24" width="57.2" x="881.4" y="172.3" as="geometry" />
+        </mxCell>
+        <mxCell id="c15" edge="1" parent="1" style="endArrow=block;html=1;rounded=0;curved=0;dashed=0;strokeColor=#59636e;strokeWidth=3;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="c7" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="220" y="167" as="sourcePoint" />
+            <mxPoint x="390" y="167" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c16" edge="1" parent="1" source="c7" style="endArrow=block;html=1;rounded=0;curved=0;dashed=0;strokeColor=#59636e;strokeWidth=3;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="605" y="182" as="sourcePoint" />
+            <mxPoint x="755" y="167" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c17" edge="1" parent="1" style="endArrow=block;html=1;rounded=0;curved=0;dashed=0;strokeColor=#59636e;strokeWidth=3;" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="805" y="167" as="sourcePoint" />
+            <mxPoint x="845" y="167" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c18" edge="1" parent="1" source="c4" style="endArrow=block;html=1;rounded=0;dashed=0;strokeColor=#2f6fb3;strokeWidth=3;edgeStyle=orthogonalEdgeStyle;entryX=0.5;entryY=1;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" target="c10" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <Array as="points">
+              <mxPoint x="145" y="277" />
+              <mxPoint x="780" y="277" />
+            </Array>
+            <mxPoint x="220" y="147" as="sourcePoint" />
+            <mxPoint x="755" y="149" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c19" parent="1" style="text;html=1;strokeColor=none;fillColor=none;whiteSpace=wrap;rounded=0;align=center;verticalAlign=middle;fontSize=14;fontStyle=0;fontColor=#5b6570;fontFamily=Helvetica;" value="identity highway：x&lt;sub&gt;l&lt;/sub&gt; 直接加到下一层" vertex="1">
+          <mxGeometry height="24" width="229.68" x="378.16" y="247" as="geometry" />
+        </mxCell>
+        <mxCell id="c20" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e6;strokeColor=#d5a51b;strokeWidth=2;" value="" vertex="1">
+          <mxGeometry height="145" width="860" x="70" y="320" as="geometry" />
+        </mxCell>
+        <mxCell id="c21" parent="1" style="text;html=1;strokeColor=none;fillColor=none;whiteSpace=wrap;rounded=0;align=center;verticalAlign=middle;fontSize=24;fontStyle=1;fontColor=#1f2328;fontFamily=Times New Roman;" value="x&lt;sub&gt;l+1&lt;/sub&gt; = x&lt;sub&gt;l&lt;/sub&gt; + F(x&lt;sub&gt;l&lt;/sub&gt;, W&lt;sub&gt;l&lt;/sub&gt;)" vertex="1">
+          <mxGeometry height="37.2" width="320.4" x="339.8" y="334.8" as="geometry" />
+        </mxCell>
+        <mxCell id="c22" parent="1" style="text;html=1;strokeColor=none;fillColor=none;whiteSpace=wrap;rounded=0;align=center;verticalAlign=middle;fontSize=24;fontStyle=1;fontColor=#1f2328;fontFamily=Times New Roman;" value="x&lt;sub&gt;L&lt;/sub&gt; = x&lt;sub&gt;l&lt;/sub&gt; + Σ&lt;sub&gt;i=l&lt;/sub&gt;&lt;sup&gt;L-1&lt;/sup&gt; F(x&lt;sub&gt;i&lt;/sub&gt;, W&lt;sub&gt;i&lt;/sub&gt;)" vertex="1">
+          <mxGeometry height="37.2" width="406.8" x="296.6" y="379.8" as="geometry" />
+        </mxCell>
+        <mxCell id="c23" parent="1" style="text;html=1;strokeColor=none;fillColor=none;whiteSpace=wrap;rounded=0;align=center;verticalAlign=middle;fontSize=16;fontStyle=0;fontColor=#4b5563;fontFamily=Helvetica;" value="稳定直觉：主通道没有 H&lt;sup&gt;res&lt;/sup&gt; 连乘，所以不会把 identity 变成不可控矩阵。" vertex="1">
+          <mxGeometry height="24.8" width="517.16" x="240.99999999999997" y="430" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

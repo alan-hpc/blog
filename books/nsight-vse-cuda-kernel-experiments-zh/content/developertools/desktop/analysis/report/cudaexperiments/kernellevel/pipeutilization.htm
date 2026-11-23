@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html xmlns:MadCap="http://www.madcapsoftware.com/Schemas/MadCap.xsd" lang="en-us" xml:lang="en-us" data-mc-search-type="Stem" data-mc-help-system-file-name="index.xml" data-mc-path-to-help-system="../../../../../../../" data-mc-target-type="WebHelp2" data-mc-runtime-file-type="Topic" data-mc-preload-images="false" data-mc-in-preview-mode="false" data-mc-toc-path="Developer Tools|Desktop Developer Tools|NVIDIA Nsight Visual Studio Edition|NVIDIA Nsight Visual Studio Edition 4.7|Analysis Tools|CUDA Experiments|Kernel-Level Experiments">
+    <!-- saved from url=(0016)http://localhost -->
+    <head>
+        <meta charset="utf-8" />
+        <meta name="googlebot" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><title>流水线利用率</title>
+        <link rel="shortcut icon" href="../../../../../../Resources/MasterPages/nvidia.ico" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/Slideshow.css" rel="stylesheet" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/TextEffects.css" rel="stylesheet" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/Topic.css" rel="stylesheet" />
+        <link href="../../../../../../resources/stylesheets/style.css" rel="stylesheet" />
+        <style>/*&lt;meta /&gt;*/
+
+.button.previous-topic-button
+{
+	-pie-background: url('../../../../../../../Skins/Default/Stylesheets/Images/navigate-previous.png') no-repeat center center, linear-gradient(#ffffff, #ececec);
+}
+
+.button.current-topic-index-button
+{
+	-pie-background: linear-gradient(#ffffff, #ececec);
+}
+
+.button.next-topic-button
+{
+	-pie-background: url('../../../../../../../Skins/Default/Stylesheets/Images/navigate-next.png') no-repeat center center, linear-gradient(#ffffff, #ececec);
+}
+
+.needs-pie
+{
+	behavior: url('../../../../../../../Resources/Scripts/PIE.htc');
+}
+
+</style>
+        <script src="../../../../../../../Resources/Scripts/custom.modernizr.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/jquery.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/foundation.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/plugins.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/require.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/require.config.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/MadCapAll.js">
+        </script>
+        <script src="../../../../../../../Skins/Default/Scripts/Toolbar.js">
+        </script>
+    </head>
+    <body>
+        <p class="MCWebHelpFramesetLink MCWebHelpFramesetLinkTop"><a href="../../../../../../../index.html#developertools/desktop/analysis/report/cudaexperiments/kernellevel/pipeutilization.htm">打开带导航的主题视图</a>
+        </p>
+        <div class="MCBreadcrumbsBox_site.css_0"><span class="MCBreadcrumbsPrefix">当前位置： </span><a class="MCBreadcrumbsLink" href="../../../../../developer_tools.htm">开发者工具</a><span class="MCBreadcrumbsDivider"> &gt; </span><a class="MCBreadcrumbsLink" href="../../../../../desktop_devtools.htm">桌面开发者工具</a><span class="MCBreadcrumbsDivider"> &gt; </span><a class="MCBreadcrumbsLink" href="../../../../nvidia_nsight.htm">NVIDIA Nsight Visual Studio Edition</a><span class="MCBreadcrumbsDivider"> &gt; </span><span class="MCBreadcrumbs">流水线利用率</span>
+        </div><a name="kanchor148"></a>
+        <div id="pageheader">
+            <h1><span class="SystemTitle">流水线利用率</span>
+            </h1>
+            <p style="font-size: 8pt;"><span style="color: #696969;">NVIDIA® Nsight™ Development Platform, Visual Studio Edition 4.7 用户指南</span>
+                <br /><span id="feedbacklink" style="font-size: 8pt; font-weight: normal;"><a href="mailto:devtools-support@nvidia.com?subject=Documentation Feedback: Nsight Visual Studio Edition User Guide">发送反馈</a></span>
+                <br />
+            </p>
+            <hr width="100%" size="0" align="center" />
+        </div>
+        <h3><a id="Overview"></a>概述</h3>
+        <p>
+          CUDA 设备的每个流多处理器（SM）都包含许多专门执行特定任务的硬件单元。在芯片层面，这些单元提供执行流水线，warp 调度器将指令分派到这些流水线上。例如，纹理单元负责执行纹理读取并完成纹理过滤；Load/Store 单元负责从内存读取数据或将数据写回内存。理解这些流水线的利用率，并了解它们距离目标设备的峰值性能还有多远，是分析 kernel 执行效率的关键信息；同时也可以帮助识别由于某种类型流水线被过度使用而导致的性能瓶颈。
+        </p>
+        <h5><a id="Background"></a>背景</h5>
+        <p>
+          <a href="http://www.nvidia.com/content/PDF/kepler/NVIDIA-Kepler-GK110-Architecture-Whitepaper.pdf">Kepler GK110 白皮书</a> 和 <a href="http://www.geforce.com/Active/en_US/en_US/pdf/GeForce-GTX-680-Whitepaper-FINAL.pdf">NVIDIA GeForce GTX 680 白皮书</a> 都描述并对比了最新 CUDA 计算设备的架构细节。下表简要列出了每个 SM 中各类单元的数量以及对应流水线的每周期吞吐量：
+        </p>
+        <table align="center" style="border-collapse:collapse;border-spacing:0;">
+            <thead>
+                <tr>
+                    <th colspan="2" rowspan="2" style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+                    </th>
+                    <th colspan="2" style="border:1px solid;background-color:#eaefe0;padding:2px 10px;">
+              Fermi (cc 2.0)
+            </th>
+                    <th colspan="2" style="border:1px solid;background-color:#eaefe0;padding:2px 10px;">
+              Kepler (cc 3.x)
+            </th>
+                </tr>
+                <tr>
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;">
+              单元数量
+            </th>
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;">
+              吞吐量
+            </th>
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;">
+              单元数量
+            </th>
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;">
+              吞吐量
+            </th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <th colspan="2" style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              Load/Store
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              16
+            </td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              16
+            </td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              32
+            </td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              32
+            </td>
+                </tr>
+                <tr>
+                    <th colspan="2" style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              纹理（Texture）
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              4
+            </td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              4
+            </td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              16
+            </td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              16
+            </td>
+                </tr>
+                <tr>
+                    <th rowspan="2" style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              算术运算
+            </th>
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              FP32
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              32
+            </td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              64
+            </td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              192
+            </td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              192
+            </td>
+                </tr>
+                <tr>
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              SFU
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              4
+            </td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              8
+            </td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              32
+            </td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">
+              32
+            </td>
+                </tr>
+            </tbody>
+        </table>
+        <p>
+          相对于这些架构吞吐量数值，<b>流水线利用率</b>指标报告的是运行时每条流水线观察到的利用率。高流水线利用率表明在 kernel 执行期间相应的计算资源被大量使用且经常处于繁忙状态。低值则说明该流水线使用频率不高、资源处于空闲。每条流水线的结果相互独立；将两条或多条流水线的利用率百分比相加并不会得到有意义的数值。由于流水线指标是 kernel 启动持续时间内的平均值，因此较低的值并不能完全排除该流水线在 kernel 执行某个时间点曾是瓶颈的可能。
+        </p>
+        <p>
+          算术指令由多种流水线执行，上表中以 32 位浮点指令和特殊函数运算两个例子作为示意。这些流水线提供的吞吐量差异很大，进而导致 CUDA C Programming Guide 中记录的 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#arithmetic-instructions">原生算术指令吞吐量</a> 各不相同。对于本实验所支持的 CUDA 设备，这些算术吞吐量如下：
+        </p>
+        <table align="center" style="border-collapse:collapse;border-spacing:0;">
+            <thead>
+                <tr>
+                    <th rowspan="2" colspan="1" style="border:1px solid;background-color:#eaefe0;padding:2px 30px;text-align:left;">
+                    </th>
+                    <th colspan="4" style="border:1px solid;background-color:#eaefe0;padding:2px 30px;">计算能力</th>
+                </tr>
+                <tr class="row" valign="middle">
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 30px;">2.0</th>
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 30px;">2.1</th>
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 30px;">3.0</th>
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 30px;">3.5</th>
+                </tr>
+            </thead>
+            <tbody class="tbody">
+                <tr class="row" valign="middle">
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              32 位浮点加法、乘法、乘加
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">32</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">48</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">192</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">192</td>
+                </tr>
+                <tr class="row" valign="middle">
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              64 位浮点加法、乘法、乘加
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">≤16</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">4</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">8</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">64</td>
+                </tr>
+                <tr class="row" valign="middle">
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              32 位浮点倒数、倒数平方根、以 2 为底的对数、以 2 为底的指数、正弦、余弦
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">4</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">8</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">32</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">32</td>
+                </tr>
+                <tr class="row" valign="middle">
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              32 位整数加法、扩展精度加法、减法、扩展精度减法、最小值、最大值
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">32</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">48</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">160</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">160</td>
+                </tr>
+                <tr class="row" valign="middle">
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              32 位整数乘法、乘加、扩展精度乘加、绝对差之和、置位计数、前导零计数、最高非符号位
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">16</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">16</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">32</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">32</td>
+                </tr>
+                <tr class="row" valign="middle">
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              32 位整数移位
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">16</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">16</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">32</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">≤64</td>
+                </tr>
+                <tr class="row" valign="middle">
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              32 位整数位反转、位域提取/插入
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">16</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">16</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">32</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">64</td>
+                </tr>
+                <tr class="row" valign="middle">
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              逻辑运算
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">32</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">48</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">160</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">160</td>
+                </tr>
+                <tr class="row" valign="middle">
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              Warp shuffle
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">-</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">-</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">32</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">32</td>
+                </tr>
+                <tr class="row" valign="middle">
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              从 8 位、16 位整数到 32 位类型的类型转换
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">16</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">16</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">128</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">128</td>
+                </tr>
+                <tr class="row" valign="middle">
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              与 64 位类型之间的相互转换
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">≤16</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">4</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">8</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">32</td>
+                </tr>
+                <tr class="row" valign="middle">
+                    <th style="border:1px solid;background-color:#eaefe0;padding:2px 10px;text-align:left;">
+              所有其他类型转换
+            </th>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">16</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">16</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">32</td>
+                    <td style="border:1px solid;padding:2px 10px;text-align:right;">32</td>
+                </tr>
+            </tbody>
+        </table>
+        <p>
+          按定义，指令吞吐量描述了每个 SM 每周期可以处理多少操作。换句话说，吞吐量高的操作在发射时的代价比吞吐量低的操作要小。<b>算术负载</b>使用这一简化的成本模型——将发射的指令数按对应指令吞吐量的倒数加权。这样做可以评估每种算术指令对总体处理代价的占比有多大。这对于算术流水线利用率较高的 kernel 尤其有用，可以用来识别哪一类算术运算可能已经触及可用吞吐量的上限。
+        </p>
+        <h3><a id="Charts"></a>图表</h3>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="PipeUtilization"></a>流水线利用率</h4>
+                    <img src="pipeutilizationchartpipeutilization.png" style="float: right;mc-thumbnail: none;" alt="流水线利用率" />
+                    <p>
+          显示在 kernel 执行期间 SM 上四条主要逻辑流水线的平均利用率。可用于判断某条流水线是否被过度使用，从而成为限制 kernel 性能的瓶颈；也有助于估计增加额外工作量后是否还能很好地扩展、还是会触及流水线上限。这里的"增加工作量"可以指：增加算术负载（例如提高某些计算的精度）、增加内存操作数量（包括引入寄存器溢出），或者通过增加每个 SM 上的 <a href="issueefficiency.htm#Background">活跃 warp</a> 数量来改善指令延迟隐藏。
+        </p>
+                    <p style="padding:10px;background-color:#eaefe0">
+          报告的数值是 kernel 执行持续时间内的平均值。较低的利用率百分比并不能保证该流水线在 kernel 执行过程中从未发生过过载。
+        </p>
+                    <h5>指标</h5>
+                    <p><b>Load / Store</b>
+          覆盖所有发射的、会向目标设备内存系统发出请求的指令——不包括纹理操作。包含针对全局内存、本地内存、共享内存的加载和存储操作，以及任何原子操作。也包含寄存器溢出。计算能力 3.5 及以上的设备支持通过 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#global-memory-3-0">只读数据缓存</a>（<code>LDG</code>）加载全局内存；这类操作不计入 load/store 组，而是计入纹理流水线的利用率中。当 load/store 利用率较高时，请运行 <a href="memorystatistics.htm">内存统计</a>，以获取所执行内存操作的类型、数量和效率的更多信息。
+        </p>
+                    <p><b>纹理（Texture）</b>
+          覆盖所有发射的纹理读取指令；对于计算能力 3.5 及以上的设备，还包括通过 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#global-memory-3-0">只读数据缓存</a>（<code>LDG</code>）发起的全局内存加载。如果该指标较高，请运行 <a href="memorystatisticstexture.htm">内存统计 — 纹理内存</a> 实验，对所执行的纹理请求进行更详细的评估。
+        </p>
+                    <p><b>控制流</b>
+          覆盖所有可能影响控制流的发射指令，例如分支指令（<code>BRA,BRX</code>）、跳转指令（<code>JMP,JMX</code>）、函数调用（<code>CAL,JCAL</code>）、循环控制指令（<code>BRK,CONT</code>）、返回指令（<code>RET</code>）、程序终止（<code>EXIT</code>）以及屏障同步（<code>BAR</code>）。关于这些具体指令的详细说明，请参阅 <a href="http://docs.nvidia.com/cuda/cuda-binary-utilities/index.html#instruction-set-ref">指令集参考</a>。如果控制流利用率较高，请运行 <a href="branchstatistics.htm">分支统计</a> 实验；这可以帮助理解控制流对整体 kernel 执行性能的影响。
+        </p>
+                    <p><b>算术运算</b>
+          覆盖所有发射的浮点指令、整数指令、转换操作和移动指令。每一类对应的汇编指令详细列表请参阅 <a href="http://docs.nvidia.com/cuda/cuda-binary-utilities/index.html#instruction-set-ref">指令集参考</a>。如果算术流水线利用率较高，请查看 <a href="#ArithmeticWorkload">算术负载</a> 图表，以识别代价最高的指令类型。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <p>
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="ArithmeticWorkload"></a>算术负载</h4>
+                    <img src="pipeutilizationchartarithmeticworkload.png" style="float: right;mc-thumbnail: none;" alt="算术负载" />
+                    <p>
+          给出多种算术指令类别的估计代价分布。该成本模型以发射数乘以对应指令吞吐量的倒数作为加权。指令类别与本文档<a href="#Background">背景</a>章节中算术吞吐量表的行一一对应。
+        </p>
+                    <p style="padding:10px;background-color:#eaefe0">
+          算术指令由芯片上的多条流水线执行，它们可以并行工作。因此，算术负载的分布并不是 <a href="#PipeUtilization">流水线利用率</a> 图中算术流水线百分比的真正划分；但代价估计最高的指令类型，最有可能是导致片上流水线利用率最高的来源。
+        </p>
+                    <h5>指标</h5>
+                    <p>
+          下列指标描述中所有对具体汇编指令的引用，均指 CUDA 设备的原生指令集架构（ISA），详见 <a href="http://docs.nvidia.com/cuda/cuda-binary-utilities/index.html#instruction-set-ref">指令集参考</a>。
+        </p>
+                    <p><b>FP32</b>
+          所有 32 位浮点加法（<code>FADD</code>）、乘法（<code>FMUL</code>）、乘加（<code>FMAD</code>）指令的估计负载。
+        </p>
+                    <p><b>FP64</b>
+          所有 64 位浮点加法（<code>DADD</code>）、乘法（<code>DMUL</code>）、乘加（<code>DMAD</code>）指令的估计负载。
+        </p>
+                    <p><b>FP32（特殊函数）</b>
+          所有 32 位浮点倒数（<code>RCP</code>）、倒数平方根（<code>RSQ</code>）、以 2 为底的对数（<code>LG2</code>）、以 2 为底的指数（<code>EX2</code>）、正弦（<code>SIN</code>）、余弦（<code>COS</code>）指令的估计负载。
+        </p>
+                    <p><b>I32（Add）</b>
+          所有 32 位整数加法（<code>IADD</code>）、扩展精度加法、减法、扩展精度减法、最小值（<code>IMNMX</code>）、最大值指令的估计负载。
+        </p>
+                    <p><b>I32（Mul）</b>
+          所有 32 位整数乘法（<code>IMUL</code>）、乘加（<code>IMAD</code>）、扩展精度乘加、绝对差之和（<code>ISAD</code>）、置位计数（<code>POPC</code>）、前导零计数、最高非符号位（<code>FLO</code>）的估计负载。
+        </p>
+                    <p><b>I32（Shift）</b>
+          所有 32 位整数左移（<code>SHL</code>）、右移（<code>SHR</code>）、漏斗移位（<code>SHF</code>）指令的估计负载。
+        </p>
+                    <p><b>I32（Bit）</b>
+          所有 32 位整数位反转、位域提取（<code>BFE</code>）、位域插入（<code>BFI</code>）指令的估计负载。
+        </p>
+                    <p><b>逻辑运算</b>
+          所有逻辑运算（<code>LOP</code>）的估计负载。
+        </p>
+                    <p><b>Shuffle</b>
+          所有 warp shuffle（<code>SHFL</code>）指令的估计负载。
+        </p>
+                    <p><b>Conv（I8/I16 到 I32）</b>
+          所有从 8 位、16 位整数到 32 位类型的类型转换的估计负载（<code>I2I</code> 的子集）。
+        </p>
+                    <p><b>Conv（与 FP64 互转）</b>
+          所有与 64 位类型相互转换的类型转换的估计负载（<code>I2F</code>、<code>F2I</code> 和 <code>F2F</code> 的子集）。
+        </p>
+                    <p><b>Conv（其他全部）</b>
+          所有其他类型转换的估计负载（<code>I2I</code>、<code>I2F</code>、<code>F2I</code> 和 <code>F2F</code> 中剩余的子集）。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <p>
+        </p>
+        <h3><a id="Analysis"></a>分析</h3>
+        <ul style="list-style-type:none">
+            <li value="1">
+            如果 <a href="#PipeUtilization">Load/Store 流水线利用率</a> 较高……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……运行 <a href="memorystatistics.htm">内存统计</a>，查找那些每次请求事务数超过理想值的内存操作；改进这些非最优的内存访问可以降低 load/store 流水线的负担。
+              </li><li style="text-indent:-20px;" value="2">
+                ……考虑能否通过改用不同的实现或不同的算法来减少所执行的内存操作总数。
+              </li><li style="text-indent:-20px;" value="3">
+                ……若单个线程访问内存中连续的数值，请确保使用最宽的内存访问类型来完成操作。例如，每个线程需要读取 128 字节连续内存时，使用一次 128 字节宽的访问要优于执行四次 32 字节访问。为此可使用 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#built-in-vector-types">内建向量类型</a>。
+              </li><li style="text-indent:-20px;" value="4">
+                ……如果 <a href="memorystatisticslocal.htm">内存统计 — 本地内存</a> 实验显示本地内存请求数较多，请开启 PTX 优化汇编器的代码生成统计信息打印（<code>--ptxas-options=-v</code>）以获取溢出字节数；如果该数值较高，可尝试通过修改 kernel 启动的 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#execution-configuration">执行配置</a> 或 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#launch-bounds">launch bounds</a> 来减少寄存器溢出。
+              </li></ul></li>
+            <li value="2">
+            如果 <a href="#PipeUtilization">纹理流水线利用率</a> 较高……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……运行 <a href="memorystatisticstexture.htm">内存统计 — 纹理内存</a> 实验，研究所发起的纹理读取的效率。
+              </li><li style="text-indent:-20px;" value="2">
+                ……考虑能否通过改用不同的实现或不同的算法来减少所执行的纹理操作总数。同时检查 kernel 是否已经接近目标设备预期的峰值纹理性能。
+              </li></ul></li>
+            <li value="3">
+            如果 <a href="#PipeUtilization">控制流流水线利用率</a> 较高……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……运行 <a href="branchstatistics.htm">分支统计</a> 实验。当 <a href="branchstatistics.htm#Efficiency">控制流效率</a> 较低且控制流分歧较高时，尝试重新组织 kernel grid 中的线程，目标是最小化 warp 分歧。
+              </li></ul></li>
+            <li value="4">
+            如果 <a href="#PipeUtilization">算术流水线利用率</a> 较高……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……查看 <a href="#ArithmeticWorkload">算术负载</a>，并优先优化代价最高的指令类型。在可行的情况下，优先使用更快、更专用的数学函数，避免使用较慢、更通用的版本。也可参考 CUDA C Best Practices Guide 中关于优化 <a href="http://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#arithmetic-instructions">算术指令</a> 的通用建议。
+              </li><li style="text-indent:-20px;" value="2">
+                ……运行 <a href="achievedflops.htm">实际 FLOPS</a> 和 <a href="achievediops.htm">实际 IOPS</a> 实验。检查 kernel 是否已经接近目标设备的峰值性能，并研究是否可以减少所执行的算术指令数量。
+              </li></ul></li>
+        </ul>
+        <div id="pagefooter">
+            <br />
+        </div>
+        <hr style="height: 1px;" width="100%" size="0" align="center" />
+        <script type="text/javascript" src="../../../../../../resources/stylesheets/run_prettify.js?lang=vb" autoload="true">
+        </script>
+        <p>
+        </p>
+        <div class="buttons inline-buttons clearfix topicToolbarProxy topicToolbarProxysite.css" style="mc-topic-toolbar-items: ;">
+            <div class="button-group-container-left">
+                <button class="button needs-pie previous-topic-button" type="button" title="导航到上一主题">
+                    <img src="../../../../../../../Skins/Default/Stylesheets/Images/transparent.gif" alt="上一主题" />
+                </button>
+                <div class="button current-topic-index-button disabled"><span class="sequence-index"></span> / <span class="sequence-total"></span></div>
+                <button class="button needs-pie next-topic-button" type="button" title="导航到下一主题">
+                    <img src="../../../../../../../Skins/Default/Stylesheets/Images/transparent.gif" alt="下一主题" />
+                </button>
+            </div>
+        </div>
+        <p> <![CDATA[ ]]></p>
+        <p><span style="color: #696969; font-size: 8pt;">NVIDIA GameWorks Documentation Rev. 1.0.150630 ©2015. NVIDIA Corporation. All Rights Reserved.</span>
+        </p>
+    </body>
+</html>

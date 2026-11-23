@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DeepSeek V3 推理系统深度解析（六）：MTP 投机采样，从训练目标到引擎状态机</title>
+
+<!-- table-css-injected -->
+  <!-- Fonts: JetBrains Mono for code -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+  <!-- Highlight.js: Monokai Sublime theme -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/monokai-sublime.min.css">
+  <!-- KaTeX -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <!-- Shared reader styles -->
+  <link rel="stylesheet" href="/blog/readers/reader.css">
+</head>
+<body>
+
+<div id="lb" onclick="lbClose(event)">
+  <span id="lb-close" onclick="lbHide()">&#x2715;</span>
+  <img id="lb-img" src="" alt="">
+</div>
+
+<nav id="sb">
+  <div id="sb-title">
+    <p class="zh"><a href="https://alan-hpc.github.io/blog/" target="_blank">Yang Min · 技术博客</a></p>
+    <h2 class="section-h lv1" id="DeepSeek-V3-推理系统深度解析六MTP-投机采样从训练目标到引擎状态机">DeepSeek V3 推理系统深度解析（六）：MTP 投机采样，从训练目标到引擎状态机</h2>
+  </div>
+  <div class="ti tl1"><a href="#prologue--本篇问题与读法">Prologue · 本篇问题与读法</a></div>
+  <div class="ti tl1"><a href="#1--训练目标--从-next-token-到-multi-token-prediction">1 · 训练目标 · 从 next-token 到 multi-token prediction</a></div>
+  <div class="ti tl2"><a href="#11-deepseek-v3-把-mtp-放在训练目标里">1.1 DeepSeek-V3 把 MTP 放在训练目标里</a></div>
+  <div class="ti tl2"><a href="#12-deepseek-原生-mtp-结构">1.2 DeepSeek 原生 MTP 结构</a></div>
+  <div class="ti tl1"><a href="#2--推理流程--vanilla-vs-eagle-的取舍">2 · 推理流程 · vanilla vs eagle 的取舍</a></div>
+  <div class="ti tl2"><a href="#21-vanilla-模式--多-mtp-module-并行">2.1 vanilla 模式 · 多 MTP module 并行</a></div>
+  <div class="ti tl2"><a href="#22-vanilla-的-kv-驱逐每个-mtp-module-单独算账">2.2 vanilla 的 KV 驱逐：每个 MTP module 单独算账</a></div>
+  <div class="ti tl2"><a href="#23-eagle-模式--单-mtp-module-自回归">2.3 eagle 模式 · 单 MTP module 自回归</a></div>
+  <div class="ti tl2"><a href="#24-vanilla-vs-eagle-的工程取舍对比">2.4 vanilla vs eagle 的工程取舍对比</a></div>
+  <div class="ti tl2"><a href="#25-接受率决定上限不是-draft-length-决定上限">2.5 接受率决定上限，不是 draft length 决定上限</a></div>
+  <div class="ti tl1"><a href="#3--验证策略--三种-acceptance--relaxed">3 · 验证策略 · 三种 acceptance + relaxed</a></div>
+  <div class="ti tl2"><a href="#31-acceptance-rejection-sampling">3.1 Acceptance-Rejection Sampling</a></div>
+  <div class="ti tl2"><a href="#32-relaxed-acceptance--提高接受率但有质量风险">3.2 Relaxed Acceptance · 提高接受率但有质量风险</a></div>
+  <div class="ti tl2"><a href="#33-验证代码骨架">3.3 验证代码骨架</a></div>
+  <div class="ti tl1"><a href="#4--serving-实现--状态机接口kv-驱逐">4 · Serving 实现 · 状态机、接口、KV 驱逐</a></div>
+  <div class="ti tl2"><a href="#41-引擎状态机prefill--score--verification">4.1 引擎状态机：PREFILL → SCORE → VERIFICATION</a></div>
+  <div class="ti tl2"><a href="#42-sequence-字段扩展">4.2 Sequence 字段扩展</a></div>
+  <div class="ti tl2"><a href="#43-控制参数引擎级别">4.3 控制参数（引擎级别）</a></div>
+  <div class="ti tl2"><a href="#44-kv-cache-管理--按-token-驱逐--prefix-cache-不能进入">4.4 KV Cache 管理 · 按 token 驱逐 + prefix cache 不能进入</a></div>
+  <div class="ti tl3"><a href="#441-kv-驱逐目标">4.4.1 KV 驱逐目标</a></div>
+  <div class="ti tl3"><a href="#442-prefix-cache-边界--blocktrie-不能看见-draft">4.4.2 prefix cache 边界 · BlockTrie 不能看见 draft</a></div>
+  <div class="ti tl2"><a href="#45-mtpdecoder-是-decoder-旁边的第二条路径">4.5 MTPDecoder 是 decoder 旁边的第二条路径</a></div>
+  <div class="ti tl2"><a href="#46-与现有-llamabatchforward-的兼容">4.6 与现有 LlamaBatch::Forward 的兼容</a></div>
+  <div class="ti tl1"><a href="#5--性能基线--trt-llm-上的-deepseek-r1-fp4-nextn-收益曲线">5 · 性能基线 · TRT-LLM 上的 DeepSeek-R1-FP4 nextn 收益曲线</a></div>
+  <div class="ti tl1"><a href="#6--上线边界--系统视角看-mtp">6 · 上线边界 · 系统视角看 MTP</a></div>
+  <div class="ti tl2"><a href="#61-mtp-让-scheduler-看到-variable-rate-streams">6.1 MTP 让 scheduler 看到 variable-rate streams</a></div>
+  <div class="ti tl2"><a href="#62-5-项常见误读">6.2 5 项常见误读</a></div>
+  <div class="ti tl2"><a href="#63-上线前-6-项-sanity-check">6.3 上线前 6 项 sanity check</a></div>
+  <div class="ti tl1"><a href="#optimization-audit--mtp-优化点查漏">Optimization Audit · MTP 优化点查漏</a></div>
+  <div class="ti tl1"><a href="#map--图解索引">Map · 图解索引</a></div>
+  <div class="ti tl1"><a href="#references">References</a></div>
+</nav>
+
+<div id="reader">
+  <div id="reader-inner">
+
+    <header class="book-header">
+      <p class="kicker"><a href="https://alan-hpc.github.io/blog/" target="_blank">Yang Min · 技术博客</a> · 离线阅读版</p>
+      <h1>DeepSeek V3 推理系统深度解析（六）：MTP 投机采样，从训练目标到引擎状态机</h1>
+      <p class="sub">2026-05-06</p>
+      <div style="margin-top:16px;padding:12px 16px;border:1px solid var(--rule);
+                  border-radius:4px;background:var(--paper);font-family:-apple-system,sans-serif;
+                  font-size:12.5px;line-height:2.0;color:var(--muted);">
+        <span style="font-size:10px;letter-spacing:.9px;text-transform:uppercase;
+                     color:#888;display:block;margin-bottom:6px;">原文来源</span>
+        <a href="https://alan-hpc.github.io/blog/posts/2026-05-01-deepseek-v3-推理优化系列-六-mtp-投机采样/" style="color:var(--accent);text-decoration:none;" target="_blank">DeepSeek V3 推理系统深度解析（六）：MTP 投机采样，从训练目标到引擎状态机</a>
+        · Yang Min · 2026
+      </div>
+    </header>
+
+    <p class="zh">MTP（Multi-Token Prediction）的价值不只是"一次预测多个 token"，更在于<b>它把 speculative decode 的 draft 生成成本几乎降到了零</b>。传统 speculative decode 需要额外的 draft 模型，带来额外的内存占用和 KV cache 开销；MTP 把 draft head 内嵌到主模型的最后几层，复用主模型的 hidden state，代价只是额外的 linear + LM head，不额外引入 attention 层。理解 MTP 的关键在于读懂它为什么能以这么低的成本生成有效 draft。</p><div class="callout"><p class="zh"><b>系列目录</b> ：1. DeepSeekV3 开篇、PD 分离与 Cross-node EP / 2. DeepEP HT/LL Dispatch 与 Buffer 协议 / 3. DeepGEMM Expert Compute 与 FP8 Layout / 4. MLA Prefill/Decode 分流与 FlashMLA Latent KV / 5. DBO 与五段 Decode 流水 / <b>6. MTP 投机采样（本篇）</b> / 7. DSA 稀疏注意力 / 8. vLLM 源码全链路与 MoE Backend</p></div><section id="prologue--本篇问题与读法"><h2 id="prologue--本篇问题与读法" class="section-h lv1">Prologue · 本篇问题与读法</h2><p class="zh">本篇从 MTP 技术设计材料重构 <b>MTP 投机采样</b> 这一条线（与 DSA 稀疏注意力分开成两篇）。MTP 的优化对象是<b>decode loop 的次数</b> ——一次 target/main forward 验证多个 draft token，若接受前缀足够长，后面若干轮就不用跑。</p><div class="table-scroll"><table class="data-table"><thead><tr><th>资料章节</th><th>本文落点</th><th>要回答的问题</th></tr></thead><tbody><tr><td>MTP 训练目标</td><td>§1</td><td>从 next-token 到 multi-token prediction 改了什么</td></tr><tr><td>结构和运行流程 · vanilla</td><td>§2.1-2.2</td><td>多个 MTP module + 多份 KV 的工程代价</td></tr><tr><td>结构和运行流程 · eagle</td><td>§2.3</td><td>单 MTP module 自回归如何减少状态</td></tr><tr><td>Acceptance-Rejection / Relaxed</td><td>§3.1-3.2</td><td>三种验证策略的取舍</td></tr><tr><td>引擎状态机</td><td>§4.1</td><td><code class="ic">PREFILL → SCORE → VERIFICATION</code> 怎么约束 serving 状态</td></tr><tr><td>接口设计 + KV 驱逐</td><td>§4.2-4.4</td><td>哪些 KV 提交、哪些只逻辑回滚、哪些不能进 prefix cache</td></tr><tr><td>性能基线</td><td>§5</td><td>TRT-LLM DeepSeek-R1-FP4 的 nextn 收益曲线</td></tr></tbody></table></div><div class="callout"><p class="zh no-indent"><b>MTP 减少的是 decode loop 次数</b></p>$$
+\begin{array}{lll}
+T_{\mathrm{decode}}
+&\approx&
+N_{\mathrm{step}}\cdot
+\bigl(T_{\mathrm{attn}}(N_{\mathrm{kv}})+T_{\mathrm{moe}}+T_{\mathrm{comm}}+T_{\mathrm{sample}}\bigr), \\[0.45em]
+\mathrm{MTP}
+&:& N_{\mathrm{step}}\downarrow,\quad
+\text{每一轮成本不变，但轮数减少}.
+\end{array}
+$$</div><p class="zh">需要先划清边界：<b>DSA 稀疏注意力</b>（少读 KV）与 MTP（少跑 step）是两个正交问题，单独用一篇 <a href="https://alan-hpc.github.io/blog/posts/2026-05-01-deepseek-v3-%E6%8E%A8%E7%90%86%E4%BC%98%E5%8C%96%E7%B3%BB%E5%88%97-%E4%B8%83-dsa-%E7%A8%80%E7%96%8F%E6%B3%A8%E6%84%8F%E5%8A%9B/">DSA 稀疏注意力</a> 讲。本篇只关心 MTP。</p><section id="1--训练目标--从-next-token-到-multi-token-prediction"><h2 id="1--训练目标--从-next-token-到-multi-token-prediction" class="section-h lv1">1 · 训练目标 · 从 next-token 到 multi-token prediction</h2><h3 id="11-deepseek-v3-把-mtp-放在训练目标里" class="section-h lv2">1.1 DeepSeek-V3 把 MTP 放在训练目标里</h3>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F1.drawio</div>
+  </div>
+  <figcaption>R1  （来自 MTP 技术设计材料）MTP 投机采样的总体概念：模型不只学习 next token，还学习多个 future token；推理时由 draft path 提案、target path 验证。</figcaption>
+</figure>
+<p class="zh">DeepSeek-V3 Technical Report 把 MTP 放在训练目标里：模型在 next-token loss 之外，<b>额外预测后续 K 个 future token</b> 。这并不等于推理时能白拿 K 个 token；它只是让模型具备提出 draft 的能力。</p><div class="callout"><p class="zh no-indent"><b>从 next-token 到 multi-token prediction</b></p>$$
+\begin{array}{lll}
+L_{\mathrm{next}}
+&=&-\sum_t \log p_\theta(x_{t+1}\mid x_{\le t}), \\[0.45em]
+L_{\mathrm{MTP}}
+&=&-\sum_t\sum_{i=1}^{K}
+\lambda_i \log p_{\theta,i}(x_{t+i}\mid x_{\le t}).
+\end{array}
+$$</div><p class="zh">这段目标对推理系统的含义是：MTP path 可以给出 <code class="ic">draft_tokens</code>，但每个 draft 都必须由 target/main path 验证。<b>MTP 的收益来自"被验证后接受的连续前缀"</b> ，不是来自 draft 的数量本身。</p><h3 id="12-deepseek-原生-mtp-结构" class="section-h lv2">1.2 DeepSeek 原生 MTP 结构</h3>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F2.drawio</div>
+  </div>
+  <figcaption>R2  （来自 MTP 技术设计材料 · DeepSeek 原生 MTP 结构）K 个 MTP modules 与 main module 共享 embedding 和 output head，但每个 MTP module 有独立的 transformer layer 与独立的 KV cache。</figcaption>
+</figure>
+
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F3.drawio</div>
+  </div>
+  <figcaption>R3  （来自 MTP 技术设计材料 · DeepSeek 原生 MTP 结构 detail）MTP module i 的输入是「上一层输出 hidden state + token embedding」拼接后做 norm 与线性投影，再喂入 transformer block。</figcaption>
+</figure>
+<p class="zh">DeepSeek 原生方案的关键设计：</p><ul class="zh-list"><li><b>共享 embedding + output head</b> ：每个 MTP module 不重复维护词表 lookup 和 output projection</li><li><b>每个 MTP module 独立 KV cache</b> ：因为 module $i$ 的 token 错位是 $+i$，与主模型的 attention pattern 不同</li><li><b>隐状态拼接 hint</b> ：MTP module 不是孤立预测，输入里带上前一层（main 或上一个 MTP）的 hidden state</li></ul><section id="2--推理流程--vanilla-vs-eagle-的取舍"><h2 id="2--推理流程--vanilla-vs-eagle-的取舍" class="section-h lv1">2 · 推理流程 · vanilla vs eagle 的取舍</h2><h3 id="21-vanilla-模式--多-mtp-module-并行" class="section-h lv2">2.1 vanilla 模式 · 多 MTP module 并行</h3>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F4.drawio</div>
+  </div>
+  <figcaption>R4  （来自 MTP 技术设计材料 · vanilla 模式）K 个 MTP modules 各自接收错位输入，每个 module 输出一个 draft token。</figcaption>
+</figure>
+<p class="zh">设计材料里给的 vanilla 例子非常具体。假设 prompt 是 <code class="ic">ABCD</code>，主模型在 context phase 从 <code class="ic">ABCD</code> 采样得到 <code class="ic">E</code>，MTP1/MTP2/MTP3 分别拿不同的错位输入，输出三个 draft token <code class="ic">F/G/H</code>：</p><div class="table-scroll"><table class="data-table"><thead><tr><th>路径</th><th>输入 token</th><th>使用 hidden</th><th>输出 draft</th><th>KV 特征</th></tr></thead><tbody><tr><td>main</td><td><code class="ic">ABCD</code></td><td>主模型 hidden</td><td><code class="ic">E</code></td><td>main KV: <code class="ic">ABCD</code></td></tr><tr><td>MTP1</td><td><code class="ic">BCDE</code></td><td><code class="ic">H_A,H_B,H_C,H_D</code></td><td><code class="ic">F</code></td><td>MTP1 独立 KV</td></tr><tr><td>MTP2</td><td><code class="ic">CDEF</code></td><td><code class="ic">H_B,H_C,H_D,h_E</code></td><td><code class="ic">G</code></td><td>MTP2 独立 KV</td></tr><tr><td>MTP3</td><td><code class="ic">DEFG</code></td><td><code class="ic">H_C,H_D,h_E,h_F</code></td><td><code class="ic">H</code></td><td>MTP3 独立 KV</td></tr></tbody></table></div><p class="zh">到了 generation phase，主模型输入 <code class="ic">E + FGH</code>，输出一串 golden token。材料里的例子是 target 输出 <code class="ic">F G X Y</code>：</p><ul class="zh-list"><li><code class="ic">F</code> 与 <code class="ic">F</code> 一致 → 接受</li><li><code class="ic">G</code> 与 <code class="ic">G</code> 一致 → 接受</li><li><code class="ic">H</code> 与 <code class="ic">X</code> 不一致 → 拒绝；后面的 <code class="ic">Y</code> 也不能跳过去接受</li><li><code class="ic">X</code> 作为 <b>bonus token</b>（target 在 <code class="ic">G</code> 位置之后的下一个采样）也提交</li></ul><p class="zh">最终一次 target forward 推进 <code class="ic">EFGX</code> = 4 个 token，其中 <code class="ic">H</code> 之后的 KV 必须从有效上下文里拿掉。</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F5.drawio</div>
+  </div>
+  <figcaption>R5  （来自 MTP 技术设计材料）按例子重画的 vanilla 运行：prefill 得到 FGH，decode 时主模型验证并接受 FG + bonus X。</figcaption>
+</figure>
+<p class="zh">vanilla 模式的关键工程代价：</p><ul class="zh-list"><li><b>多 future position → 多套 MTP module + 多份 KV cache</b></li><li><b>接受率不高时仍要补齐每个 module 的输入</b> —— 即使 0 接受，下一轮 K 个 module 都要 K 个 input token，要从前序 decode 步骤里找到对应的 token id 和 hidden state</li><li><b>decode 阶段 bookkeeping 沉重</b> —— 引擎需要为每个 module 维护「最近 K 个 token 的 id + hidden state」的滚动窗口</li></ul><p class="zh">设计材料原话：&ldquo;如果接收的少甚至没有接收，也需要给每个 MTP 模块输入 K 个 token，这会造成复杂度，需要从之前的 decode 步骤中找到之前的 token id 和 hidden states。&rdquo;</p><h3 id="22-vanilla-的-kv-驱逐每个-mtp-module-单独算账" class="section-h lv2">2.2 vanilla 的 KV 驱逐：每个 MTP module 单独算账</h3><p class="zh">vanilla 模式下，<b>每个 MTP module 都有自己的 KV cache</b> 。当 target 接受 <code class="ic">FG</code>、拒绝 <code class="ic">HXY...</code> 时：</p><ul class="zh-list"><li>main KV：<code class="ic">ABCDEFG</code> 提交，<code class="ic">H</code> 之后的 KV invalid</li><li>MTP1 KV：原本是 <code class="ic">BCDE</code>，第二轮 prefix 变成 <code class="ic">BCDE + FGX</code>（注意是 main 的接受序列）</li><li>MTP2 KV：类似处理</li><li>MTP3 KV：类似处理</li></ul><p class="zh"><b>每个 MTP module 都要单独维护 cache_len，且与 main 的 accepted prefix 同步</b> 。这是 vanilla 模式下接口最沉重的部分。</p><h3 id="23-eagle-模式--单-mtp-module-自回归" class="section-h lv2">2.3 eagle 模式 · 单 MTP module 自回归</h3>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F6.drawio</div>
+  </div>
+  <figcaption>R6  （来自 MTP 技术设计材料 · eagle 模式）只有 1 个 MTP module，第一次输入 K-token 启动后，后续每次只输入 1 个 draft token + 对应 hidden state，自回归 K 次产生 draft 序列。</figcaption>
+</figure>
+<p class="zh">eagle 模式把<b>同一份 MTP module 自回归复用 K 次</b> 。设计材料的关键描述：</p><ul class="zh-list"><li>&ldquo;<b>It reuses the same MTP module and repeats multiple times to predict draft tokens</b>&rdquo;</li><li>&ldquo;<b>MTP module reuses the same KV cache when predicting multiple draft tokens</b>&rdquo;</li></ul><p class="zh">推理阶段的核心差异：</p><ul class="zh-list"><li><b>Prefill</b> ：第一次 MTP forward 输入 prompt，得到第 1 个 draft token；之后每次只输入刚生成的 1 个 draft token</li><li><b>Decode</b> ：第一次 MTP 调用输入「prefill 阶段生成的 1 个 token + 接受后的 N 个 token」；后续迭代只输入 1 个 token</li><li><b>状态简化</b> ：只维护一份 MTP weight、一份 MTP KV cache、一条 draft stream</li></ul><h3 id="24-vanilla-vs-eagle-的工程取舍对比" class="section-h lv2">2.4 vanilla vs eagle 的工程取舍对比</h3><div class="table-scroll"><table class="data-table"><thead><tr><th>维度</th><th>vanilla</th><th>eagle</th></tr></thead><tbody><tr><td>MTP module 个数</td><td>K 个</td><td>1 个（参数复用）</td></tr><tr><td>MTP KV cache 份数</td><td>K 份独立</td><td>1 份</td></tr><tr><td>推理阶段 bookkeeping</td><td>每 module 维护「最近 K token + hidden」滚动窗口</td><td>只需维护接受序列</td></tr><tr><td>拒绝时的输入补齐</td><td>必须给每 module 补 K 个输入</td><td>第一次输入 N 接受 token，后续只 1 个</td></tr><tr><td>实现复杂度</td><td>高</td><td>低</td></tr><tr><td>多 module 并行</td><td>理论上可，工程上贵</td><td>串行 K 次（自回归）</td></tr><tr><td>多模型权重情况</td><td>需所有 K 套权重</td><td>只用第 1 套权重即可</td></tr></tbody></table></div><p class="zh"><b>MTP 技术设计材料明确推荐先实现 eagle 模式</b> ：复杂度可控，KV bookkeeping 简单，对单 GPU/小集群友好。多 MTP 模块的 vanilla 模式留作后续扩展。</p><h3 id="25-接受率决定上限不是-draft-length-决定上限" class="section-h lv2">2.5 接受率决定上限，不是 draft length 决定上限</h3><p class="zh">令 $A$ 表示一轮验证后被接受的连续 draft prefix 长度，则一次 target forward 实际推进 $1+A$ 个 token，其中额外的 <code class="ic">1</code> 是 target 输出的 bonus token。MTP 的理想收益和 $\mathbb{E}[A]$ 相关，而不是和最大 draft 长度 $K$ 直接相等。</p><div class="callout"><p class="zh no-indent"><b>MTP 的一阶收益模型</b></p>$$
+\begin{array}{lll}
+\mathrm{advance}
+&=&amp;1+A, \\[0.35em]
+\mathrm{speedup}
+&\lesssim&
+\dfrac{1+\mathbb{E}[A]}
+{1+\rho_{\mathrm{mtp}}+\rho_{\mathrm{verify}}+\rho_{\mathrm{rollback}}}.
+\end{array}
+$$</div><p class="zh">这里 $\rho_{\mathrm{mtp}}$ 是 draft path 开销，$\rho_{\mathrm{verify}}$ 是 target 验证与采样开销，$\rho_{\mathrm{rollback}}$ 是 KV 回滚与状态更新开销。<b>接受率低时 draft 做了很多但推进不多；接受率高时才真正减少 decode loop</b> 。</p><section id="3--验证策略--三种-acceptance--relaxed"><h2 id="3--验证策略--三种-acceptance--relaxed" class="section-h lv1">3 · 验证策略 · 三种 acceptance + relaxed</h2><h3 id="31-acceptance-rejection-sampling" class="section-h lv2">3.1 Acceptance-Rejection Sampling</h3>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F7.drawio</div>
+  </div>
+  <figcaption>R7  （来自 MTP 技术设计材料 · 引用 arXiv 2302.01318）Acceptance-Rejection Sampling 的标准形式：用 draft 概率 q 与 target 概率 p 计算接受概率 min(1, p/q)。</figcaption>
+</figure>
+<p class="zh">设计材料给出的三种接受策略（按由严到松）：</p><div class="table-scroll"><table class="data-table"><thead><tr><th>策略</th><th>形式</th><th>优点</th><th>风险</th></tr></thead><tbody><tr><td><code class="ic">argmax</code></td><td>target top-1 token == draft token</td><td>严格、不引入分布偏移</td><td>接受率最低</td></tr><tr><td><code class="ic">threshold</code></td><td>target 在 draft token 上的概率 ≥ τ</td><td>接受率可调（默认 0.6）</td><td>选错 τ 会引入偏移</td></tr><tr><td><code class="ic">topk</code></td><td>draft 落在 target top-k 集合里</td><td>接受率较高</td><td>top-k 越大风险越大</td></tr></tbody></table></div><div class="callout"><p class="zh no-indent"><b>连续前缀接受规则</b></p>$$
+\begin{array}{lll}
+a_i
+&=&\mathbf{1}\{\mathrm{Accept}(d_i,\ p_\theta(\cdot\mid x_{\le t+i-1}))\}, \\[0.35em]
+A
+&=&\max\{m:\ a_1=a_2=\cdots=a_m=1\}.
+\end{array}
+$$</div><p class="zh"><b>必须是连续前缀</b> 。第一个 draft 被拒绝后，后面的 draft 即使概率也高，也不能跳过拒绝点继续提交，因为它们依赖的条件上下文已经变了。</p><h3 id="32-relaxed-acceptance--提高接受率但有质量风险" class="section-h lv2">3.2 Relaxed Acceptance · 提高接受率但有质量风险</h3>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F8.drawio</div>
+  </div>
+  <figcaption>R8  （来自 MTP 技术设计材料 · Relaxed Acceptance）放松接受条件，例如允许 token 在 target distribution 的 top-k 范围内，可显著提高接受率。</figcaption>
+</figure>
+<p class="zh">设计材料中的实战边界："<b>目前只用在 reasoning 模型前边的 thinking 阶段</b>"——thinking 阶段的精度对最终回答影响小，可以激进一点；但回答阶段必须用严格的 argmax 或 threshold。</p><h3 id="33-验证代码骨架" class="section-h lv2">3.3 验证代码骨架</h3><div class=highlight><p class="zh"><code class=language-cpp data-lang=cpp><span class=line><span class=cl><span class=kt>int</span> <span class=n>LlamaBatch</span><span class=o>::</span><span class=n>EagleVerification</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>    <span class=k>const</span> <span class=n>std</span><span class=o>::</span><span class=n>vector</span><span class=o>&lt;</span><span class=kt>int</span><span class=o>&gt;&amp;</span> <span class=n>draft_tokens</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>    <span class=k>const</span> <span class=n>Tensor</span><span class=o>&amp;</span> <span class=n>verification_logits</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>    <span class=n>MTPAcceptPolicy</span> <span class=n>policy</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>    <span class=kt>float</span> <span class=n>threshold</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>  <span class=kt>int</span> <span class=n>accepted_count</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>  <span class=k>for</span> <span class=p>(</span><span class=kt>int</span> <span class=n>i</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span> <span class=n>i</span> <span class=o>&lt;</span> <span class=p>(</span><span class=kt>int</span><span class=p>)</span><span class=n>draft_tokens</span><span class=p>.</span><span class=n>size</span><span class=p>();</span> <span class=o>++</span><span class=n>i</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=k>auto</span> <span class=n>position_logits</span> <span class=o>=</span> <span class=n>verification_logits</span><span class=p>.</span><span class=n>slice</span><span class=p>(</span><span class=n>i</span><span class=p>,</span> <span class=mi>1</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>    <span class=k>auto</span> <span class=n>position_probs</span>  <span class=o>=</span> <span class=n>Softmax</span><span class=p>(</span><span class=n>position_logits</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=kt>bool</span> <span class=n>accept</span> <span class=o>=</span> <span class=nb>false</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=k>switch</span> <span class=p>(</span><span class=n>policy</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>      <span class=k>case</span> <span class=n>MTPAcceptPolicy</span><span class=o>::</span><span class=nl>ARGMAX</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>        <span class=n>accept</span> <span class=o>=</span> <span class=p>(</span><span class=n>ArgMax</span><span class=p>(</span><span class=n>position_probs</span><span class=p>)</span> <span class=o>==</span> <span class=n>draft_tokens</span><span class=p>[</span><span class=n>i</span><span class=p>]);</span>
+</span></span><span class=line><span class=cl>        <span class=k>break</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>      <span class=k>case</span> <span class=n>MTPAcceptPolicy</span><span class=o>::</span><span class=nl>THRESHOLD</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>        <span class=n>accept</span> <span class=o>=</span> <span class=p>(</span><span class=n>position_probs</span><span class=p>[</span><span class=n>draft_tokens</span><span class=p>[</span><span class=n>i</span><span class=p>]]</span> <span class=o>&gt;=</span> <span class=n>threshold</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>        <span class=k>break</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>      <span class=k>case</span> <span class=n>MTPAcceptPolicy</span><span class=o>::</span><span class=nl>TOPK</span><span class=p>:</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=k>auto</span> <span class=n>topk_tokens</span> <span class=o>=</span> <span class=n>TopK</span><span class=p>(</span><span class=n>position_probs</span><span class=p>,</span> <span class=mi>5</span><span class=p>);</span>
+</span></span><span class=line><span class=cl>        <span class=n>accept</span> <span class=o>=</span> <span class=n>std</span><span class=o>::</span><span class=n>find</span><span class=p>(</span><span class=n>topk_tokens</span><span class=p>.</span><span class=n>begin</span><span class=p>(),</span> <span class=n>topk_tokens</span><span class=p>.</span><span class=n>end</span><span class=p>(),</span>
+</span></span><span class=line><span class=cl>                           <span class=n>draft_tokens</span><span class=p>[</span><span class=n>i</span><span class=p>])</span> <span class=o>!=</span> <span class=n>topk_tokens</span><span class=p>.</span><span class=n>end</span><span class=p>();</span>
+</span></span><span class=line><span class=cl>        <span class=k>break</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>      <span class=p>}</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>    <span class=k>if</span> <span class=p>(</span><span class=n>accept</span><span class=p>)</span> <span class=n>accepted_count</span><span class=o>++</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=k>else</span> <span class=k>break</span><span class=p>;</span>  <span class=c1>// 第一个拒绝即停
+</span></span></span><span class=line><span class=cl>  <span class=p>}</span>
+</span></span><span class=line><span class=cl>  <span class=k>return</span> <span class=n>accepted_count</span><span class=p>;</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></div><p class="zh">注意 <code class="ic">else break</code> ——一旦拒绝立即停止，体现"连续前缀"语义。</p><section id="4--serving-实现--状态机接口kv-驱逐"><h2 id="4--serving-实现--状态机接口kv-驱逐" class="section-h lv1">4 · Serving 实现 · 状态机、接口、KV 驱逐</h2><h3 id="41-引擎状态机prefill--score--verification" class="section-h lv2">4.1 引擎状态机：PREFILL → SCORE → VERIFICATION</h3><p class="zh">MTP 技术设计材料里把 engine 状态拆成 4 个 phase：</p><p class="zh"><code class="ic">PREFILL              → 常规 prefill 阶段（与无 MTP 相同）
+PREFILL_COMPLETED    → prefill 完成、等待开始 MTP forward
+SCORE                → main model + MTP forward, 得到 1 + K draft token
+VERIFICATION         → main model 验证, 接受/拒绝 + KV 驱逐
+</code></pre><p class="zh">执行流程：</p><ol class="zh-list"><li>新进来的序列都是 <code class="ic">PREFILL</code></li><li>走过 prefill 后变成 <code class="ic">PREFILL_COMPLETED</code>，此时执行第一次 MTP forward 得到 <code class="ic">1 + K</code> 个 token，进入 <code class="ic">SCORE</code></li><li><code class="ic">SCORE</code> 阶段输入 <code class="ic">1 + K</code> 个 draft token 给 main model，得到 <code class="ic">1 + K</code> 个 golden token，进入 <code class="ic">VERIFICATION</code></li><li><code class="ic">VERIFICATION</code> 三步：<ul class="zh-list"><li><b>token 比对</b> 或其他采样方式得到 accepted prefix</li><li><b>驱逐未接受 token 的 KV</b></li><li>用 accepted tokens 作为输入，再做一次 MTP forward 得到下一轮 <code class="ic">1 + K</code> draft token，回到 <code class="ic">SCORE</code></li></ul></li></ol>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F9.drawio</div>
+  </div>
+  <figcaption>MTP serving state machine：phase 与 sequence fields 一起维护 draft、score、verification 与 KV commit 的一致性。</figcaption>
+</figure>
+<h3 id="42-sequence-字段扩展" class="section-h lv2">4.2 Sequence 字段扩展</h3><p class="zh">设计材料给出 Sequence 结构需要增加的 MTP 字段：</p><div class=highlight><p class="zh"><code class=language-cpp data-lang=cpp><span class=line><span class=cl><span class=k>enum</span> <span class=nc>MTPEaglePhase</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=n>PREFILL</span><span class=p>,</span>            <span class=c1>// 常规模式
+</span></span></span><span class=line><span class=cl>    <span class=n>PREFILL_COMPLETED</span><span class=p>,</span>  <span class=c1>// prefill 完成，等待开始 MTP
+</span></span></span><span class=line><span class=cl>    <span class=n>SCORE</span><span class=p>,</span>              <span class=c1>// main model 推理，draft model 得到 golden token
+</span></span></span><span class=line><span class=cl>    <span class=n>VERIFICATION</span>        <span class=c1>// 验证阶段
+</span></span></span><span class=line><span class=cl><span class=p>};</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=k>struct</span> <span class=nc>Sequence</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=kt>int</span> <span class=n>input_length</span><span class=p>;</span>                <span class=c1>// 原有：本轮输入长度
+</span></span></span><span class=line><span class=cl>    <span class=k>mutable</span> <span class=kt>int</span> <span class=n>cache_len</span><span class=p>;</span>           <span class=c1>// 原有：已缓存长度
+</span></span></span><span class=line><span class=cl>    <span class=k>mutable</span> <span class=n>std</span><span class=o>::</span><span class=n>vector</span><span class=o>&lt;</span><span class=kt>int</span><span class=o>&gt;</span> <span class=n>tokens</span><span class=p>;</span> <span class=c1>// 原有：已计算 tokens
+</span></span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=c1>// MTP Eagle 扩展字段
+</span></span></span><span class=line><span class=cl>    <span class=kt>bool</span> <span class=n>mtp_eagle_enabled</span> <span class=o>=</span> <span class=nb>false</span><span class=p>;</span>   <span class=c1>// 是否启用 MTP Eagle
+</span></span></span><span class=line><span class=cl>    <span class=kt>int</span>  <span class=n>mtp_draft_count</span>   <span class=o>=</span> <span class=mi>3</span><span class=p>;</span>       <span class=c1>// 每轮草稿数 K
+</span></span></span><span class=line><span class=cl>    <span class=n>MTPEaglePhase</span> <span class=n>mtp_phase</span> <span class=o>=</span> <span class=n>PREFILL</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=n>std</span><span class=o>::</span><span class=n>vector</span><span class=o>&lt;</span><span class=kt>int</span><span class=o>&gt;</span>    <span class=n>mtp_draft_tokens</span><span class=p>;</span>   <span class=c1>// 草稿 token 序列
+</span></span></span><span class=line><span class=cl>    <span class=n>std</span><span class=o>::</span><span class=n>vector</span><span class=o>&lt;</span><span class=kt>float</span><span class=o>*&gt;</span> <span class=n>mtp_draft_hiddens</span><span class=p>;</span>  <span class=c1>// 对应的 hidden states
+</span></span></span><span class=line><span class=cl>    <span class=kt>int</span> <span class=n>mtp_accepted_count</span> <span class=o>=</span> <span class=mi>0</span><span class=p>;</span>             <span class=c1>// 上轮接受的数量
+</span></span></span><span class=line><span class=cl><span class=p>};</span>
+</span></span></code></pre></div><p class="zh">调度策略上的关键决定：<b>刚跑完 Prefill、还没有进行 MTP forward 的序列，与正常 decode 序列一样插入最前的 decode 序列里</b> ——不为 MTP 单独拉一条调度路径，最大限度复用现有 batch。</p><h3 id="43-控制参数引擎级别" class="section-h lv2">4.3 控制参数（引擎级别）</h3><p class="zh">引擎级别（kernel launch 时确定）的 MTP 控制参数：</p><div class=highlight><p class="zh"><code class=language-yaml data-lang=yaml><span class=line><span class=cl><span class=nt>mtp_eagle_enable</span><span class=p>:</span><span class=w>    </span><span class=kc>true</span><span class=w>            </span><span class=c># 是否启用 eagle 模式</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=nt>mtp_draft_length</span><span class=p>:</span><span class=w>    </span><span class=m>3</span><span class=w>               </span><span class=c># K，每轮 draft token 数</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=nt>mtp_accept_policy:   argmax          # also</span><span class=p>:</span><span class=w> </span><span class=l>threshold / topk</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=nt>mtp_accept_threshold</span><span class=p>:</span><span class=w> </span><span class=m>0.6</span><span class=w>            </span><span class=c># threshold 策略的概率阈值</span><span class=w>
+</span></span></span></code></pre></div><p class="zh">为什么是引擎级别而不是请求级别：MTP 涉及 weights load、状态机、KV 池子分配，<b>这些资源都需要在 kernel 启动时确定</b> 。请求级别的开关会让 GPU 一边跑 MTP 一边跑非 MTP 序列，状态机和 batch 编排都很复杂。</p><h3 id="44-kv-cache-管理--按-token-驱逐--prefix-cache-不能进入" class="section-h lv2">4.4 KV Cache 管理 · 按 token 驱逐 + prefix cache 不能进入</h3><h4 id="441-kv-驱逐目标" class="section-h lv3">4.4.1 KV 驱逐目标</h4><p class="zh">验证阶段主模型已经为 <code class="ic">1 + K</code> 个 token 写了 KV。若只接受前缀，<b>拒绝后缀的 KV 不能被之后 attention 读取</b> 。最直接的做法是物理清零，但 hot path 更合理的做法是<b>逻辑屏蔽</b> ：更新 <code class="ic">cache_len</code>、<code class="ic">h_context_length</code> 或 attention kernel 的 <code class="ic">max_k_len</code>。</p><p class="zh">设计材料原话："<b>通过 h_context_length 控制访问范围即可，attention kernel 通过 max_k_len 控制访问范围 - 不会读取被驱逐的 token 数据</b>"。物理 buffer 残留无效 KV 不影响正确性，只要 attention 的有效长度不读它。</p><p class="zh"><code class="ic">max_k_len ─────►├──── valid history (committed) ────┤├── invalid (dropped) ──┤
+                                                     ↑
+                                            attention 不会越过这条线
+</code></pre>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F10.drawio</div>
+  </div>
+  <figcaption>Verify 与 KV rollback：prefix cache 只处理 prompt；decode token 与 MTP draft token 不进 BlockTrie，拒绝后缀只通过逻辑长度屏蔽。</figcaption>
+</figure>
+<h4 id="442-prefix-cache-边界--blocktrie-不能看见-draft" class="section-h lv3">4.4.2 prefix cache 边界 · BlockTrie 不能看见 draft</h4><p class="zh">设计材料里特别强调三条规则：</p><ol class="zh-list"><li><p class="zh"><b>prefix-caching 只处理 <code class="ic">seq.prompt</code></b> ：</p><ul class="zh-list"><li>匹配：<code class="ic">block_trie_->match(seq)</code> 仅在 <code class="ic">!seq.prompt.empty() && seq.blocks.empty()</code> 时执行</li><li>缓存：<code class="ic">block_trie_->cache(seq)</code> 只处理 prompt 范围</li><li>清空：prefill 后立即 <code class="ic">seq.prompt.clear()</code></li></ul></li><li><p class="zh"><b>Decode 阶段完全不涉及 BlockTrie</b> ：</p><ul class="zh-list"><li>Decode tokens 存在 <code class="ic">seq.tokens</code> 里</li><li>MTP draft tokens 存在 <code class="ic">mtp_draft_tokens</code> 里</li><li><b>两者都不进入 BlockTrie</b></li></ul></li><li><p class="zh"><b>无需处理块中部分 token 的清理</b> ：通过 <code class="ic">h_context_length</code> 控制访问范围即可</p></li></ol><div class="callout"><p class="zh"><b>这不是实现细节，而是正确性边界</b> ：被拒绝的 draft token 如果进入 prefix cache，将来可能被别的请求复用，造成<b>非常隐蔽的错误</b>（用户问相同问题但答案不同，且无法复现）。物理 buffer 残留无效 KV 是无害的，但语义层泄露被拒绝的 draft 是灾难性的。</p></div><h3 id="45-mtpdecoder-是-decoder-旁边的第二条路径" class="section-h lv2">4.5 MTPDecoder 是 decoder 旁边的第二条路径</h3><p class="zh">设计材料里把 MTP weights 放到独立的 <code class="ic">MTPDecoderLayerWeight</code>，并在 <code class="ic">unified_decoder_</code>、<code class="ic">dynamic_decode_</code> 旁边新增 <code class="ic">MTPDecoder</code>。这样主模型 decoder 不需要被改成一堆 MTP-specific 分支；MTP path 只在需要 draft 时被 engine 调用。</p><p class="zh"><code class="ic">LlamaV2
+ ├── unified_decoder_   ← main model
+ ├── dynamic_decode_    ← sampler
+ └── MTPDecoder         ← NEW: MTP path
+        └── MTPDecoderLayerWeight
+</code></pre><p class="zh">边界很重要：<b>主模型负责验证、MTPDecoder 负责提案、dynamic_decode 负责采样策略</b> 。三者混在一个 kernel 或一个类里，后面很难做 fallback、灰度、回滚和性能定位。</p><h3 id="46-与现有-llamabatchforward-的兼容" class="section-h lv2">4.6 与现有 LlamaBatch::Forward 的兼容</h3><p class="zh">设计材料强调 LlamaBatch::Forward 流程要适配但兼容老逻辑。三处改动：</p><div class="table-scroll"><table class="data-table"><thead><tr><th>改动</th><th>内容</th><th>兼容老逻辑的方法</th></tr></thead><tbody><tr><td>序列分类 + 准备阶段</td><td><code class="ic">h_input_length_buf_</code>, <code class="ic">input_d_ptrs</code></td><td>按 <code class="ic">mtp_phase</code> 分组，原 decode 序列走原路径</td></tr><tr><td>Mini-batch 处理</td><td>把 SCORE / VERIFICATION 拆成不同 mini-batch</td><td>不开 MTP 时这些 mini-batch 为空</td></tr><tr><td>MTP Eagle 后处理函数</td><td>验证 + 驱逐 + 下一轮 MTP forward</td><td>通过 <code class="ic">mtp_eagle_enabled</code> 短路</td></tr></tbody></table></div><section id="5--性能基线--trt-llm-上的-deepseek-r1-fp4-nextn-收益曲线"><h2 id="5--性能基线--trt-llm-上的-deepseek-r1-fp4-nextn-收益曲线" class="section-h lv1">5 · 性能基线 · TRT-LLM 上的 DeepSeek-R1-FP4 nextn 收益曲线</h2>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F11.drawio</div>
+  </div>
+  <figcaption>R9  （来自 MTP 技术设计材料 · TRT-LLM Deepseek-R1-FP4 on B200, MLA TP=8, MoE EP=4, BS=1, ISL/OSL=1K/2K, num_requests=10）随 nextn（draft length）从 0 增到 7，TPS 与 Acceptance Rate 的关系：Overlap scheduler / Relaxed Acceptance 都进一步提高吞吐，nextn=2 已经能拿到大部分收益。</figcaption>
+</figure>
+<p class="zh">参考曲线给出的几条信号：</p><ol class="zh-list"><li><b>nextn=0（无 MTP baseline）</b> TPS 约 155，nextn=2 时 TPS 翻到 ~265，<b>1.7× 速比</b></li><li><b>nextn 继续加大到 7</b> 收益变缓，TPS 仅再涨到 ~309（约 2× baseline）</li><li><b>Overlap scheduler 和 Relaxed Acceptance 都能进一步提高吞吐</b> ——前者把 MTP 的 idle 时间藏起来，后者直接提高接受率（牺牲一点质量）</li><li><b>Acceptance Rate 从 ~17% 涨到 ~46%</b> ——但仍远低于 100%，说明大部分 draft 仍被拒绝</li></ol><p class="zh"><b>这条曲线的实战含义</b> ：</p><ul class="zh-list"><li>nextn 不是越大越好，K=2 或 3 已经能拿到大部分收益</li><li>K 越大 draft 计算成本越高，收益边际递减</li><li>Relaxed Acceptance 在 thinking 阶段值得开，回答阶段慎用</li></ul><section id="6--上线边界--系统视角看-mtp"><h2 id="6--上线边界--系统视角看-mtp" class="section-h lv1">6 · 上线边界 · 系统视角看 MTP</h2><h3 id="61-mtp-让-scheduler-看到-variable-rate-streams" class="section-h lv2">6.1 MTP 让 scheduler 看到 variable-rate streams</h3><p class="zh">普通 decode 默认每轮每个请求推进一个 token。MTP 之后，<b>每个请求推进的 token 数 = <code class="ic">1 + accepted_count</code></b> ，而 accepted count 动态变化。连续 batching 看到的是 variable-rate streams：</p><ul class="zh-list"><li>有的请求本轮推进 4 个 token</li><li>有的只推进 1 个</li><li>有的 draft 全部拒绝</li></ul><p class="zh">最稳妥的做法是在请求层维护 accepted count，把下一轮输入重新归入稳定的 graph bucket，<b>而不是让每个 kernel 都面对动态分支</b> 。MTP 的收益来自少跑主循环，不能让调度碎片把收益吃掉。</p><h3 id="62-5-项常见误读" class="section-h lv2">6.2 5 项常见误读</h3><div class="table-scroll"><table class="data-table"><thead><tr><th>误读</th><th>更准确的说法</th></tr></thead><tbody><tr><td>MTP 速度提升取决于 draft 长度 K</td><td>取决于平均接受长度 $\mathbb{E}[A]$；K=3 已能拿大部分收益</td></tr><tr><td>eagle 模式接受率低于 vanilla</td><td>实测接近，eagle 工程复杂度低很多更值</td></tr><tr><td>Relaxed acceptance 总是开就行</td><td>仅 thinking 阶段开；回答阶段必须严格</td></tr><tr><td>拒绝的 draft 不影响主模型</td><td>KV 必须按 token 驱逐，否则正确性出错</td></tr><tr><td>MTP 是采样器的小改动</td><td>是<b>整个引擎状态机</b> 的扩展（PREFILL→SCORE→VERIFICATION）</td></tr></tbody></table></div><h3 id="63-上线前-6-项-sanity-check" class="section-h lv2">6.3 上线前 6 项 sanity check</h3><p class="zh">实战里 MTP 上线前必查：</p><ol class="zh-list"><li><b>prefix cache 不会被 draft 污染</b>（4.4.2 边界）—— 用相同 prompt 跑 100 次看输出是否一致</li><li><b>拒绝后 KV 长度正确收回</b> —— attention kernel 的 <code class="ic">max_k_len</code> 必须每轮更新</li><li><b>每个 module 的 KV pool size 足够</b>（vanilla）/ 单 MTP module KV 足够（eagle）</li><li><b>draft 失败率监控</b> —— accept rate &lt; 30% 时考虑关 MTP 或调 nextn</li><li><b>CUDA Graph bucket 包含变长 input</b> —— <code class="ic">input_length</code> 从 1 跳到 1+K 的两种 bucket 都要 capture</li><li><b>采样器 logits 同步 verification 输入</b> —— <code class="ic">verification_logits</code> 形状必须与 <code class="ic">draft_tokens</code> 对齐</li></ol><section id="optimization-audit--mtp-优化点查漏"><h2 id="optimization-audit--mtp-优化点查漏" class="section-h lv1">Optimization Audit · MTP 优化点查漏</h2><div class="table-scroll"><table class="data-table"><thead><tr><th>优化点</th><th>资料章节</th><th>baseline 瓶颈</th><th>机制</th><th>边界条件</th></tr></thead><tbody><tr><td>MTP training objective</td><td>DeepSeek-V3 论文</td><td>模型只学 next-token，无 draft 能力</td><td>多预测 K 个 future token</td><td>draft 必须经 target 验证</td></tr><tr><td>vanilla MTP</td><td>设计材料 §推理过程</td><td>多 module 多 KV 工程重</td><td>K 个 module 各预测 1 future token</td><td>接受少时仍要补齐输入</td></tr><tr><td><b>eagle MTP</b></td><td>设计材料 §推理过程</td><td>多模块服务状态太重</td><td>单 module 自回归 K 次</td><td><b>设计材料推荐方案</b></td></tr><tr><td>引擎状态机</td><td>设计材料 §引擎层</td><td>draft/verify 直接塞 sampler 会乱</td><td><code class="ic">PREFILL → SCORE → VERIFICATION</code></td><td>Sequence 字段必须与 KV commit 同步</td></tr><tr><td>Acceptance-Rejection 三策略</td><td>设计材料 §验证和采样</td><td>argmax 接受率低</td><td>argmax / threshold / topk</td><td>threshold 必须按场景调</td></tr><tr><td>Relaxed Acceptance</td><td>设计材料 §Relaxed</td><td>严格策略接受率天花板</td><td>放松到 top-k 集合即接受</td><td>仅 thinking 阶段开</td></tr><tr><td>按 token 驱逐 KV</td><td>设计材料 §KV Cache 管理</td><td>拒绝 draft 后 KV 已写入</td><td>通过 <code class="ic">cache_len/max_k_len</code> 逻辑屏蔽</td><td>不必物理清零</td></tr><tr><td><b>prefix cache 边界</b></td><td>设计材料 §KV Cache 管理</td><td>被拒 draft 进 BlockTrie 会污染未来请求</td><td>decode/draft token 都不入 BlockTrie</td><td><b>正确性边界，必须严守</b></td></tr><tr><td>MTPDecoder 独立路径</td><td>设计材料 §MTP weights loading</td><td>主 decoder 加 MTP 分支会乱</td><td>在 LlamaV2 旁挂第二条路径</td><td>三类职责分明：验证/提案/采样</td></tr><tr><td>引擎级控制参数</td><td>设计材料 §控制参数</td><td>请求级开关让 batch 编排崩</td><td>kernel launch 时确定 mtp 开关 + K</td><td>不允许请求级动态开关</td></tr><tr><td>Overlap scheduler</td><td>TRT-LLM 性能曲线</td><td>MTP forward 的 idle 时间</td><td>把 MTP 与下一轮 main forward overlap</td><td>需要双 buffer KV</td></tr></tbody></table></div><section id="map--图解索引"><h2 id="map--图解索引" class="section-h lv1">Map · 图解索引</h2><div class="table-scroll"><table class="data-table"><thead><tr><th>图</th><th>来源</th><th>读图问题</th></tr></thead><tbody><tr><td>F3</td><td>作者</td><td><code class="ic">MTPEaglePhase</code> 为什么要和 Sequence 字段绑定？</td></tr><tr><td>F4</td><td>作者</td><td>verify 后哪些 KV 能提交、哪些只能逻辑屏蔽？</td></tr><tr><td>R1</td><td>报告</td><td>MTP 投机采样的总体概念</td></tr><tr><td>R2</td><td>报告</td><td>DeepSeek 原生 MTP 多 module 结构</td></tr><tr><td>R3</td><td>报告</td><td>MTP module 内部 hidden state 拼接</td></tr><tr><td>R4</td><td>报告</td><td>vanilla 模式 K 个 module 并行</td></tr><tr><td>R5</td><td>报告</td><td>vanilla 例子：FGH → 接受 FG + bonus X</td></tr><tr><td>R6</td><td>报告</td><td>eagle 模式 1 module 自回归 K 次</td></tr><tr><td>R7</td><td>报告</td><td>Acceptance-Rejection Sampling 公式</td></tr><tr><td>R8</td><td>报告</td><td>Relaxed Acceptance 形式</td></tr><tr><td>R9</td><td>报告</td><td>TRT-LLM DeepSeek-R1-FP4 nextn 性能曲线</td></tr></tbody></table></div><p class="zh">结论可以压成一句话：<b>MTP 的核心不是「多吐几个 token」，而是让 target/main path 一次验证多个 draft 后减少 decode loop</b> 。eagle 单 module 自回归是工程首选；引擎状态机要把 PREFILL/SCORE/VERIFICATION 拆开；KV 必须按 token 驱逐且 draft 不能污染 prefix cache。</p><section id="references">
+<h2 class="section-h lv1">References</h2>
+<div class="kbox">
+<p class="zh no-indent"><b>Source list.</b>　MTP 投机采样相关论文与实现文档。</p>
+<ol class="zh-list ref-list">
+<li><a href="https://arxiv.org/abs/2412.19437">DeepSeek-V3 Technical Report (arXiv 2412.19437)</a></li>
+<li><a href="https://github.com/deepseek-ai/open-infra-index/blob/main/202502OpenSourceWeek/day_6_one_more_thing_deepseekV3R1_inference_system_overview.md">DeepSeek-V3/R1 Inference System Overview</a></li>
+<li><a href="https://arxiv.org/pdf/2302.01318">Acceptance-Rejection Sampling for LLM Speculative Decoding (arXiv 2302.01318)</a></li>
+<li><a href="https://nvidia.github.io/TensorRT-LLM/">TensorRT-LLM Speculative Decoding 文档</a></li>
+<li><a href="https://github.com/InternLM/lmdeploy">LMDeploy Turbomind 引擎</a></li>
+<li><a href="https://alan-hpc.github.io/blog/posts/2026-05-01-deepseek-v3-%E6%8E%A8%E7%90%86%E4%BC%98%E5%8C%96%E7%B3%BB%E5%88%97-%E4%B8%83-dsa-%E7%A8%80%E7%96%8F%E6%B3%A8%E6%84%8F%E5%8A%9B/">DeepSeek V3 推理系统深度解析（七）· DSA 稀疏注意力</a></li>
+</ol>
+</div>
+</section></div></div><!-- /reader-inner -->
+</div><!-- /reader -->
+
+
+</body>
+</html>

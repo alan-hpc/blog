@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DeepSeek V3 推理系统深度解析（七）：DSA 稀疏注意力，从 MLA Indexer 到 Sparse FlashMLA 接口</title>
+
+<!-- table-css-injected -->
+  <!-- Fonts: JetBrains Mono for code -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+  <!-- Highlight.js: Monokai Sublime theme -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/monokai-sublime.min.css">
+  <!-- KaTeX -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <!-- Shared reader styles -->
+  <link rel="stylesheet" href="/blog/readers/reader.css">
+</head>
+<body>
+
+<div id="lb" onclick="lbClose(event)">
+  <span id="lb-close" onclick="lbHide()">&#x2715;</span>
+  <img id="lb-img" src="" alt="">
+</div>
+
+<nav id="sb">
+  <div id="sb-title">
+    <p class="zh"><a href="https://alan-hpc.github.io/blog/" target="_blank">Yang Min · 技术博客</a></p>
+    <h2 class="section-h lv1" id="DeepSeek-V3-推理系统深度解析七DSA-稀疏注意力从-MLA">DeepSeek V3 推理系统深度解析（七）：DSA 稀疏注意力，从 MLA…</h2>
+  </div>
+  <div class="ti tl1"><a href="#prologue--本篇问题与读法">Prologue · 本篇问题与读法</a></div>
+  <div class="ti tl1"><a href="#1--起点--从-mla-到-dsa-的演化动机">1 · 起点 · 从 MLA 到 DSA 的演化动机</a></div>
+  <div class="ti tl2"><a href="#11-mla-已经压缩-kv但-dense-decode-仍读完整历史">1.1 MLA 已经压缩 KV，但 dense decode 仍读完整历史</a></div>
+  <div class="ti tl2"><a href="#12-dsa-的成本不只是多一个-indexer">1.2 DSA 的成本不只是「多一个 indexer」</a></div>
+  <div class="ti tl1"><a href="#2--mla-forward-prefill-stage--drawio-上半部分">2 · MLA Forward Prefill Stage · drawio 上半部分</a></div>
+  <div class="ti tl2"><a href="#21-mla-prefill-的张量链路按-drawio">2.1 MLA Prefill 的张量链路（按 drawio）</a></div>
+  <div class="ti tl2"><a href="#22-nope-与-rope-的拆分">2.2 NoPE 与 RoPE 的拆分</a></div>
+  <div class="ti tl1"><a href="#3--mla-forward-decoding-stage--drawio-中间部分">3 · MLA Forward Decoding Stage · drawio 中间部分</a></div>
+  <div class="ti tl2"><a href="#31-fused_qkv_a_proj--三投影合一">3.1 fused_qkv_a_proj · 三投影合一</a></div>
+  <div class="ti tl2"><a href="#32-q-的-noperope-拆分与-k-镜像">3.2 Q 的 NoPE/RoPE 拆分（与 K 镜像）</a></div>
+  <div class="ti tl2"><a href="#33-w_uk_t--把-q_nope-投影到-latent-spacemqa-化">3.3 W_UK_T · 把 q_nope 投影到 latent space（MQA 化）</a></div>
+  <div class="ti tl2"><a href="#34-flashmla-decoding--输入-mqa_q--kv_cache">3.4 FlashMLA decoding · 输入 mqa_q + kv_cache</a></div>
+  <div class="ti tl1"><a href="#4--dsa-forward-stage--indexer-module--drawio-下半部分核心">4 · DSA Forward Stage + Indexer Module · drawio 下半部分（核心）</a></div>
+  <div class="ti tl2"><a href="#41-dsa-forward-stage-与-mla-decoding-的差异">4.1 DSA Forward Stage 与 MLA decoding 的差异</a></div>
+  <div class="ti tl2"><a href="#42-indexer-module-的三条-projection">4.2 Indexer Module 的三条 projection</a></div>
+  <div class="ti tl3"><a href="#421-weights_proj--query-端的-head-权重">4.2.1 weights_proj · query 端的 head 权重</a></div>
+  <div class="ti tl3"><a href="#422-wq_b--query-latent-投影到-64128">4.2.2 wq_b · query latent 投影到 64×128</a></div>
+  <div class="ti tl3"><a href="#423-wk--k_norm--历史-token-端的-key-index">4.2.3 wk + k_norm · 历史 token 端的 key index</a></div>
+  <div class="ti tl2"><a href="#43-indexer-score-公式--relu--sum--topk-selector2048">4.3 Indexer score 公式 + ReLU + Sum + TopK Selector(2048)</a></div>
+  <div class="ti tl2"><a href="#44-输出格式--q-num-tokens-top-k">4.4 输出格式 · [q num tokens, top-k]</a></div>
+  <div class="ti tl1"><a href="#5--sparse-mla-接口契约--indices-是-kernel-几何">5 · Sparse MLA 接口契约 · indices 是 kernel 几何</a></div>
+  <div class="ti tl2"><a href="#51-decode-entry--indices-编码-page--offset">5.1 Decode entry · indices 编码 page + offset</a></div>
+  <div class="ti tl2"><a href="#52-kv-cache-shape--m--2048-576">5.2 KV cache shape · [M × 2048, 576]</a></div>
+  <div class="ti tl2"><a href="#53-indexer-k-cache--与-mla-latent-kv-cache-是两份状态">5.3 Indexer K cache · 与 MLA latent KV cache 是两份状态</a></div>
+  <div class="ti tl2"><a href="#54-fp8-kv-cache--nope-量化rope-不量化">5.4 FP8 KV cache · NoPE 量化、RoPE 不量化</a></div>
+  <div class="ti tl1"><a href="#6--系统边界--长上下文什么时候-sparse-比-dense-快">6 · 系统边界 · 长上下文什么时候 sparse 比 dense 快</a></div>
+  <div class="ti tl2"><a href="#61-收益边界--上下文长度门限">6.1 收益边界 · 上下文长度门限</a></div>
+  <div class="ti tl2"><a href="#62-何时不要开-dsa">6.2 何时不要开 DSA</a></div>
+  <div class="ti tl2"><a href="#63-与-mtp-的关系--正交叠加但-contract-不能混">6.3 与 MTP 的关系 · 正交叠加但 contract 不能混</a></div>
+  <div class="ti tl2"><a href="#64-上线前-5-项-sanity-check">6.4 上线前 5 项 sanity check</a></div>
+  <div class="ti tl1"><a href="#optimization-audit--dsa-优化点查漏">Optimization Audit · DSA 优化点查漏</a></div>
+  <div class="ti tl1"><a href="#map--图解索引">Map · 图解索引</a></div>
+  <div class="ti tl1"><a href="#结论">结论</a></div>
+  <div class="ti tl1"><a href="#references">References</a></div>
+</nav>
+
+<div id="reader">
+  <div id="reader-inner">
+
+    <header class="book-header">
+      <p class="kicker"><a href="https://alan-hpc.github.io/blog/" target="_blank">Yang Min · 技术博客</a> · 离线阅读版</p>
+      <h1>DeepSeek V3 推理系统深度解析（七）：DSA 稀疏注意力，从 MLA Indexer 到 Sparse FlashMLA 接口</h1>
+      <p class="sub">2026-05-06</p>
+      <div style="margin-top:16px;padding:12px 16px;border:1px solid var(--rule);
+                  border-radius:4px;background:var(--paper);font-family:-apple-system,sans-serif;
+                  font-size:12.5px;line-height:2.0;color:var(--muted);">
+        <span style="font-size:10px;letter-spacing:.9px;text-transform:uppercase;
+                     color:#888;display:block;margin-bottom:6px;">原文来源</span>
+        <a href="https://alan-hpc.github.io/blog/posts/2026-05-01-deepseek-v3-推理优化系列-七-dsa-稀疏注意力/" style="color:var(--accent);text-decoration:none;" target="_blank">DeepSeek V3 推理系统深度解析（七）：DSA 稀疏注意力，从 MLA Indexer 到 Sparse FlashMLA 接口</a>
+        · Yang Min · 2026
+      </div>
+    </header>
+
+    <p class="zh">DSA（Dynamic Sparse Attention）的难点不在于稀疏 attention 本身，而在于<b>如何在不损失长上下文精度的前提下动态决定哪些 token 对参与全量 attention</b>。静态稀疏（如固定 sliding window）会丢掉重要的远距离依赖；动态稀疏需要在 attention 计算之前就知道哪些 token 重要，但"重要性"本身就是 attention 的输出——这是一个鸡和蛋的问题。DSA 的解法是用低精度的 indexer 做第一遍筛选，再用全精度 attention 做精查；理解这个两段式设计，才能明白为什么 FP4 indexer 在这里不是精度妥协而是精度解耦。</p><div class="callout"><p class="zh"><b>系列目录</b> ：1. DeepSeekV3 开篇、PD 分离与 Cross-node EP / 2. DeepEP HT/LL Dispatch 与 Buffer 协议 / 3. DeepGEMM Expert Compute 与 FP8 Layout / 4. MLA Prefill/Decode 分流与 FlashMLA Latent KV / 5. DBO 与五段 Decode 流水 / 6. MTP 投机采样 / <b>7. DSA 稀疏注意力（本篇）</b> / 8. vLLM 源码全链路与 MoE Backend</p></div><section id="prologue--本篇问题与读法"><h2 id="prologue--本篇问题与读法" class="section-h lv1">Prologue · 本篇问题与读法</h2><p class="zh">DSA（Dynamic Sparse Attention）和 MTP 是两个正交问题：MTP 让 decode 少跑几轮（<a href="https://alan-hpc.github.io/blog/posts/2026-05-01-deepseek-v3-%E6%8E%A8%E7%90%86%E4%BC%98%E5%8C%96%E7%B3%BB%E5%88%97-%E5%85%AD-mtp-%E6%8A%95%E6%9C%BA%E9%87%87%E6%A0%B7/">见上一篇</a>），DSA 让每一轮 attention 少读 KV。本篇按 <b>DSA C14.6 原始流程图</b> 的三段结构重构：</p><div class="table-scroll"><table class="data-table"><thead><tr><th>C14.6 模块图分段</th><th>本文落点</th><th>要回答的问题</th></tr></thead><tbody><tr><td>MLA Forward Prefill Stage</td><td>§2</td><td>prefill 上 MLA 的张量形状链路</td></tr><tr><td>MLA Forward Decoding Stage</td><td>§3</td><td>decoding 上 MQA 化的 latent KV 路径</td></tr><tr><td>DSA Forward Stage + Indexer Module</td><td>§4</td><td>三条 projection 如何产生 top-k indices</td></tr><tr><td>Sparse MLA 接口（推断）</td><td>§5</td><td>top-k indices 怎么变成 page/offset 几何</td></tr><tr><td>系统边界与性能</td><td>§6</td><td>长上下文什么时候 sparse 比 dense 快</td></tr></tbody></table></div>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F1.drawio</div>
+  </div>
+  <figcaption>D0-1 MLA Module：先确认 DSA 继承的 MLA 基础形状：hidden state 被拆成 query latent、KV latent 与 RoPE 分支，后续 prefill / decode 只是选择不同计算路径。</figcaption>
+</figure>
+
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F2.drawio</div>
+  </div>
+  <figcaption>D0-2 DSA 示意图：DeepSeek-V3.2-Exp 论文图中的绿色路径表示 Indexer 根据当前 query 选择 top-k key-value entries，稀疏化发生在 MLA 之下、attention 读取 KV 之前。</figcaption>
+</figure>
+
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F3.drawio</div>
+  </div>
+  <figcaption>D0-3 DSA Prefill / Decoding Stage：左侧复用 MLA decoding 数据流，右侧 DSA Indexer 生成 [q tokens, top-k] indices，下方 sparse MQA 用 token indices 读取压缩后的 KV 集合。</figcaption>
+</figure>
+<div class="callout"><p class="zh no-indent"><b>DSA 优化的是 attention 的访问范围</b></p>$$
+\begin{array}{lll}
+T_{\mathrm{decode}}
+&\approx&
+N_{\mathrm{step}}\cdot
+\bigl(T_{\mathrm{attn}}(N_{\mathrm{kv}})+T_{\mathrm{moe}}+T_{\mathrm{comm}}+T_{\mathrm{sample}}\bigr), \\[0.45em]
+\mathrm{DSA}
+&:& N_{\mathrm{kv}}\downarrow \quad \text{从 full history 降到 top-k=2048},\\[0.35em]
+&& \text{多了 indexer 与 gather 的成本}.
+\end{array}
+$$</div>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F4.drawio</div>
+  </div>
+  <figcaption>按 DSA C14.6 模块图重画的 Indexer：weights_proj / wq_b / wk+k_norm 产生 score，TopK Selector(2048) 输出 [q tokens, top-k]。</figcaption>
+</figure>
+<section id="1--起点--从-mla-到-dsa-的演化动机"><h2 id="1--起点--从-mla-到-dsa-的演化动机" class="section-h lv1">1 · 起点 · 从 MLA 到 DSA 的演化动机</h2><h3 id="11-mla-已经压缩-kv但-dense-decode-仍读完整历史" class="section-h lv2">1.1 MLA 已经压缩 KV，但 dense decode 仍读完整历史</h3><p class="zh">MLA（Multi-Latent Attention，本系列 part 4）已经把 K/V 压缩成 latent KV cache，<b>KV 体积</b> 问题已经解决；FlashMLA 也已让 decode attention 直接消费 latent KV，<b>kernel 效率</b> 问题也解决了。</p><p class="zh">但<b>长上下文场景</b> 下 dense MLA decoding 仍然要扫完整历史：</p><ul class="zh-list"><li>上下文 64K，每一步 attention 必须扫 64K 个 history token 的 latent KV</li><li>上下文 128K，扫描量翻倍</li><li>上下文 256K+，attention 已不再是 softmax-bound 而是 KV-read-bound</li></ul><p class="zh"><b>DSA 的目标：让 main attention 只看一个由训练得到的 top-k 历史 token 集合</b> ，而不是完整历史。</p><div class="callout"><p class="zh no-indent"><b>Dense MLA vs Sparse MLA 的访问范围</b></p>$$
+\begin{array}{lll}
+\mathrm{Dense}
+&:&
+O_t=\operatorname{softmax}(Q_tK_{\le t}^{\top})V_{\le t},
+\\[0.45em]
+\mathrm{Sparse}
+&:&
+S_t=\operatorname{TopK}(I_{t,:},2048),\quad
+O_t=\operatorname{softmax}(Q_tK_{S_t}^{\top})V_{S_t}.
+\end{array}
+$$</div><h3 id="12-dsa-的成本不只是多一个-indexer" class="section-h lv2">1.2 DSA 的成本不只是「多一个 indexer」</h3><p class="zh">DSA 的成本由四部分组成：</p><div class="table-scroll"><table class="data-table"><thead><tr><th>成本项</th><th>说明</th><th>何时占比大</th></tr></thead><tbody><tr><td>Indexer projection</td><td>weights_proj/wq_b/wk 三条线性</td><td>token 数大时显著</td></tr><tr><td>Indexer score 计算</td><td>每个 query 对每个 history token 打分</td><td>上下文越长越贵</td></tr><tr><td>TopK Selector(2048)</td><td>从 N 个 history 选 top-2048</td><td>N &#187; 2048 时受益最大</td></tr><tr><td>KV gather</td><td>按 indices 抓取 KV page</td><td>indices 散乱时受益小</td></tr></tbody></table></div><p class="zh"><b>短上下文上 DSA 反而比 dense MLA 慢</b> ——history 才几千 token，indexer 的额外开销超过省下的 attention 成本。<b>长上下文（64K+）才是 DSA 的主战场</b> 。</p><section id="2--mla-forward-prefill-stage--drawio-上半部分">
+<h2 class="section-h lv1">2 · MLA Forward Prefill Stage · drawio 上半部分DSA C14.6 图的上半部分是标准 MLA prefill。理解这一段是看懂 DSA 的前提——DSA 不是替换 MLA，而是在 MLA decoding 之前插入 Indexer ，并让 KV gather 走 Sparse MLA。2.1 MLA Prefill 的张量链路（按 drawio）prefill 是 batch_size=1, token_num=1 的演示形状（实际 prefill 时这两个维度都更大）：StageLinear / Op权重形状输出形状Input——[1,1,7168] Hidden h_tQ a-projq_a_proj[7168, 1536][1,1,1536]Q a-normq_a_layernorm[1536][1,1,1536]Q b-projq_b_proj[1536, 128*(128+64)][1,1,24576] → [1,1,128,192]KV a-proj-with-MQAkv_a_proj_with_mqa[7168, 64+512][1,1,576]Slice——[1,1,512] (NoPE) + [1,1,64] (RoPE)K_PE RoPERoPE—[1,1,64]KV b-projkv_b_proj[512, 128*(128+128)][1,1,128,256]Concatenate——K: [1,1,128,192], V: [1,1,128,128]MHATRTLLM-FMHA / FlashAttention—Output u_t [1,1,7168]注意 prefill 仍然是 MHA（每个 head 独立 K/V），因为 prefill 阶段需要算所有 token 对的 attention，转 MQA 收益不大且会破坏 KV cache 命中。2.2 NoPE 与 RoPE 的拆分drawio 里有一个非常重要的细节：kv_a_proj_with_mqa 输出 576 维，但通过 Slice 拆成两部分：512 维 NoPE ：纯线性投影，不带位置编码 → KV_C_Normed64 维 RoPE ：经过 RoPE 旋转得到位置敏感的 K_PE这个拆分是 MLA 的核心技巧：只对 64 维做 RoPE 而非整个 KV 都做。这让 KV cache 只需要存 NoPE 的 512 维 latent + 64 维位置编码 = 576 维，远小于传统 MHA 的 num_heads * head_dim。后面 DSA 里看到 concat_and_cache_mla k_pe: [num_tokens, 64] ROPE 部分 FP16/BF16 / kv_c: [num_tokens, 512] NOPE 部分 FP8 保存——RoPE 部分必须 BF16 保留位置精度，NoPE 部分可以 FP8 量化。3 · MLA Forward Decoding Stage · drawio 中间部分decoding 时 token_num=1（只生成一个新 token），但 KV cache 包含所有历史 token。3.1 fused_qkv_a_proj · 三投影合一drawio 的 decoding stage 把 q_a_proj + kv_a_proj_with_mqa 融合成一个 fused_qkv_a_proj：weight: [hidden_size, q_lora_rank + kv_lora_rank + qk_rope_head_dim]
+      = [7168, 1536 + 512 + 64]
+
+input  → output:
+[1, 7168] → [1, 2112]
+输出再拆成三段：q_a (1536), KV_C_Normed (512), K_PE 待 RoPE 的 64 维。为什么 prefill 不融合而 decoding 融合 ：prefill 是大 GEMM，融合后单条 GEMM 变更大但不影响并行度；decoding 是 token=1 的小 GEMM，融合后能减少 launch overhead 和 SMEM 切换。3.2 Q 的 NoPE/RoPE 拆分（与 K 镜像）decoding 的 Q 走完 q_a_proj + q_b_proj 后得到 [1, 128, 192]。然后被拆成：q_nope [1, 128, 128] ：与 K 的 NoPE 部分对应q_pe [1, 128, 64] ：与 K 的 RoPE 部分对应两部分独立计算 attention score 后相加 ——这和 traditional MLA 完全一致。3.3 W_UK_T · 把 q_nope 投影到 latent space（MQA 化）drawio 的关键变换：q_nope: [1, 128 heads, 128]
+    ↓ Transpose
+mqa_q_nope: [128, 1, 128]
+    ↓ × W_UK_T [128 heads, 128 head_dim, 512 kv_lora_rank]
+    ↓
+[1, 128, 512]   ← 现在每个 head 都共享同一份 latent K
+    ↓ Transpose
+[128, 1, 512]
+    ↓ Concat with q_pe [128, 1, 64]
+mqa_q: [1, 128, 576]
+这一步把 128-head 的 MHA 等效转换成共享 latent KV 的 MQA 。代价是 q_nope × W_UK_T 是一个 [128, 128, 512] 的小 GEMM；收益是 attention 内核只需访问一份 latent KV cache（576 维）而不是 128 head × (128+64) 维。3.4 FlashMLA decoding · 输入 mqa_q + kv_cacheQ: [1, 128 heads, 576]
+KV cache: [num_tokens, 1, 576]   ← 只存 latent，不存 num_heads × head_dim
+    ↓ FlashMLA
+FlashMLA Out: [token_num, num_heads, kv_lora_rank=512]
+    ↓ Transpose
+[num_heads, token_num, kv_lora_rank]
+    ↓ × W_UV [128, 128, 512]
+    ↓ Transpose
+W_UV Out: [token_num, num_heads, v_head_dim=128]
+W_UV 把 latent V 投影回 head 维度 。这一步对应 prefill 中 kv_b_proj 的 V 部分（[512, 128*128]），但在 decoding 路径里被拆出来作为 attention 后处理。4 · DSA Forward Stage + Indexer Module · drawio 下半部分（核心）终于到 DSA 自己的部分。drawio 最下面的两块图：左边是 DSA Forward Prefill/Decoding Stage，右边是 DSA Indexer Module。4.1 DSA Forward Stage 与 MLA decoding 的差异DSA Forward Stage 的大部分流水复用 MLA decoding（fused_qkv_a_proj、q_b_proj、W_UK_T、W_UV、FlashMLA），只在两处不同：差异点MLA decodingDSA ForwardToken 维度[1, ...] 单 token[num tokens, ...] Sum Token Num with Batch SizeKV cache[num_tokens, 1, 576] 完整历史[M × 2048, 576] 仅 top-2048 个 token × M 个 query入口 attentionFlashMLAMQA with token indices（FlashMLA sparse）额外路径—DSA Indexer Module（生成 top-k indices）KV 访问顺序读完整历史&ldquo;Concat with indicies Before Cache&rdquo;也就是说，DSA 在 MLA decoding 之上多挂一个 Indexer 模块产生 top-k indices ，并把 attention 的 KV 入口换成 sparse 版本。4.2 Indexer Module 的三条 projectiondrawio 右侧 Indexer Module 的输入是 q_c（来自 q_a_layernorm 后的 [tokens, 1536]），以及 input hidden h_t（[tokens, 7168]）。三条 projection 并行：4.2.1 weights_proj · query 端的 head 权重self_attn.indexer.weights_proj
+weight: [hidden_size, index_num_heads]
+      = [7168, 64]
+
+input h_t [tokens, 7168] → [tokens, 64]
+名为 wIt,j (即 w^I_{t,j})，j ∈ [0, 64)
+每个 query token 得到 64 个 index head 的权重 。这相当于"对不同 head 的索引相关性赋予不同重要性"——比单 head 更精细。4.2.2 wq_b · query latent 投影到 64×128self_attn.indexer.wq_b
+weight: [q_lora_rank, index_num_heads * index_head_dim]
+      = [1536, 64 * 128] = [1536, 8192]
+
+input q_c [tokens, 1536] → [tokens, 64*128] = [tokens, 64, 128]
+然后再拆 q_nope [tokens, 64, 64] + q_pe [tokens, 64, 64]
+拼接得到 {[q^I_{t,i}; q^R_{t,i}]} = [tokens, 64, 128]
+注意这里 wq_b 与 MLA 主路径的 q_b_proj 是两条独立 projection ——MLA q_b_proj 输出 128 个 main attention head；indexer wq_b 输出 64 个 index head。两者权重独立、维度独立。4.2.3 wk + k_norm · 历史 token 端的 key indexself_attn.indexer.wk
+weight: [hidden_size, index_head_dim]
+      = [7168, 128]
+
+input h_t [tokens, 7168] → [tokens, 128]
+然后 k_pe RoPE [tokens, 1, 64] + k_nope [tokens, 1, 64]
+拼接 k = [tokens, 1, 128]
+
+self_attn.indexer.k_norm
+weight: [kv_lora_rank=512]
+对 k_norm 进行 LayerNorm
+所有 history token 都要算一次 wk → key index ，且这个 key index 需要单独 cache（与 MLA latent KV cache 是两份独立状态，详见 §5.3）。4.3 Indexer score 公式 + ReLU + Sum + TopK Selector(2048)drawio 给出 score 的描述：&ldquo;t, s 分别为 q 和 k 的 tokens 维度，然后在 num heads 维度 j 进行求和，得到两个 token 间的分数，输出为 (S, S)"。数学化：DSA Indexer 的 score 计算$$
+\begin{array}{lll}
+q^I_{t,j} &=& W^I_{q,j}\,c^Q_t,\quad j \in [0, 64),\\[0.35em]
+k^I_s &=& W^I_k h_s, \\[0.35em]
+I_{t,s}
+&=&\sum_{j=1}^{64}
+w^I_{t,j}\cdot
+\operatorname{ReLU}\!\bigl(\langle q^I_{t,j},\ k^I_s\rangle\bigr), \\[0.35em]
+S_t &=& \operatorname{TopK}(I_{t,:},\ k=2048).
+\end{array}
+$$每个 query token $t$ 对每个历史 token $s$ 计算一个 64-head 加权 ReLU 分数；最终对 query token $t$ 的所有 history 选 top-2048。drawio 上画的 score 矩阵示例（部分）：score (示例数值, 形状 [q_tokens, k_tokens]):
+         s=0   s=1   s=2   s=3   s=4   s=5   s=6   s=7
+t=0:    0.1  -inf   0.2   0.5   0.3   0.8   1.2   9.2
+t=1:    2.4   2.9   2.0   0.0   1.0   2.3   ...
+        ↓ logistic + TopK Selector(2048) per row
+indices: 1, 6, 23, -1, 8, 11, 21, 213, 452, 674
+shape:   [q num tokens, top-k]
+-inf 代表 mask 掉的 token（如未来 token，或被 padding 的 invalid 位置）；-1 代表无效 indices padding（top-k 不够时填 -1）。4.4 输出格式 · [q num tokens, top-k]DSA Indexer 的最终输出是一个 2D 矩阵 ：top_k_indices: [q_num_tokens, top_k=2048]
+每行是一个 query token 选中的 top-2048 个历史 token 的 indices。这些 indices 直接喂给 Sparse FlashMLA 进行 KV gather。drawio 标注的 &ldquo;logistic&rdquo; 是 score → indices 转换前的 normalize 步骤（让 score 稳定在 [0, 1] 范围内便于 TopK 选择）。5 · Sparse MLA 接口契约 · indices 是 kernel 几何5.1 Decode entry · indices 编码 page + offsetDSA 输出的 top-k indices 不能停在"逻辑 token id"层面——FlashMLA sparse kernel 需要的是能直接定位 KV page 的地址 ：Sparse decoding indices 语义$$
+\begin{array}{lll}
+\mathrm{idx}_{b,q,r}
+&=&
+\mathrm{page}(t_r)\cdot B_{\mathrm{page}}+\mathrm{offset}(t_r), \\[0.35em]
+\mathrm{idx}_{b,q,r}
+&=&-1 \quad \text{表示无效 padding entry}.
+\end{array}
+$$这就是为什么 DSA 输出必须从「top-k 历史 token」落到「page/offset」。如果 kernel 还要再查 block table 再查 paged KV，sparse path 的收益会被额外间接寻址吞掉。
+
+  
+    Draw.io 图表 · 可编辑
+    figures/F5.drawio
+  
+  Sparse MLA 接口契约：DSA 输出的 top-k indices 必须直接成为 FlashMLA sparse kernel 的 KV gather 几何，不能再走一次 block table 查找。
+
+5.2 KV cache shape · [M × 2048, 576]drawio 右下方 DSA Forward Stage 的 KV cache 形状是 kv_cache: [M × 2048, 576]。这个 M × 2048 不是上下文长度，而是 M 个 query token × 每个 query 选 2048 个 history ——也就是 sparse attention 的有效 KV 集合大小。这意味着 sparse attention 实际访问的 KV 是：有效 KV 数量 = M × top-k = M × 2048
+而不是      = N (full history) ≈ 64K, 128K, 256K+
+当 N &#187; 2048 时，sparse 比 dense 节约的 KV 读取量 ≈ N / 2048 ——上下文 128K 时节约 64×。5.3 Indexer K cache · 与 MLA latent KV cache 是两份状态vLLM 的 DeepSeek-V3.2 sparse attention 说明里特别提到：lightning indexer 有自己的 cached K values，不等于 MLA 的 latent KV cache 。所以 DSA 不是「在已有 KV cache 上多跑一个 top-k」，而是多了一份专门为索引服务的 cache 状态 。两份 cache：Cache存储内容维度用于MLA latent KVNoPE 512 维 + RoPE 64 维 = 576 维[num_tokens, 576]main attention（Sparse FlashMLA 读）Indexer K cachek_pe 64 维 + k_nope 64 维 = 128 维[num_tokens, 128]indexer score 计算Indexer K cache 体积 ≈ MLA latent KV 的 22%（128 / 576），不算大但是个独立维度。5.4 FP8 KV cache · NoPE 量化、RoPE 不量化DeepSeek-V3.2 的 sparse path 还引入 FP8 KV cache 优化，drawio 上明确标注：concat_and_cache_mla
+k_pe: [num_tokens, 64]   ROPE 部分，FP16/BF16
+kv_c: [num_tokens, 512]  NOPE 部分，FP8 保存
+NoPE payload 可以量化（FP8 节省 50% 容量），RoPE 部分必须 BF16 保留位置编码精度。每个 K-block 边界还需要单独存 scale。DSA 输出 indices 后，Sparse FlashMLA 读到的不是一块普通 dense KV，而是带有 layout、量化和 RoPE/NoPE 切分的 cache。上线边界包括 indexer K cache 形状、MLA latent cache layout、FP8 scale 位置、indices padding 与 graph bucket 五项必须同时稳定。6 · 系统边界 · 长上下文什么时候 sparse 比 dense 快6.1 收益边界 · 上下文长度门限DSA 的收益需要满足两个条件：N &#187; top-k ：上下文长度远大于 top-k=2048 时收益最大；N=4096 时几乎无收益；N=128K 时 ~64× 加速Indexer recall 足够高 ：被选中的 2048 个 token 必须包含真正相关的 history（不能漏关键信息）这两个条件互相牵制：top-k 太小（如 512）省得多但 recall 低；top-k 太大（如 8192）recall 高但接近 dense。top-k=2048 是 DeepSeek 团队在 quality vs speed 上的折中 。
+
+  
+    Draw.io 图表 · 可编辑
+    figures/F6.drawio
+  
+  DSA 放回 serving 系统：indexer/topk/gather 需要与 paged KV、FP8 scale、RoPE/NoPE 切分、FlashMLA sparse entry 的 shape 一起对齐。
+
+6.2 何时不要开 DSA实战中 DSA 不是越开越好。下列场景 dense MLA 更优：场景为什么 dense 更好上下文 &lt; 8Kindexer + topk + gather 开销超过省下的 attentionBatch size 大 + 短序列dense 已是 BW-bound，sparse 多了 indexer 反而拖慢Indexer 训练不充分top-k recall &lt; 70% 时质量退化明显Prefill 阶段prefill 要算所有 token-pair，sparse 没有省6.3 与 MTP 的关系 · 正交叠加但 contract 不能混MTP 和 DSA 可以同时存在 ：MTP 让一次 target forward 验证多个 query row → 改 S_q（query 数）DSA 给每个 query row 生成自己的 top-k indices → 改 S_t（每 query 的 KV 数）Sparse MLA 按 indices 读取 KV但 contract 不能混 ：MTP contract = draft / verify / KV commit 状态机DSA contract = indexer / top-k / page-offset / sparse kernel 几何把两者揉成"multi-token sparse attention"会丢两个关键边界。正确的实现是两层独立 ：MTP 在 sequence 级管理 draft 与 KV commit；DSA 在 attention 级管理 top-k 与 page-offset。6.4 上线前 5 项 sanity checkIndexer K cache 容量足够 ——需要为每个 token 多存 ~128 维 BF16/FP8top-k=2048 与 KV layout 对齐 ——[M × 2048, 576] 形状必须匹配 FlashMLA sparse 入口indices = -1 的 padding 路径正确 ——sparse kernel 必须跳过 -1 entriesdense fallback 可用 ——长上下文走 sparse、短上下文走 dense，runtime 门限要可配FP8 NoPE + BF16 RoPE 切分稳定 ——concat_and_cache 流程不能漏 RoPE 部分量化Optimization Audit · DSA 优化点查漏优化点drawio 落点baseline 瓶颈机制边界条件MLA NoPE/RoPE 拆分MLA Prefill Stage全 head dim 都做 RoPE 浪费仅 64 维 RoPE，512 维 NoPERoPE 部分必须 BF16Decoding fused_qkv_a_projMLA Decoding Stageq_a + kv_a 两次 launch三投影合一为单 GEMM适合 token=1 的 decodingW_UK_T 转 MQAMLA Decoding Stage128 head × (K,V) 体积大每 head 共享同一份 latent K多了 [128,128,512] 小 GEMMW_UV 后处理MLA Decoding Stagelatent V 不能直接输出attention 后做 V projection需要 BF16/FP16 累加DSA Indexer 三投影DSA Indexer Moduledense 必须扫完整 KVweights_proj/wq_b/wk 算 score需独立 K cache、参数额外训练TopK Selector(2048)DSA Indexer Moduletop-k 太小漏关键、太大失效益训练时调整 top-k当前 2048 是 DeepSeek 折中Page/offset indicesSparse MLA 接口（推断）indices 仅 token id 需再查表直接编码 page × B_page + offset必须与 KV cache layout 一致Indices padding (-1)Sparse MLA 接口（推断）不足 top-k 时形状不一致-1 padding，kernel 跳过sparse kernel 必须支持 -1 跳过FP8 NoPE 量化concat_and_cache_mlaKV 体积 50% 浪费NoPE 部分 FP8、RoPE 部分 BF16每 K-block 边界存 scaleDense / sparse fallback系统边界短上下文 sparse 反而慢按 N 阈值 runtime 切换CUDA Graph bucket 要包含两条路与 MTP 正交叠加系统边界两个 contract 揉成一个会乱两层独立维护sequence 级 + attention 级分开Map · 图解索引图来源读图问题D0-1C14.6 · MLA ModuleDSA 继承的 MLA 基础形状：query latent、KV latent 与 RoPE 分支D0-2DeepSeek-V3.2-Exp DSA 示意图Indexer 如何在 MLA 之下选择 top-k key-value entriesD0-3C14.6 · DSA Prefill / Decoding StageDSA Forward、Indexer Module 与 sparse MQA 的连接关系F1作者（基于 drawio C14.6）DSA Indexer 三条 projection 如何变成 score 与 top-k indicesF2作者Sparse MLA 接口如何把 indices 直接落到 page/offsetF3作者DSA 放回 serving 系统时与哪些组件 contract 对齐C14.6 DSA 流程图拆成三张看：D0-1 · MLA Module：先看 DSA 复用的 MLA 基础张量分支D0-2 · DSA 示意图：再看论文里 Indexer 选择 top-k KV 的算法位置D0-3 · DSA Prefill / Decoding Stage：最后看实现图里 Indexer 与 sparse MQA 的拼接方式结论DSA 的核心不是「随便稀疏一下」，而是让 trained Indexer 输出 kernel 可消费的 top-k page/offset。具体而言：Indexer 三条 projection weights_proj / wq_b / wk 各管 query head 权重、query latent、history key indexTopK Selector(2048) 是算法门限也是 kernel 几何——直接决定 sparse softmax 长度Top-k indices 必须落到 page+offset ，不能停在 token id 抽象层Indexer K cache 与 MLA latent KV 是两份独立 state ——不是给 MLA cache 上多跑一遍 top-kFP8 NoPE + BF16 RoPE 切分 是 sparse path 的隐藏前提长上下文（64K+）才是 DSA 主战场 ，短上下文反而比 dense MLA 慢DSA 与 MTP 完全正交：一个改 attention 的历史范围，一个改 decode loop 次数；都需要把 contract 完整接到 serving system，否则收益被 fallback 和数据搬运吃掉。References</h2>
+<div class="kbox">
+<p class="zh no-indent"><b>Source list.</b>　DSA 稀疏注意力相关论文、仓库与基准。</p>
+<ol class="zh-list ref-list">
+<li><a href="https://arxiv.org/abs/2412.19437">DeepSeek-V3 Technical Report (arXiv 2412.19437)</a></li>
+<li><a href="https://vllm.ai/blog/deepseek-v3-2">DeepSeek-V3.2 sparse attention 介绍</a></li>
+<li><a href="https://github.com/deepseek-ai/FlashMLA">FlashMLA GitHub Repository</a></li>
+<li><a href="https://github.com/vllm-project/vllm">vLLM DeepSeek-V3.2 集成 PR/Discussion</a></li>
+<li><a href="https://alan-hpc.github.io/blog/posts/2026-05-01-deepseek-v3-%E6%8E%A8%E7%90%86%E4%BC%98%E5%8C%96%E7%B3%BB%E5%88%97-%E5%85%AD-mtp-%E6%8A%95%E6%9C%BA%E9%87%87%E6%A0%B7/">DeepSeek V3 推理优化系列（六）· MTP 投机采样</a></li>
+<li><a href="https://alan-hpc.github.io/blog/posts/2026-05-01-deepseek-v3-%E6%8E%A8%E7%90%86%E4%BC%98%E5%8C%96%E7%B3%BB%E5%88%97-%E5%9B%9B-flashmla-decode-attention/">DeepSeek V3 推理优化系列（四）· FlashMLA decode attention</a></li>
+</ol>
+</div>
+</section></div></div><!-- /reader-inner -->
+</div><!-- /reader -->
+
+
+</body>
+</html>

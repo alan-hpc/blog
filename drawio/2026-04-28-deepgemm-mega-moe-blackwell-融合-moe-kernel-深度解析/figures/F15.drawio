@@ -1,0 +1,79 @@
+<mxfile host="app.diagrams.net" modified="2026-05-05T00:00:00.000Z" agent="Codex" version="24.7.17" type="device">
+  <diagram id="F15" name="F15">
+    <mxGraphModel dx="1000" dy="360" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1000" pageHeight="360" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="c2" value="Combine as slot fill plus local reduction" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=24;fontColor=#24292f;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="185.96" y="14" width="628.08" height="32.4" />
+        </mxCell>
+        <mxCell id="c3" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef7ff;strokeColor=#4a6fd3;strokeWidth=2;fontFamily=Helvetica;fontColor=#24292f" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="70" y="110" width="170" height="84" />
+        </mxCell>
+        <mxCell id="c4" value="rank r0" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=15;fontColor=#4a6fd3;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="113.45" y="127" width="83.1" height="20.25" />
+        </mxCell>
+        <mxCell id="c5" value="Zt,0" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Times New Roman;fontSize=14;fontColor=#24292f;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="129.76" y="152" width="50.48" height="18.9" />
+        </mxCell>
+        <mxCell id="c6" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef7ff;strokeColor=#4a6fd3;strokeWidth=2;fontFamily=Helvetica;fontColor=#24292f" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="70" y="220" width="170" height="84" />
+        </mxCell>
+        <mxCell id="c7" value="rank r1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=15;fontColor=#4a6fd3;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="113.45" y="237" width="83.1" height="20.25" />
+        </mxCell>
+        <mxCell id="c8" value="Zt,1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Times New Roman;fontSize=14;fontColor=#24292f;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="129.76" y="262" width="50.48" height="18.9" />
+        </mxCell>
+        <mxCell id="c9" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e7;strokeColor=#e0b300;strokeWidth=2;fontFamily=Helvetica;fontColor=#24292f" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="360" y="140" width="270" height="140" />
+        </mxCell>
+        <mxCell id="c10" value="source rank slots" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=17;fontColor=#e0b300;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="396.41" y="155" width="197.18" height="22.95" />
+        </mxCell>
+        <mxCell id="c11" value="slot k=0: Zt,0" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Times New Roman;fontSize=13;fontColor=#24292f;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="433.22" y="192" width="123.56" height="18" />
+        </mxCell>
+        <mxCell id="c12" value="slot k=1: Zt,1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Times New Roman;fontSize=13;fontColor=#24292f;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="433.22" y="214" width="123.56" height="18" />
+        </mxCell>
+        <mxCell id="c13" value="valid mask from π" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Times New Roman;fontSize=13;fontColor=#24292f;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="421.91" y="236" width="146.18" height="18" />
+        </mxCell>
+        <mxCell id="c14" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f4faf4;strokeColor=#5fa55f;strokeWidth=2;fontFamily=Helvetica;fontColor=#24292f" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="745" y="168" width="170" height="84" />
+        </mxCell>
+        <mxCell id="c15" value="Yt" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Times New Roman;fontSize=18;fontColor=#5fa55f;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="810.56" y="182" width="38.88" height="24.3" />
+        </mxCell>
+        <mxCell id="c16" value="Σk Zt,k" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Times New Roman;fontSize=16;fontColor=#24292f;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="788.52" y="208" width="82.96" height="21.6" />
+        </mxCell>
+        <mxCell id="c17" value="" style="endArrow=block;html=1;rounded=0;strokeColor=#4a6fd3;strokeWidth=2;fontFamily=Helvetica" parent="1" edge="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint x="240" y="152" as="sourcePoint" />
+            <mxPoint x="360" y="178" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c18" value="" style="endArrow=block;html=1;rounded=0;strokeColor=#4a6fd3;strokeWidth=2;fontFamily=Helvetica" parent="1" edge="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint x="240" y="262" as="sourcePoint" />
+            <mxPoint x="360" y="232" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c19" value="" style="endArrow=block;html=1;rounded=0;strokeColor=#5fa55f;strokeWidth=2;fontFamily=Helvetica" parent="1" edge="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint x="630" y="210" as="sourcePoint" />
+            <mxPoint x="745" y="210" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c20" value="st,k has been folded into Ae = SiLU(Ge) * Ue * st,k before Linear2." style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Times New Roman;fontSize=13;fontColor=#57606a;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="238.41" y="305" width="523.18" height="18" />
+        </mxCell>
+        <mxCell id="c21" value="Combine loads valid BF16 slots, accumulates in FP32, and stores the final BF16 token." style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#57606a;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="148.45" y="327" width="703.1" height="18" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

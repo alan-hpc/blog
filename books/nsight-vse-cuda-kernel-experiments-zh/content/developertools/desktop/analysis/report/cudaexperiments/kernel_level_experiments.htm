@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html xmlns:MadCap="http://www.madcapsoftware.com/Schemas/MadCap.xsd" lang="en-us" xml:lang="en-us" data-mc-search-type="Stem" data-mc-help-system-file-name="index.xml" data-mc-path-to-help-system="../../../../../../" data-mc-target-type="WebHelp2" data-mc-runtime-file-type="Topic" data-mc-preload-images="false" data-mc-in-preview-mode="false" data-mc-toc-path="Developer Tools|Desktop Developer Tools|NVIDIA Nsight Visual Studio Edition|NVIDIA Nsight Visual Studio Edition 4.7|Analysis Tools|CUDA Experiments">
+    <!-- saved from url=(0016)http://localhost -->
+    <head>
+        <meta charset="utf-8" />
+        <meta name="googlebot" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><title>Kernel 级别实验</title>
+        <link rel="shortcut icon" href="../../../../../Resources/MasterPages/nvidia.ico" />
+        <link href="../../../../../../Skins/Default/Stylesheets/Slideshow.css" rel="stylesheet" />
+        <link href="../../../../../../Skins/Default/Stylesheets/TextEffects.css" rel="stylesheet" />
+        <link href="../../../../../../Skins/Default/Stylesheets/Topic.css" rel="stylesheet" />
+        <link href="../../../../../resources/stylesheets/style.css" rel="stylesheet" />
+        <style>/*&lt;meta /&gt;*/
+
+.button.previous-topic-button
+{
+	-pie-background: url('../../../../../../Skins/Default/Stylesheets/Images/navigate-previous.png') no-repeat center center, linear-gradient(#ffffff, #ececec);
+}
+
+.button.current-topic-index-button
+{
+	-pie-background: linear-gradient(#ffffff, #ececec);
+}
+
+.button.next-topic-button
+{
+	-pie-background: url('../../../../../../Skins/Default/Stylesheets/Images/navigate-next.png') no-repeat center center, linear-gradient(#ffffff, #ececec);
+}
+
+.needs-pie
+{
+	behavior: url('../../../../../../Resources/Scripts/PIE.htc');
+}
+
+</style>
+        <script src="../../../../../../Resources/Scripts/custom.modernizr.js">
+        </script>
+        <script src="../../../../../../Resources/Scripts/jquery.min.js">
+        </script>
+        <script src="../../../../../../Resources/Scripts/foundation.min.js">
+        </script>
+        <script src="../../../../../../Resources/Scripts/plugins.min.js">
+        </script>
+        <script src="../../../../../../Resources/Scripts/require.min.js">
+        </script>
+        <script src="../../../../../../Resources/Scripts/require.config.js">
+        </script>
+        <script src="../../../../../../Resources/Scripts/MadCapAll.js">
+        </script>
+        <script src="../../../../../../Skins/Default/Scripts/Toolbar.js">
+        </script>
+    </head>
+    <body>
+        <p class="MCWebHelpFramesetLink MCWebHelpFramesetLinkTop"><a href="../../../../../../index.html#developertools/desktop/analysis/report/cudaexperiments/kernel_level_experiments.htm">打开带导航的主题视图</a>
+        </p>
+        <div class="MCBreadcrumbsBox_site.css_0"><span class="MCBreadcrumbsPrefix">当前位置： </span><a class="MCBreadcrumbsLink" href="../../../../developer_tools.htm">开发者工具</a><span class="MCBreadcrumbsDivider"> &gt; </span><a class="MCBreadcrumbsLink" href="../../../../desktop_devtools.htm">桌面开发者工具</a><span class="MCBreadcrumbsDivider"> &gt; </span><a class="MCBreadcrumbsLink" href="../../../nvidia_nsight.htm">NVIDIA Nsight Visual Studio Edition</a><span class="MCBreadcrumbsDivider"> &gt; </span><span class="MCBreadcrumbs">Kernel 级别实验</span>
+        </div>
+        <div id="pageheader">
+            <h1><span class="SystemTitle">Kernel 级别实验</span>
+            </h1>
+            <p style="font-size: 8pt;"><span style="color: #696969;">NVIDIA® Nsight™ Development Platform, Visual Studio Edition 4.7 用户指南</span>
+                <br /><span id="feedbacklink" style="font-size: 8pt; font-weight: normal;"><a href="mailto:devtools-support@nvidia.com?subject=Documentation Feedback: Nsight Visual Studio Edition User Guide">发送反馈</a></span>
+                <br />
+            </p>
+            <hr width="100%" size="0" align="center" />
+        </div>
+        <p><span class="MyVariablesNsightVSENameShort">NVIDIA&#160;Nsight</span> 中的 CUDA kernel 级别实验包括以下内容：&#160;</p>
+        <blockquote>
+            <p><a href="kernellevel/achievedoccupancy.htm">实际占用率</a> <![CDATA[ ]]></p>
+            <p><a href="kernellevel/achievedflops.htm">实际 FLOPS</a> <![CDATA[ ]]></p>
+            <p><a href="kernellevel/achievediops.htm">实际 IOPS</a>
+            </p>
+            <p><a href="kernellevel/instructionstatistics.htm">指令统计</a> <![CDATA[ ]]></p>
+            <p><a href="kernellevel/issueefficiency.htm">发射效率</a> <![CDATA[ ]]></p>
+            <p><a href="kernellevel/branchstatistics.htm">分支统计</a> <![CDATA[ ]]></p>
+            <p><a href="kernellevel/memorystatistics.htm">内存统计</a> <![CDATA[ ]]></p>
+            <blockquote>
+                <p><a href="kernellevel/memorystatisticsglobal.htm">内存统计 — 全局内存</a>
+                </p>
+                <p><a href="kernellevel/memorystatisticslocal.htm">内存统计 — 本地内存</a> <![CDATA[ ]]></p>
+                <p><a href="kernellevel/memorystatisticsatomics.htm">内存统计 — 原子操作</a>
+                </p>
+                <p><a href="kernellevel/memorystatisticsshared.htm">内存统计 — 共享内存</a> <![CDATA[ ]]></p>
+                <p><a href="kernellevel/memorystatisticstexture.htm">内存统计 — 纹理内存</a>
+                </p>
+                <p><a href="kernellevel/memorystatisticscaches.htm">内存统计 — 缓存</a>
+                </p>
+                <p><a href="kernellevel/memorystatisticsbuffers.htm">内存统计 — 缓冲区</a>
+                </p>
+            </blockquote>
+            <p><a href="kernellevel/pipeutilization.htm">流水线利用率</a> <![CDATA[ ]]></p>
+            <p><a href="kernellevel/performancecounters.htm">性能计数器</a> <![CDATA[ ]]></p>
+            <p><a href="kernellevel/disassemblyregexmatch.htm">反汇编正则匹配</a> <![CDATA[ ]]></p>
+        </blockquote>
+        <p>&#160;</p>
+        <p>&#160;</p>
+        <div id="pagefooter">
+            <br />
+        </div>
+        <hr style="height: 1px;" width="100%" size="0" align="center" />
+        <script type="text/javascript" src="../../../../../resources/stylesheets/run_prettify.js?lang=vb" autoload="true">
+        </script>
+        <p>
+        </p>
+        <div class="buttons inline-buttons clearfix topicToolbarProxy topicToolbarProxysite.css" style="mc-topic-toolbar-items: ;">
+            <div class="button-group-container-left">
+                <button class="button needs-pie previous-topic-button" type="button" title="Navigate previous">
+                    <img src="../../../../../../Skins/Default/Stylesheets/Images/transparent.gif" alt="上一主题" />
+                </button>
+                <div class="button current-topic-index-button disabled"><span class="sequence-index"></span> / <span class="sequence-total"></span></div>
+                <button class="button needs-pie next-topic-button" type="button" title="Navigate next">
+                    <img src="../../../../../../Skins/Default/Stylesheets/Images/transparent.gif" alt="下一主题" />
+                </button>
+            </div>
+        </div>
+        <p> </p>
+        <p><span style="color: #696969; font-size: 8pt;">NVIDIA GameWorks Documentation Rev. 1.0.150630 ©2015. NVIDIA Corporation. All Rights Reserved.</span>
+        </p>
+    </body>
+</html>

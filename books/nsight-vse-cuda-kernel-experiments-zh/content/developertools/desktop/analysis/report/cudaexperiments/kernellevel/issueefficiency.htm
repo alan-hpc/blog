@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html xmlns:MadCap="http://www.madcapsoftware.com/Schemas/MadCap.xsd" lang="en-us" xml:lang="en-us" data-mc-search-type="Stem" data-mc-help-system-file-name="index.xml" data-mc-path-to-help-system="../../../../../../../" data-mc-target-type="WebHelp2" data-mc-runtime-file-type="Topic" data-mc-preload-images="false" data-mc-in-preview-mode="false" data-mc-toc-path="Developer Tools|Desktop Developer Tools|NVIDIA Nsight Visual Studio Edition|NVIDIA Nsight Visual Studio Edition 4.7|Analysis Tools|CUDA Experiments|Kernel-Level Experiments">
+    <!-- saved from url=(0016)http://localhost -->
+    <head>
+        <meta charset="utf-8" />
+        <meta name="googlebot" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><title>发射效率</title>
+        <link rel="shortcut icon" href="../../../../../../Resources/MasterPages/nvidia.ico" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/Slideshow.css" rel="stylesheet" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/TextEffects.css" rel="stylesheet" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/Topic.css" rel="stylesheet" />
+        <link href="../../../../../../resources/stylesheets/style.css" rel="stylesheet" />
+        <style>/*&lt;meta /&gt;*/
+
+.button.previous-topic-button
+{
+	-pie-background: url('../../../../../../../Skins/Default/Stylesheets/Images/navigate-previous.png') no-repeat center center, linear-gradient(#ffffff, #ececec);
+}
+
+.button.current-topic-index-button
+{
+	-pie-background: linear-gradient(#ffffff, #ececec);
+}
+
+.button.next-topic-button
+{
+	-pie-background: url('../../../../../../../Skins/Default/Stylesheets/Images/navigate-next.png') no-repeat center center, linear-gradient(#ffffff, #ececec);
+}
+
+.needs-pie
+{
+	behavior: url('../../../../../../../Resources/Scripts/PIE.htc');
+}
+
+</style>
+        <script src="../../../../../../../Resources/Scripts/custom.modernizr.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/jquery.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/foundation.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/plugins.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/require.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/require.config.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/MadCapAll.js">
+        </script>
+        <script src="../../../../../../../Skins/Default/Scripts/Toolbar.js">
+        </script>
+    </head>
+    <body>
+        <p class="MCWebHelpFramesetLink MCWebHelpFramesetLinkTop"><a href="../../../../../../../index.html#developertools/desktop/analysis/report/cudaexperiments/kernellevel/issueefficiency.htm">打开带导航的主题视图</a>
+        </p>
+        <div class="MCBreadcrumbsBox_site.css_0"><span class="MCBreadcrumbsPrefix">当前位置： </span><a class="MCBreadcrumbsLink" href="../../../../../developer_tools.htm">开发者工具</a><span class="MCBreadcrumbsDivider"> &gt; </span><a class="MCBreadcrumbsLink" href="../../../../../desktop_devtools.htm">桌面开发者工具</a><span class="MCBreadcrumbsDivider"> &gt; </span><a class="MCBreadcrumbsLink" href="../../../../nvidia_nsight.htm">NVIDIA Nsight Visual Studio Edition</a><span class="MCBreadcrumbsDivider"> &gt; </span><span class="MCBreadcrumbs">发射效率</span>
+        </div><a name="kanchor138"></a>
+        <div id="pageheader">
+            <h1><span class="SystemTitle">发射效率</span>
+            </h1>
+            <p style="font-size: 8pt;"><span style="color: #696969;">NVIDIA® Nsight™ Development Platform, Visual Studio Edition 4.7 用户指南</span>
+                <br /><span id="feedbacklink" style="font-size: 8pt; font-weight: normal;"><a href="mailto:devtools-support@nvidia.com?subject=Documentation Feedback: Nsight Visual Studio Edition User Guide">发送反馈</a></span>
+                <br />
+            </p>
+            <hr width="100%" size="0" align="center" />
+        </div>
+        <h3><a id="Overview"></a>概述</h3>
+        <p>
+          发射效率实验提供有关设备发射指令能力的信息。其核心是回答这样一个问题：设备是否能够在每个周期都成功发射指令。如果做不到这一点，就不可避免地会降低 kernel 的潜在峰值性能。理解无法连续背靠背发射指令的根因，是分析 kernel 性能时一个很好的高层级初步排查切入点。
+        </p>
+        <h5><a id="Background"></a>背景</h5>
+        <p>
+          对于计算能力 2.0 及更高的设备，每个流多处理器（SM）都配备了多个 warp 调度器。每个 warp 调度器管理一个由硬件给定的固定最大 warp 数量。这就定义了每个 SM 上 warp 的<b>设备上限</b>——即同时驻留在每个 SM 上的 warp 数量的上界。kernel 启动的<a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#execution-configuration">执行配置</a>可能因资源约束进一步限制可驻留 warp 数（详细信息见……）。<b>理论占用率</b>定义了 SM 上 warp 并行度的最高上限。到目前为止讨论的所有信息都是由目标设备、kernel 的源代码及启动参数静态确定的。在运行时，每个周期同时分配给某个多处理器的 warp 数被称为<b>活跃 warp</b>。在最佳情况下，kernel 执行期间的平均活跃 warp 数等于或非常接近理论占用率。但如果调度器未能在各 warp 调度器之间均匀地平衡工作，或者干脆没有剩余的工作可发射以填满机器，那么实际的活跃 warp 数就可能明显低于理论占用率。上述指标之间的关系如下：</p><pre>Device Limit &gt;= Theoretical Occupancy &gt;= Active Warps</pre>
+        <p>活跃 warp 集合可以理解为在运行时某一时刻可以推进执行的候选池。然而，并非所有活跃 warp 都一定能发射其下一条指令。例如，某个 warp 可能正停在 barrier 处等待其他 warp 跟上，或者尚未取到下一条指令，又或者在等待先前指令的结果就绪。按是否能发射下一条指令对活跃 warp 进行划分，可得到无法推进执行的<b>停顿 warp</b>子集和已准备好发射下一条指令的<b>合格 warp</b>子集。更具体地说，一个活跃 warp 被视为合格的条件是：指令已取回、指令所需的执行单元可用、且指令的所有依赖均已满足。按定义，这些指标之间的关系可表示为：</p><pre>Active Warps == Stalled Warps + Eligible Warps</pre>
+        <p>在每个周期，每个 warp 调度器都会从合格 warp 中挑选一个并发射一条或多条指令。如果某个周期没有合格 warp 可用，调度器就失去了推进执行的机会，处理单元也可能因此闲置。由于每个调度器在每个周期要么不挑选 warp，要么恰好挑选一个 warp，所以每个多处理器每个周期的<b>已选 warp</b>数处于 <code>[0 .. # Warp Schedulers per SM]</code> 范围之内。要保证每个调度器在每个周期都能发射指令，就需要每个 warp 调度器在每个周期都至少有一个合格 warp 可用。因此，每个调度器合格 warp 数的目标值是每个周期至少有一个或多个 warp 可用。在 SM 层面上，这意味着合格 warp 数至少要等于 warp 调度器数量。
+        </p>
+        <div style="text-align: center;">
+            <img src="issueefficiencywarpscheduling.png" style="mc-thumbnail: none;" />
+        </div>
+        <h3><a id="Charts"></a>图表</h3>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="WarpsPerSm"></a>每个 SM 的 warp 数</h4>
+                    <img src="issueefficiencychartwarpspersm.png" style="float: right;mc-thumbnail: none;" />
+                    <p>
+          概览本文档<a href="#Background">背景</a>章节中讨论的、每个 SM 的各种 warp 指标。这些指标以整个 kernel 执行期间、目标设备各个 SM 上的平均值给出。Y 轴按设备上限进行缩放。
+        </p>
+                    <p style="padding:10px;background-color:#eaefe0">
+          即便平均来看有足够多的合格 warp，也并不一定保证从未出现某个周期内某个 warp 调度器漏发一条指令的情况。
+        </p>
+                    <h5>指标</h5>
+                    <p><b>活跃 warp</b>
+          warp 从被调度到某个多处理器的那一刻起，直到完成其最后一条指令期间都是活跃的。每个 warp 调度器维护其自己已分配的活跃 warp 列表。warp 与调度器的分配在 warp 变为活跃时一次性完成，并在该 warp 的整个生命周期内有效。一个粗略的指导原则是：每个 warp 调度器至少应有 8 个活跃 warp。更多的活跃 warp 可能让 warp 延迟得以更有效地隐藏。
+        </p>
+                    <p><b>合格 warp</b>
+          如果一个活跃 warp 能够发射下一条指令，就被视为合格。每个 warp 调度器都会从合格 warp 池中挑选下一个发射指令的 warp。不合格的 warp 会报告一个<a href="#IssueStallReasons">发射停顿原因</a>。目标是每个调度器每个周期至少有一个合格 warp。
+        </p>
+                    <p><b>理论占用率</b>
+          理论占用率作为每个 SM 上活跃 warp（也即合格 warp）的上限，由 kernel 启动的<a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#execution-configuration">执行配置</a>所定义。更详细的内容见<a href="achievedoccupancy.htm">实际占用率</a>实验。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <p>
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="WarpIssueEfficiency"></a>Warp 发射效率</h4>
+                    <img src="issueefficiencychartwarpissueefficiency.png" style="float: right;mc-thumbnail: none;" />
+                    <p>
+          整个 GPU 上各周期合格 warp 可用情况的分布。所给数值是在 kernel 执行期间跨所有 warp 调度器求和得到的。
+        </p>
+                    <p style="padding:10px;background-color:#eaefe0">
+          在计算能力 2.x 的设备上，该图表显示三个指标。"没有合格 warp"意味着两个 warp 调度器都未能发射。"一个合格"表示只有一个 warp 调度器有可用的合格 warp。"两个或更多"则保证两个 warp 调度器都发射了一条指令。
+        </p>
+                    <h5>指标</h5>
+                    <p><b>没有合格</b>
+          warp 调度器没有合格 warp 可供挑选、因而未发射指令的周期数。没有合格 warp 的周期占比越低，代码在目标设备上的运行就越高效。如果该值较高，请查看<a href="#IssueStallReasons">发射停顿原因</a>以了解是什么导致 warp 无法变为合格。
+        </p>
+                    <p><b>一个或更多合格</b>
+          warp 调度器至少有一个合格 warp 可供挑选的周期数。该指标等于所有 warp 调度器累加之后、发射了指令的总周期数。该值越高越好，目标是接近 100%。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <p>
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="IssueStallReasons"></a>发射停顿原因</h4>
+                    <img src="analysis_issue_stall_reasons.001.png" style="float: right;mc-thumbnail: none;" />
+                    <p>
+          发射停顿原因捕捉的是活跃 warp 为何不合格。在计算能力 3.0 及更高的设备上，每个停顿的 warp 都会在每个周期将其最关键的停顿原因计数加 1。因此每个多处理器每个周期停顿原因的总和，其增量在 0（如果所有 warp 均合格）到活跃 warp 数（如果所有 warp 均停顿）之间。停顿原因计数器对所有停顿的 warp 都会更新，与当前周期是否能发射指令无关。这与计算能力 2.x 的设备不同——后者仅在 warp 调度器无法发射指令的周期才更新发射停顿原因。
+        </p>
+                    <ul>
+                        <li value="1"><b>流水线繁忙</b> — 指令所需的计算资源尚不可用。</li>
+                        <li value="2"><b>纹理</b> — 纹理子系统已被充分占用，或存在过多未完成请求。 </li>
+                        <li value="3"><b>常量</b> — 由于常量缓存未命中导致常量加载被阻塞。 </li>
+                        <li value="4"><b>指令取指</b> — 下一条汇编指令尚未取回。 </li>
+                        <li value="5"><b>内存节流</b> — 大量挂起的内存操作阻碍了进一步的执行推进。可以通过将多个内存事务合并为一个来缓解。 </li>
+                        <li value="6"><b>内存依赖</b> — 由于所需资源不可用或已被完全占用，或某类请求过多未完成，load/store 无法执行。可以通过优化内存对齐和访问模式来潜在地减少内存依赖停顿。 </li>
+                        <li value="7"><b>同步</b> — warp 被阻塞在 <code>_syncthreads()</code> 调用处。 </li>
+                        <li value="8"><b>执行依赖</b> — 指令所需的输入尚不可用。可以通过提高指令级并行度来潜在地减少执行依赖停顿。 </li>
+                    </ul>
+                </td>
+            </tr>
+        </table>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h5><a id="WarpIssueEfficiencyVsIssueStallReasons"></a>结合分析 Warp 发射效率与发射停顿原因</h5>
+                    <img src="analysis_warp_issue_vs_stall_reasons.001.png" style="float: right;mc-thumbnail: none;" />
+                    <p>Warp 发射效率图表中的"没有合格"段反映了发射停顿出现的频率。发射停顿原因图表则展示了 warp 停顿原因的分布。如果"没有合格"段较小，说明发射停顿出现得不频繁，研究停顿原因的价值就会变小。然而，如果"没有合格"段较大，则解决发射停顿原因图表中最突出的问题将能在发射效率上带来最大的改进。
+</p>
+                    <p>在示意图所示的例子中，首先注意到在 Warp 发射效率中，kernel 执行期间超过 80% 的时钟周期没有任何 warp 合格、可以发射其下一条指令。</p>
+                    <p>较高的发射停顿占比说明应当查阅发射停顿原因图表以确定停顿原因。本例中最突出的原因是内存依赖，占停顿总数一半以上。这是对尚未到达的内存加载数据的依赖，表明性能受内存延迟所限制。</p>
+                    <p>本例中，kernel 可以通过执行更多计算、利用计算来隐藏内存延迟，或通过引入指令级并行让独立指令可以在加载数据与使用数据之间发射，从而更好地利用 GPU。</p>
+                </td>
+            </tr>
+        </table>
+        <h3><a id="Analysis"></a>分析</h3>
+        <ul style="list-style-type:none">
+            <li value="1">
+            如果 <a href="#WarpIssueEfficiency">Warp 发射效率</a>图表中没有合格 warp 的周期占比较高 ……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……尽量在可能的情况下增加活跃 warp 数。在很多情况下，增加活跃 warp 数会带来更大的合格 warp 池。如果……
+                  <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                      ……<a href="#WarpsPerSm">每个 SM 的 warp 数</a>图表中的理论占用率与设备上限（Y 轴最大值）相差较远，则尝试优化 kernel 启动的<a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#execution-configuration">执行配置</a>，并进一步查看<a href="achievedoccupancy.htm">占用率</a>实验的详情。如果你受限于寄存器，也不要排除使用 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#launch-bounds">launch bounds</a> 来试验提高占用率，即使这会造成一定程度的寄存器溢出。
+                    </li><li style="text-indent:-20px;" value="2">
+                      ……<a href="#WarpsPerSm">每个 SM 的 warp 数</a>图表中的平均活跃 warp 明显低于理论占用率，则检查<a href="instructionstatistics.htm">指令统计</a>实验中是否存在严重不均衡的负载或尾部效应。可行的策略包括：以更细粒度拆分 kernel grid，更均衡地将工作分配到各 block 之间，避免/并行化为在单个 block、warp 或线程上准备或汇集最终结果所做的代价高昂的归约操作。
+                    </li><li style="text-indent:-20px;" value="3">
+                      ……查看<a href="pipeutilization.htm">流水线利用率</a>实验，确认是否某条特定流水线已被完全占满。这种情况下增加活跃 warp 不太可能带来更多合格 warp，因为任何新增的活跃 warp 都会因尝试访问已过载的流水线而停顿。这种情况下，可以尝试减少该流水线上的负载，或排查是否已达到目标硬件预期的性能峰值。
+                    </li></ul></li><li style="text-indent:-20px;" value="2">
+                ……尝试解决最常见的停顿原因。如果占比最高的停顿原因是……
+                  <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                       ……执行依赖，则运行内存类实验，寻找优化慢速内存访问的潜力。同时检查指令组合中是否存在大量低吞吐量指令（如 double 指令），并确认你确实需要使用这些低吞吐量操作。在可接受的情况下，尽量改用更快的数学内联函数（intrinsics）或切换到单精度浮点。可以使用编译器选项 <code>--use_fast_math</code> 来快速检验此类优化方法的潜在效果。
+                     </li><li style="text-indent:-20px;" value="2">
+                       ……纹理停顿，则使用<a href="memorystatisticstexture.htm">内存统计 — 纹理内存</a>检查纹理访问，寻找进一步优化的可能。同样地，也要查看<a href="pipeutilization.htm">流水线利用率</a>实验，以确认纹理流水线的最大吞吐量是否已达到。
+                     </li><li style="text-indent:-20px;" value="3">
+                       ……barrier 停顿，则尝试在 barrier 之前让每个 block 中各 warp 的执行负载更均衡，或考虑该算法是否可以用更少的 barrier 实现。
+                     </li></ul></li></ul></li>
+            <li value="2">
+          如果 <a href="#WarpIssueEfficiency">Warp 发射效率</a>图表中没有合格 warp 的周期占比接近零 ……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……检查 kernel 性能是否已接近指令吞吐量或内存吞吐量所对应的预期峰值。
+              </li><li style="text-indent:-20px;" value="2">
+                ……且 <a href="#WarpsPerSm">每个 SM 的 warp 数</a>中平均合格 warp 数明显高于每个多处理器的 warp 调度器数，那么一个潜在的进阶优化策略是将两个或多个线程的工作合并到一个线程中。如果剩余 grid 仍足够大、能够填满整个设备，这种方式即使整体占用率、活跃 warp 数和合格 warp 数都有所降低，也可能带来更优的执行时间。
+              </li></ul></li>
+        </ul>
+        <!--
+        <h3><a href="#CommonPatterns"></a>Common Patterns</h3>
+        <p>
+          
+        </p>
+        -->
+        <div id="pagefooter">
+            <br />
+        </div>
+        <hr style="height: 1px;" width="100%" size="0" align="center" />
+        <script type="text/javascript" src="../../../../../../resources/stylesheets/run_prettify.js?lang=vb" autoload="true">
+        </script>
+        <p>
+        </p>
+        <div class="buttons inline-buttons clearfix topicToolbarProxy topicToolbarProxysite.css" style="mc-topic-toolbar-items: ;">
+            <div class="button-group-container-left">
+                <button class="button needs-pie previous-topic-button" type="button" title="Navigate previous">
+                    <img src="../../../../../../../Skins/Default/Stylesheets/Images/transparent.gif" alt="上一主题" />
+                </button>
+                <div class="button current-topic-index-button disabled"><span class="sequence-index"></span> / <span class="sequence-total"></span></div>
+                <button class="button needs-pie next-topic-button" type="button" title="Navigate next">
+                    <img src="../../../../../../../Skins/Default/Stylesheets/Images/transparent.gif" alt="下一主题" />
+                </button>
+            </div>
+        </div>
+        <p> <![CDATA[ ]]></p>
+        <p><span style="color: #696969; font-size: 8pt;">NVIDIA GameWorks Documentation Rev. 1.0.150630 ©2015. NVIDIA Corporation. All Rights Reserved.</span>
+        </p>
+    </body>
+</html>

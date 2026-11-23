@@ -1,0 +1,28 @@
+<mxfile host="app.diagrams.net" agent="Codex native-drawio">
+  <diagram id="F24" name="F24">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="960" pageHeight="520" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="F24 · Multi-head Attention backward" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=22;fontStyle=1;fontFamily=Helvetica;fontColor=#1f2328;" vertex="1" parent="1"><mxGeometry x="40" y="24" width="880" height="36" as="geometry" /></mxCell>
+        <mxCell id="dy" value="ΔY" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f1e8ff;strokeColor=#8d62c9;strokeWidth=2;fontSize=20;fontStyle=1;fontFamily=Helvetica;fontColor=#27313d;" vertex="1" parent="1"><mxGeometry x="70" y="205" width="110" height="64" as="geometry" /></mxCell>
+        <mxCell id="wo" value="Output projection&lt;br&gt;Y = H W&lt;sub&gt;o&lt;/sub&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f1e8ff;strokeColor=#8d62c9;strokeWidth=2;fontSize=16;fontFamily=Helvetica;fontColor=#27313d;" vertex="1" parent="1"><mxGeometry x="245" y="190" width="180" height="82" as="geometry" /></mxCell>
+        <mxCell id="cat" value="ΔH = ΔY W&lt;sub&gt;o&lt;/sub&gt;&lt;sup&gt;T&lt;/sup&gt;&lt;br&gt;&lt;font style=&quot;font-size: 13px&quot;&gt;split by head columns&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef4ff;strokeColor=#5680c2;strokeWidth=2;fontSize=16;fontFamily=Helvetica;fontColor=#27313d;" vertex="1" parent="1"><mxGeometry x="500" y="190" width="200" height="82" as="geometry" /></mxCell>
+        <mxCell id="h1" value="head 1 backward" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf8ee;strokeColor=#4ea96b;strokeWidth=2;fontSize=15;fontFamily=Helvetica;fontColor=#27313d;" vertex="1" parent="1"><mxGeometry x="765" y="95" width="150" height="52" as="geometry" /></mxCell>
+        <mxCell id="h2" value="head 2 backward" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf8ee;strokeColor=#4ea96b;strokeWidth=2;fontSize=15;fontFamily=Helvetica;fontColor=#27313d;" vertex="1" parent="1"><mxGeometry x="765" y="175" width="150" height="52" as="geometry" /></mxCell>
+        <mxCell id="hk" value="..." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf8ee;strokeColor=#4ea96b;strokeWidth=2;fontSize=18;fontFamily=Helvetica;fontColor=#27313d;" vertex="1" parent="1"><mxGeometry x="765" y="255" width="150" height="52" as="geometry" /></mxCell>
+        <mxCell id="hh" value="head h backward" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eaf8ee;strokeColor=#4ea96b;strokeWidth=2;fontSize=15;fontFamily=Helvetica;fontColor=#27313d;" vertex="1" parent="1"><mxGeometry x="765" y="335" width="150" height="52" as="geometry" /></mxCell>
+        <mxCell id="sum" value="ΔX = Σ&lt;sub&gt;heads&lt;/sub&gt; ΔX&lt;sub&gt;i&lt;/sub&gt;&lt;br&gt;&lt;font style=&quot;font-size: 13px&quot;&gt;shared input, gradient accumulates&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff0f0;strokeColor=#d66b6b;strokeWidth=2;fontSize=17;fontStyle=1;fontFamily=Helvetica;fontColor=#27313d;" vertex="1" parent="1"><mxGeometry x="420" y="385" width="240" height="82" as="geometry" /></mxCell>
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#8d62c9;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="dy" target="wo"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#5680c2;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="wo" target="cat"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#4ea96b;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="cat" target="h1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#4ea96b;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="cat" target="h2"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#4ea96b;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="cat" target="hk"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#4ea96b;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="cat" target="hh"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e7" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#d66b6b;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="h1" target="sum"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e8" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#d66b6b;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="h2" target="sum"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e9" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#d66b6b;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="hh" target="sum"><mxGeometry relative="1" as="geometry" /></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

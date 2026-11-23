@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DeepSeek V3 推理系统深度解析（一）：从官方吞吐账本到 PD 分离与 Cross-node EP</title>
+
+<!-- table-css-injected -->
+  <!-- Fonts: JetBrains Mono for code -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+  <!-- Highlight.js: Monokai Sublime theme -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/monokai-sublime.min.css">
+  <!-- KaTeX -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <!-- Shared reader styles -->
+  <link rel="stylesheet" href="/blog/readers/reader.css">
+</head>
+<body>
+
+<div id="lb" onclick="lbClose(event)">
+  <span id="lb-close" onclick="lbHide()">&#x2715;</span>
+  <img id="lb-img" src="" alt="">
+</div>
+
+<nav id="sb">
+  <div id="sb-title">
+    <p class="zh"><a href="https://alan-hpc.github.io/blog/" target="_blank">Yang Min · 技术博客</a></p>
+    <h2 class="section-h lv1" id="DeepSeek-V3-推理系统深度解析一从官方吞吐账本到-PD-分离与">DeepSeek V3 推理系统深度解析（一）：从官方吞吐账本到 PD 分离与…</h2>
+  </div>
+  <div class="ti tl1"><a href="#prologue--本篇问题与读法">Prologue · 本篇问题与读法</a></div>
+  <div class="ti tl1"><a href="#stage-0--标尺先把系统目标立住">Stage 0 · 标尺：先把系统目标立住</a></div>
+  <div class="ti tl1"><a href="#stage-1--系统层pd-分离和-cross-node-ep">Stage 1 · 系统层：PD 分离和 Cross-node EP</a></div>
+  <div class="ti tl1"><a href="#stage-2--算法层mla-和-moe-先把问题变小">Stage 2 · 算法层：MLA 和 MoE 先把问题变小</a></div>
+  <div class="ti tl2"><a href="#21--mlacache-只保存-latent">2.1 · MLA：cache 只保存 latent</a></div>
+  <div class="ti tl2"><a href="#22--moe256-routed--1-shared">2.2 · MoE：256 routed + 1 shared</a></div>
+  <div class="ti tl1"><a href="#stage-3--通信层deepep-的两张脸">Stage 3 · 通信层：DeepEP 的两张脸</a></div>
+  <div class="ti tl1"><a href="#stage-4--算子层deepgemm-与-flashmla">Stage 4 · 算子层：DeepGEMM 与 FlashMLA</a></div>
+  <div class="ti tl1"><a href="#stage-5--调度层dbo-把单点优化串起来">Stage 5 · 调度层：DBO 把单点优化串起来</a></div>
+  <div class="ti tl1"><a href="#stage-6--vllm-gap开源路径与生产系统能力">Stage 6 · vLLM gap：开源路径与生产系统能力</a></div>
+  <div class="ti tl1"><a href="#stage-7--系统闭环为什么不能只优化单个-kernel">Stage 7 · 系统闭环：为什么不能只优化单个 kernel</a></div>
+  <div class="ti tl1"><a href="#coverage--资料覆盖地图">Coverage · 资料覆盖地图</a></div>
+  <div class="ti tl2"><a href="#0--标尺官方-24h-在线服务的几个关键数字">0 · 标尺：官方 24h 在线服务的几个关键数字</a></div>
+  <div class="ti tl2"><a href="#1--系统蓝图">1 · 系统蓝图</a></div>
+  <div class="ti tl3"><a href="#11-设计目标throughput--latency">1.1 设计目标：throughput × latency</a></div>
+  <div class="ti tl3"><a href="#12-pd-异构集群">1.2 PD 异构集群</a></div>
+  <div class="ti tl3"><a href="#13-精度栈">1.3 精度栈</a></div>
+  <div class="ti tl3"><a href="#14-三层-load-balancer">1.4 三层 Load Balancer</a></div>
+  <div class="ti tl3"><a href="#15-vllm-验证拓扑">1.5 vLLM 验证拓扑</a></div>
+  <div class="ti tl3"><a href="#16-系统总览图交互式-drawio">1.6 系统总览图（交互式 draw.io）</a></div>
+  <div class="ti tl1"><a href="#optimization-audit--本篇优化点查漏">Optimization Audit · 本篇优化点查漏</a></div>
+  <div class="ti tl1"><a href="#map--本篇图解索引">Map · 本篇图解索引</a></div>
+</nav>
+
+<div id="reader">
+  <div id="reader-inner">
+
+    <header class="book-header">
+      <p class="kicker"><a href="https://alan-hpc.github.io/blog/" target="_blank">Yang Min · 技术博客</a> · 离线阅读版</p>
+      <h1>DeepSeek V3 推理系统深度解析（一）：从官方吞吐账本到 PD 分离与 Cross-node EP</h1>
+      <p class="sub">2026-05-04</p>
+      <div style="margin-top:16px;padding:12px 16px;border:1px solid var(--rule);
+                  border-radius:4px;background:var(--paper);font-family:-apple-system,sans-serif;
+                  font-size:12.5px;line-height:2.0;color:var(--muted);">
+        <span style="font-size:10px;letter-spacing:.9px;text-transform:uppercase;
+                     color:#888;display:block;margin-bottom:6px;">原文来源</span>
+        <a href="https://alan-hpc.github.io/blog/posts/2026-05-01-deepseek-v3-推理优化系列-一-系统总览/" style="color:var(--accent);text-decoration:none;" target="_blank">DeepSeek V3 推理系统深度解析（一）：从官方吞吐账本到 PD 分离与 Cross-node EP</a>
+        · Yang Min · 2026
+      </div>
+    </header>
+
+    <p class="zh">DeepSeek 系列推理系统的难点，不在于某个具体 kernel，而在于 <b>prefill 和 decode 两套工作负载被同一套硬件和通信拓扑同时服务</b>。prefill 的瓶颈在算力密度（FLOP/s）；decode 的瓶颈在内存带宽（GB/s）；两者的 MoE expert dispatch 路径共享同一条 NVLink/IB 互连，但对延迟的要求截然不同。不拆清楚这两条主线，后面的 DeepEP、DeepGEMM、FlashMLA、DBO 就会显得像是孤立的技术点堆砌，而不是一套有内在逻辑的系统工程。本篇先从 Day 6 公开数字出发，把系统结构的骨架搭起来。</p><div class="callout"><p class="zh"><b>系列目录</b> ：1. DeepSeekV3 开篇、PD 分离与 Cross-node EP / 2. DeepEP HT/LL Dispatch 与 Buffer 协议 / 3. DeepGEMM Expert Compute 与 FP8 Layout / 4. MLA Prefill/Decode 分流与 FlashMLA Latent KV / 5. DBO 与五段 Decode 流水 / 6. MTP 投机采样 / 7. DSA 稀疏注意力 / 8. vLLM 源码全链路与 MoE Backend</p></div><section id="prologue--本篇问题与读法"><h2 id="prologue--本篇问题与读法" class="section-h lv1">Prologue · 本篇问题与读法</h2><p class="zh">这一篇先不急着进入 kernel。DeepSeek Day 6 的公开数字给了两把尺：prefill 的吞吐和 decode 的单步稳定性。只有先把这两把尺放到系统结构里，后面的 DeepEP、DeepGEMM、FlashMLA 与 DBO 才不会被误读成孤立优化。</p><p class="zh">DeepSeek 在 Open-Source Week Day 6 公开过一组罕见的在线推理系统数字：在 UTC+8 的 2025-02-27 12:00 到 2025-02-28 12:00 这个统计窗口内，平均 226.75 个 H800 节点服务 V3/R1，24 小时处理 608B input tokens 与 168B output tokens；按 R1 定价推算，单日基础设施成本约 <b>USD 87,072</b> ，理论收入约 <b>USD 562,027</b> ，cost-profit margin 为 <b>545%</b> 。</p><p class="zh">更关键的是两把吞吐标尺：每个 H800 节点 prefill 约 <b>73.7K tok/s</b> ，decode 约 <b>14.8K tok/s</b> 。这不是单个 kernel benchmark，而是一整套 serving system 的端到端结果。</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F1.drawio</div>
+  </div>
+  <figcaption>官方账本：把公开吞吐数字翻译成系统约束</figcaption>
+</figure>
+<section id="stage-0--标尺先把系统目标立住"><h2 id="stage-0--标尺先把系统目标立住" class="section-h lv1">Stage 0 · 标尺：先把系统目标立住</h2><p class="zh">DeepSeek 官方的 24 小时统计可以拆成两类数字：业务账本和系统账本。业务账本告诉我们这套服务为什么值得优化；系统账本告诉我们后面所有技术判断应该对齐什么目标。</p><div class="table-scroll"><table class="data-table"><thead><tr><th>指标</th><th style=text-align:right>数值</th><th>解释</th></tr></thead><tbody><tr><td>峰值 H800 节点数</td><td style=text-align:right>278</td><td>每节点 8 GPU</td></tr><tr><td>平均 H800 节点数</td><td style=text-align:right>226.75</td><td>24 小时平均占用</td></tr><tr><td>Input tokens / 24h</td><td style=text-align:right>608B</td><td>其中 56.3% 来自 on-disk KV cache</td></tr><tr><td>Output tokens / 24h</td><td style=text-align:right>168B</td><td>V3 / R1 混合流量</td></tr><tr><td>平均 KV cache 长度</td><td style=text-align:right>4,989 tokens</td><td>每个 output token 对应的平均历史长度</td></tr><tr><td>用户侧 ITL</td><td style=text-align:right>20-22 tok/s</td><td>官方统计窗口内的平均输出速度</td></tr><tr><td>每节点 Prefill 吞吐</td><td style=text-align:right>~73.7K tok/s</td><td>input tokens，含 cache hit</td></tr><tr><td>每节点 Decode 吞吐</td><td style=text-align:right>~14.8K tok/s</td><td>output tokens</td></tr><tr><td>单日基础设施成本</td><td style=text-align:right>USD 87,072</td><td>USD 2/h/GPU × 8 GPU/node × 226.75 node × 24h</td></tr><tr><td>R1 定价理论收入</td><td style=text-align:right>USD 562,027</td><td>用 R1 价格对全部 tokens 计费的理论值</td></tr><tr><td>Cost-profit margin</td><td style=text-align:right>545%</td><td>官方 Day 6 给出的理论 margin</td></tr></tbody></table></div><p class="zh">这里最容易误读的是 73.7K / 14.8K。Prefill 的目标是把大 batch 灌满 GPU；decode 的目标是每一步稳定、可图捕获、通信尾延迟低。后面所有技术选择都在服务这两个目标。</p><aside class=cc-dd style="background:#eef7ee;border-left:4px solid #5fa55f;margin:16px 0;padding:14px 18px;border-radius:4px;color:#1a3d1a;line-height:1.75;font-size:14.2px"><div style="display:inline-block;background:#5fa55f;color:#fff;font-size:11.5px;font-weight:700;padding:2px 10px;border-radius:3px;letter-spacing:.5px;margin-bottom:8px">DEEP DIVE</div><div style="font-size:1.04em;color:#0f3d0f;margin:.2em 0 .6em;font-weight:700">为什么本系列用 vLLM 作为参照实现？</div><div class=cc-dd-body><p class="zh">vLLM 在这里不是“官方系统已经完整复刻”的意思，而是一个开源参照实现。它让我们能把 DeepSeek 官方蓝图中的 EP、DeepEP、DeepGEMM、DBO、CUDA Graph 等路径落到具体代码结构上。官方在线系统还包含未完全公开的生产调度、在线 EPLB、5-stage decode pipeline 与集群治理能力。</p></div></aside><section id="stage-1--系统层pd-分离和-cross-node-ep"><h2 id="stage-1--系统层pd-分离和-cross-node-ep" class="section-h lv1">Stage 1 · 系统层：PD 分离和 Cross-node EP</h2><p class="zh">DeepSeek 官方把推理服务拆成 prefill 与 decode 两套 deployment unit。这个决定比后面的 kernel 更重要，因为它先把两类完全不同的优化目标分开。</p><div class="table-scroll"><table class="data-table"><thead><tr><th>阶段</th><th>部署单元</th><th>并行配置</th><th>每 GPU 持有</th><th>主要瓶颈</th></tr></thead><tbody><tr><td>Prefill</td><td>4 节点 × 8 GPU</td><td>Routed Expert EP32，MLA / Shared Expert DP32</td><td>9 routed + 1 shared</td><td>RDMA 带宽与大 batch GEMM 利用率</td></tr><tr><td>Decode</td><td>18 节点 × 8 GPU</td><td>Routed Expert EP144，MLA / Shared Expert DP144</td><td>2 routed + 1 shared</td><td>RDMA per-op latency、CUDA Graph 与 tail latency</td></tr></tbody></table></div><p class="zh">Prefill 的输入是长上下文，单次请求可能有几千到几万 token。它更像吞吐任务：batch 越大，每个 expert 收到的 token 越多，FP8 GEMM 越接近硬件上限。Prefill 可以接受动态 shape，因为一个请求只经历一次 prefill，launch overhead 能被大 token 数摊薄。</p><p class="zh">Decode 完全相反：每一步只新增 1 个 token，系统需要在几十毫秒内完成所有层的 attention、MoE、通信和采样。这里 batch 维小，任何一次 RDMA 请求、kernel launch、shape rebuild 都会暴露到 ITL。Decode 最需要的是固定 shape、CUDA Graph、低尾延迟和稳定调度。</p><p class="zh">所以同一套 EP size 很难同时满足两者。Prefill 用 EP32 是为了在通信开销可控的前提下给每个 expert 足够大的 m；decode 用 EP144 是为了把每张卡负责的 routed expert 减到 2 个，降低权重访存和单步延迟。</p><section id="stage-2--算法层mla-和-moe-先把问题变小"><h2 id="stage-2--算法层mla-和-moe-先把问题变小" class="section-h lv1">Stage 2 · 算法层：MLA 和 MoE 先把问题变小</h2><p class="zh">系统层决定 token 怎么跨机器跑，算法层决定每个 token 需要携带多少状态、访问多少参数。DeepSeek V3 的推理效率首先来自两个“变小”：MLA 让 KV cache 变小，MoE 让激活参数变小。</p><h3 id="21--mlacache-只保存-latent" class="section-h lv2">2.1 · MLA：cache 只保存 latent</h3><p class="zh">MLA 的核心是低秩 KV cache。传统 MHA 缓存完整 K/V；MLA 缓存低维 <code class="ic">compressed_kv</code> 和 RoPE 相关的 <code class="ic">k_pe</code>，推理时再通过上投影恢复 K/V。</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F2.drawio</div>
+  </div>
+  <figcaption>PD 分离：prefill 吞吐与 decode 尾延迟使用不同 EP 形态</figcaption>
+</figure>
+<p class="zh">Decode 阶段 batch 小、head 多，可以把 <code class="ic">W_kv_b</code> 提前吸收到 Q 和输出投影中：</p><div class="callout"><p class="zh no-indent"><b>矩阵吸收的直觉</b></p>QK^T = (q W_{q_b})(c_{kv} W_{kv_b})^T
+= q (W_{q_b} W_{kv_b}^T) c_{kv}^T
+= q W^{abs}_{qk} c_{kv}^T</div><p class="zh">吸收后，decode attention 不需要把 latent 恢复成完整 K/V。<code class="ic">compressed_kv</code> 可以直接进入 attention 计算，多个 Q head 共享同一份 KV latent。这从实现视角看就是 MQA，也是 FlashMLA 的物理基础。</p><h3 id="22--moe256-routed--1-shared" class="section-h lv2">2.2 · MoE：256 routed + 1 shared</h3><p class="zh">DeepSeek V3 的 MoE 每层包含 256 个 routed expert，每个 token 激活 top-8，同时还有 1 个 shared expert 每 token 必经。</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F3.drawio</div>
+  </div>
+  <figcaption>DP / EP 边界：稠密路径复制，routed expert 分片</figcaption>
+</figure>
+<p class="zh">routed expert 的单卡计算链可以压成三步：</p><div class=highlight><p class="zh"><code class=language-text data-lang=text><span class=line><span class=cl>input_fp8 (M_e, H)
+</span></span><span class=line><span class=cl>  -&gt; GEMM1: (M_e, H) x (H, 2I) = (M_e, 2I)
+</span></span><span class=line><span class=cl>  -&gt; SiLU(gate) * up + per-token group FP8 quant
+</span></span><span class=line><span class=cl>  -&gt; GEMM2: (M_e, I) x (I, H) = (M_e, H)
+</span></span></code></pre></div><p class="zh">shared expert 不走 EP。原因很朴素：它没有稀疏路由，每个 token 都会过；如果跨节点切，所有 token 都要通信。shared expert 权重相对 routed expert 池更小，直接 DP 复制通常更划算。</p><section id="stage-3--通信层deepep-的两张脸"><h2 id="stage-3--通信层deepep-的两张脸" class="section-h lv1">Stage 3 · 通信层：DeepEP 的两张脸</h2><p class="zh">跨节点 EP 带来一个硬事实：专家分散在多节点以后，token 必须跨 NVLink 和 RDMA dispatch / combine。H800 单卡跨节点 400Gb IB 的有效带宽与节点内 NVLink 相比低一个数量级，这里采用一个工程近似：RDMA 带宽约为 NVLink 的 1/9。这个比例不追求精确，而是提醒读者：跨节点路径是 MoE 推理的第一约束。</p><div class="table-scroll"><table class="data-table"><thead><tr><th>维度</th><th>Prefill HT</th><th>Decode LL</th></tr></thead><tbody><tr><td>优化目标</td><td>吞吐</td><td>尾延迟</td></tr><tr><td>batch/token 规模</td><td>千到万 token</td><td>几十到几百 token</td></tr><tr><td>通信瓶颈</td><td>RDMA 带宽</td><td>RDMA per-op latency</td></tr><tr><td>layout</td><td>Contiguous</td><td>Masked</td></tr><tr><td>CUDA Graph</td><td>不友好</td><td>友好</td></tr><tr><td>典型策略</td><td>FP8 dispatch、双路径、DBO</td><td>固定 shape、64 QPs、staging buffer</td></tr></tbody></table></div><p class="zh">DeepEP 的设计不是一条 All2All 路径跑到底，而是为 prefill 和 decode 准备两种模式：HT 把小 token 组织成适合网络吞吐的大块；LL 牺牲一部分 padding 空间，换取固定 shape 和低尾延迟。</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F4.drawio</div>
+  </div>
+  <figcaption>精度栈：搬运用 FP8，归约保 BF16</figcaption>
+</figure>
+<section id="stage-4--算子层deepgemm-与-flashmla"><h2 id="stage-4--算子层deepgemm-与-flashmla" class="section-h lv1">Stage 4 · 算子层：DeepGEMM 与 FlashMLA</h2><p class="zh">通信路径定下来后，剩下的问题是 expert 内 GEMM 和 decode attention 怎么跑得满。</p><p class="zh">DeepGEMM 是 V3 推理中最核心的 FP8 grouped GEMM 执行器。它针对 Hopper FP8 Tensor Core，用 JIT、TMA、persistent warp specialization、scale promotion 和 grouped layout 把 MoE expert 的两次 GEMM 跑满。</p><div class="table-scroll"><table class="data-table"><thead><tr><th>维度</th><th>Contiguous Layout</th><th>Masked Layout</th></tr></thead><tbody><tr><td>主要用于</td><td>Prefill</td><td>Decode</td></tr><tr><td>输入形态</td><td>所有 expert 的有效 token 紧凑拼接</td><td><code class="ic">(E, max_m, K)</code> 固定三维张量</td></tr><tr><td>空行处理</td><td><code class="ic">m_indices = -1</code>，整 tile skip</td><td>读取 <code class="ic">expert_num_tokens[e]</code> 判断越界</td></tr><tr><td>优点</td><td>省 padding，适合大 batch</td><td>固定 shape，适合 CUDA Graph</td></tr><tr><td>代价</td><td>需要 ep_scatter / ep_gather</td><td>padding 占显存</td></tr></tbody></table></div>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F5.drawio</div>
+  </div>
+  <figcaption>系统总图：DeepEP、DeepGEMM、FlashMLA、DBO 对齐到同一条热路径</figcaption>
+</figure>
+<p class="zh">矩阵吸收以后，decode MLA 可以看成 MQA：很多 Q head 共享同一份 KV latent。FlashMLA 的目标就是把这种小 batch、长 KV、head 多的 decode attention 跑成 persistent kernel。</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F6.drawio</div>
+  </div>
+  <figcaption>vLLM 参照：开源路径与线上系统的边界</figcaption>
+</figure>
+<section id="stage-5--调度层dbo-把单点优化串起来"><h2 id="stage-5--调度层dbo-把单点优化串起来" class="section-h lv1">Stage 5 · 调度层：DBO 把单点优化串起来</h2><p class="zh">如果只看单个 kernel，DeepEP、DeepGEMM、FlashMLA 都已经很强。但推理系统的端到端吞吐往往输在 stream 编排：dispatch、expert compute、combine、shared expert、attention 如果串起来，RDMA 时间会完整暴露。</p><p class="zh">DBO 的思想是把一个 batch 拆成两个 micro-batch，通信和计算交错：</p><div class=highlight><p class="zh"><code class=language-text data-lang=text><span class=line><span class=cl>ubatch 0 dispatch  -&gt; ubatch 0 expert compute -&gt; ubatch 0 combine
+</span></span><span class=line><span class=cl>          ubatch 1 dispatch  -&gt; ubatch 1 expert compute -&gt; ubatch 1 combine
+</span></span></code></pre></div>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F7.drawio</div>
+  </div>
+  <figcaption>三层负载均衡：prompt、KV、expert 热点分别处理</figcaption>
+</figure>
+<p class="zh">官方 Day 6 还提到 decode 阶段的 5-stage pipeline：因为 decode 的不同阶段时长不均衡，DeepSeek 将 attention layer 进一步切成两个步骤，用五段流水实现更细的 overlap。vLLM 参照实现可以看到通用 DBO 框架，但官方生产系统的 5-stage decode overlap 更激进，也是端到端 gap 最值得关注的部分。</p><section id="stage-6--vllm-gap开源路径与生产系统能力"><h2 id="stage-6--vllm-gap开源路径与生产系统能力" class="section-h lv1">Stage 6 · vLLM gap：开源路径与生产系统能力</h2><p class="zh">把官方蓝图和 vLLM 参照路径放在一张表里，最清楚：</p><div class="table-scroll"><table class="data-table"><thead><tr><th>层级</th><th>官方系统</th><th>vLLM 参照路径</th><th>Gap 判断</th></tr></thead><tbody><tr><td>PD 分离</td><td>Prefill / Decode deployment unit</td><td>可通过 serving 架构组合</td><td>系统集成问题</td></tr><tr><td>Cross-node EP</td><td>Prefill EP32，Decode EP144</td><td>EP + DP group 可表达</td><td>大规模调度和容错仍是生产问题</td></tr><tr><td>精度栈</td><td>FP8 matmul / dispatch，BF16 MLA / combine</td><td>DeepEP + DeepGEMM 路径可对齐</td><td>依赖模型、硬件和配置</td></tr><tr><td>DeepEP</td><td>HT + LL 双模式</td><td>有对应实现路径</td><td>生产网络和 tail latency 调优不同</td></tr><tr><td>DeepGEMM</td><td>FP8 grouped GEMM</td><td>可通过 env 打开</td><td>shape 覆盖和 fallback 策略要看版本</td></tr><tr><td>FlashMLA</td><td>Decode MLA 专用 kernel</td><td>后端集成随版本演进</td><td>与 paged KV / scheduler 的组合是关键</td></tr><tr><td>DBO</td><td>Prefill overlap + decode 5-stage</td><td>通用 DBO 可见</td><td>5-stage decode 是核心 gap</td></tr><tr><td>Load Balancing</td><td>Prefill / Decode / EP 三层</td><td>部分策略和静态 EPLB</td><td>Online EPLB 是核心 gap</td></tr></tbody></table></div><p class="zh">一句话总结：vLLM 已经把最硬的开源 kernel 和模块路径接起来，但官方 73.7K / 14.8K 的稳定在线服务数字还依赖更强的调度、在线负载均衡、网络治理和 decode 5-stage pipeline。</p><section id="stage-7--系统闭环为什么不能只优化单个-kernel"><h2 id="stage-7--系统闭环为什么不能只优化单个-kernel" class="section-h lv1">Stage 7 · 系统闭环：为什么不能只优化单个 kernel</h2><p class="zh">DeepSeek V3/R1 的推理系统不是“某个 FP8 kernel 很快”这么简单。它的工程闭环是：</p><ol class="zh-list"><li>用 MLA 把 KV cache 压小，让长上下文 decode 还有可能高效。</li><li>用 MoE 把每 token 激活参数压小，但用 Cross-node EP 把 expert 权重摊到多 GPU。</li><li>用 DeepEP 在 prefill 和 decode 上分别优化带宽与 latency。</li><li>用 DeepGEMM 为 routed expert 提供两套适配系统形态的 FP8 grouped GEMM layout。</li><li>用 FlashMLA 把 absorbed MLA 的 decode attention 单独做成专用内核。</li><li>用 DBO、CUDA Graph 和 load balancer 把单点优化变成端到端吞吐。</li></ol><p class="zh">这也是为什么 545% margin 值得拆：它不是一个财务段子，而是一个系统设计验算题。任何框架想接近这把标尺，都不能只卷单 kernel；它必须同时回答 batch 怎么分、expert 怎么放、token 怎么发、shape 怎么固定、Graph 怎么录、热 expert 怎么迁移，以及通信怎么被计算吃掉。</p><section id="coverage--资料覆盖地图"><h2 id="coverage--资料覆盖地图" class="section-h lv1">Coverage · 资料覆盖地图</h2><div class="table-scroll"><table class="data-table"><thead><tr><th>资料</th><th>本篇吸收的内容</th><th>后续展开</th></tr></thead><tbody><tr><td>DeepSeek Day 6 官方概览</td><td>EP32/EP144、PD 分离、三层负载均衡、73.7K/14.8K 与 545% 账本</td><td>全系列的统一标尺</td></tr><tr><td>系统拆解资料全集</td><td>MLA、MoE、DeepEP、DeepGEMM、FlashMLA、DBO 与 vLLM 映射</td><td>分拆到后续七篇</td></tr><tr><td>DeepEP / DeepGEMM / FlashMLA 官方仓库</td><td>HT/LL 与 ElasticBuffer 版本边界、contiguous/masked layout、MLA dense/sparse kernel 支持矩阵</td><td>对应第 2/3/4 篇</td></tr><tr><td>DualPipe 调度资料</td><td>DBO 的训练侧来源与 5-stage decode pipeline 的调度直觉</td><td>第 5 篇</td></tr></tbody></table></div><h3 id="0--标尺官方-24h-在线服务的几个关键数字" class="section-h lv2">0 · 标尺：官方 24h 在线服务的几个关键数字</h3><p class="zh">在动手拆栈之前先把"目标"立住——所有后续优化都要回扣到这几个数字：</p><div class="table-scroll"><table class="data-table"><tr><th>指标</th><th>数值</th><th>来源</th></tr><tr><td>峰值 H800 节点数</td><td><b>278</b>（× 8 GPU）</td><td>Day 6 Overview</td></tr><tr><td>平均 H800 节点数</td><td>226.75</td><td>Day 6 Overview</td></tr><tr><td>Input tokens / 24h</td><td>608B（其中 56.3% 来自 cache）</td><td>Day 6 Overview</td></tr><tr><td>Output tokens / 24h</td><td>168B</td><td>Day 6 Overview</td></tr><tr><td>平均 KV cache 长度</td><td>4,989 tok / output token</td><td>Day 6 Overview</td></tr><tr><td>每节点 Prefill 吞吐</td><td><b>~73.7K tok/s</b></td><td>Day 6 Overview</td></tr><tr><td>每节点 Decode 吞吐</td><td><b>~14.8K tok/s</b></td><td>Day 6 Overview</td></tr><tr><td>用户侧 ITL</td><td>20–22 tok/s</td><td>Day 6 Overview</td></tr><tr><td>每天基础设施成本</td><td><b>$87,072</b></td><td>$2/h × node × 24h</td></tr><tr><td>R1 定价下理论日收入</td><td><b>$562,027</b></td><td>Day 6 Overview</td></tr><tr><td>Cost-profit margin</td><td><b>545%</b></td><td>Day 6 Overview</td></tr></table></div><p class="zh">下面这张总览图把整个 forward 过程的所有算子及其数据流贴在一起，是后续所有章节的"地图"：</p>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F8.drawio</div>
+  </div>
+  <figcaption>S1-1  DeepSeek V3 一次推理 forward 的算子全景：左半 Prefill / 右半 Decode，纵向是 MLA → MoE Routing → Routed Expert / Shared Expert → Combine。本文按此图自顶向下逐层拆。</figcaption>
+</figure>
+<div class="callout"><p class="zh no-indent"><b>✅ 本文的写作主线</b></p><ol class="zh-list"><li><b>§1 系统蓝图</b> — 官方 EP32+DP32 / EP144+DP144 拓扑、PD 异构、三层 LB</li><li><b>§2 MLA</b> — KV 压缩到 MB 级 + 矩阵吸收</li><li><b>§3 MoE</b> — Top-8 路由、shared + routed 专家</li><li><b>§4 DeepEP</b> — HT (prefill) / LL (decode) 双模通信</li><li><b>§5 DeepGEMM</b> — Contiguous / Masked 两套 FP8 GEMM 布局</li><li><b>§6 FlashMLA</b> — Decode MLA 的 attention kernel</li><li><b>§7 MTP & DSA</b> — 推测解码与稀疏注意力</li><li><b>§8 DBO</b> — 通信计算重叠</li><li><b>§9 性能建模与 Gap</b> — vLLM 实测 vs 73.7K/14.8K 标尺</li></ol></div><h3 id="1--系统蓝图" class="section-h lv2">1 · 系统蓝图</h3><p class="zh"><em>PD 异构 · EP32+DP32 / EP144+DP144 · FP8 dispatch · BF16 combine · 三层负载均衡</em></p><h4 id="11-设计目标throughput--latency" class="section-h lv3">1.1 设计目标：throughput × latency</h4><p class="zh">DeepSeek 给出的两个目标"higher throughput, lower latency"看似矛盾，但通过 <b>PD 异构 + Cross-node EP</b> 同时满足：把 Prefill 与 Decode 拆成两套独立集群，prefill 用更小 EP 配大 batch 拼吞吐、decode 用更大 EP 配小 batch 拼延迟。</p><h4 id="12-pd-异构集群" class="section-h lv3">1.2 PD 异构集群</h4><div class="table-scroll"><table class="data-table"><tr><th>阶段</th><th>节点数</th><th>EP / DP 配置</th><th>每 GPU 持有</th><th>主要瓶颈</th></tr><tr><td>Prefill</td><td>4 节点 × 8 GPU</td><td>EP32 (routed) + DP32 (MLA / shared)</td><td>9 routed + 1 shared</td><td>RDMA 带宽（compute-bound + 大 batch）</td></tr><tr><td>Decode</td><td>18 节点 × 8 GPU</td><td>EP144 (routed) + DP144 (shared)</td><td>2 routed + 1 shared</td><td>RDMA per-op latency（latency-bound + 小 batch）</td></tr></table></div><aside class=cc-dd style="background:#eef7ee;border-left:4px solid #5fa55f;margin:16px 0;padding:14px 18px;border-radius:4px;color:#1a3d1a;line-height:1.75;font-size:14.2px"><div style="display:inline-block;background:#5fa55f;color:#fff;font-size:11.5px;font-weight:700;padding:2px 10px;border-radius:3px;letter-spacing:.5px;margin-bottom:8px">DEEP DIVE</div><div style="font-size:1.04em;color:#0f3d0f;margin:.2em 0 .6em;font-weight:700">为什么 prefill 用 EP32，decode 却要 EP144？</div><div class=cc-dd-body><p class="zh">Prefill batch 千 token 起跳，每张卡能稳定灌满 9 个 routed expert，EP32 已经把"计算量 × 显存压力"摊得足够薄；再扩 EP 反而把跨节点 RDMA 的固定开销放大。Decode 完全相反 — 单步 batch 只有几十 token，9 个 expert 摊到一张卡上每个 expert 的 m 维度只有个位数，GEMM kernel 几乎全是 launch overhead。所以 decode 反而要把 EP 拉到 144，每张卡只持 2 个 routed expert，让单 expert 的 m 维度回到 ≥128 的合理工作区间。</p></div></aside><h4 id="13-精度栈" class="section-h lv3">1.3 精度栈</h4><p class="zh">官方公布的精度配置很简短但信息量大：</p><div class="callout"><p class="zh"><b>FP8 for matmul + dispatch, BF16 for MLA + combine</b></p></div><p class="zh">这条规则的物理依据：</p><ul class="zh-list"><li><b>FP8 dispatch</b> — dispatch 流量是单向（每 token × top-k 份），FP8 直接砍 50% 跨节点带宽</li><li><b>BF16 combine</b> — combine 是 weighted-sum reduce，每个 token 都要做 top-k 个 expert 输出的累加；BF16 比 FP8 多一位指数 + 7 位尾数，避免 8 次累加之后误差累积超过 SmoothQuant 容忍度</li><li><b>BF16 MLA</b> — attention 是 softmax 主导，FP8 在小数值区域分辨率不够，KV cache 走 BF16 + RoPE 才能稳定</li></ul><h4 id="14-三层-load-balancer" class="section-h lv3">1.4 三层 Load Balancer</h4><p class="zh">跨 144 个 rank 做大规模 EP，<b>任何一项不均衡都会被放大</b> 。官方设计了三层串联的 balancer：</p><div class="table-scroll"><table class="data-table"><tr><th>层级</th><th>均衡目标</th><th>vLLM 当前对应</th></tr><tr><td>Prefill Balancer</td><td>核心 attention 计算量 + input token 数</td><td>scheduler 的 input-token 切片</td></tr><tr><td>Decode Balancer</td><td>KV cache 用量 + 请求数</td><td>KV-aware routing（部分实现）</td></tr><tr><td>Expert-Parallel Balancer</td><td>各 GPU 接收的 dispatch 流量峰值</td><td>EPLB / redundant expert（vLLM 缺口）</td></tr></table></div><h4 id="15-vllm-验证拓扑" class="section-h lv3">1.5 vLLM 验证拓扑</h4><p class="zh">为了把后续所有源码片段都跑得通，本文以 vLLM 最简验证拓扑为基线：<b>DP=4 / EP=4 / TP=1 / 2 Nodes × 2 GPUs</b> 。这是官方蓝图的等比例缩小，所有 dispatch / combine / GEMM 的代码路径与 144-rank 部署完全一致。</p><div class=highlight><p class="zh"><code class=language-python data-lang=python><span class=line><span class=cl><span class=c1># vllm/config/parallel.py:93-158</span>
+</span></span><span class=line><span class=cl><span class=c1># initialize_model_parallel():</span>
+</span></span><span class=line><span class=cl><span class=c1>#   all_ranks shape: (1, 4, 1, 1, 1) → [[[[0]],[[1]],[[2]],[[3]]]]</span>
+</span></span><span class=line><span class=cl><span class=c1>#   EP group: transpose DP和PP, 然后flatten DP×PCP×TP</span>
+</span></span><span class=line><span class=cl><span class=c1>#   结果:    [[0, 1, 2, 3]]  ← 4个GPU在同一个EP group中</span>
+</span></span></code></pre></div><h4 id="16-系统总览图交互式-drawio" class="section-h lv3">1.6 系统总览图（交互式 draw.io）</h4><p class="zh">下图是一份覆盖 V3 推理全栈的交互式 drawio：MLA、MoE、DeepEP、DeepGEMM、FlashMLA、DBO、MTP、DSA 在一张图里。viewer 底部的页签可切换不同视角，可缩放、拖拽、点 ✏️ 进编辑：</p><div class=highlight><p class="zh"><code class=language-cpp data-lang=cpp></code></pre></div><section id="optimization-audit--本篇优化点查漏"><h2 id="optimization-audit--本篇优化点查漏" class="section-h lv1">Optimization Audit · 本篇优化点查漏</h2><div class="table-scroll"><table class="data-table"><thead><tr><th>优化点</th><th>baseline 瓶颈</th><th>机制</th><th>边界条件</th></tr></thead><tbody><tr><td>PD 分离</td><td>prefill 与 decode 目标冲突</td><td>两套 deployment unit 与 EP size</td><td>跨阶段 KV/cache 调度变复杂</td></tr><tr><td>Cross-node EP</td><td>routed expert 权重与 token 峰值过大</td><td>routed expert 切 EP，attention/shared 走 DP</td><td>RDMA latency 需要 DeepEP/DBO 隐藏</td></tr><tr><td>精度分层</td><td>通信带宽与 reduce 精度冲突</td><td>FP8 dispatch，BF16 combine/MLA</td><td>质量边界取决于量化 recipe</td></tr><tr><td>三层 LB</td><td>平均 batch 掩盖长尾</td><td>prefill/decode/EPLB 分别均衡</td><td>在线实现需要持续观测和迁移</td></tr></tbody></table></div><section id="map--本篇图解索引"><h2 id="map--本篇图解索引" class="section-h lv1">Map · 本篇图解索引</h2>
+<figure>
+  <div class="drawio-box">
+    <span class="drawio-label">Draw.io 图表 · 可编辑</span>
+    <div class="drawio-fname">figures/F9.drawio</div>
+  </div>
+  <figcaption>优化索引：全系列八个观察角度</figcaption>
+</figure>
+<p class="zh">这张图把本篇的阅读路径压成一个索引：先确认问题边界，再看数据形状，
+接着进入 kernel 或调度机制，最后回到性能约束。正文里的每一张图都只承担一个
+视觉任务，细节留给相邻段落和优化点查漏表。</p></div></div><!-- /reader-inner -->
+</div><!-- /reader -->
+
+
+</body>
+</html>

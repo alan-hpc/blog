@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html xmlns:MadCap="http://www.madcapsoftware.com/Schemas/MadCap.xsd" lang="en-us" xml:lang="en-us" data-mc-search-type="Stem" data-mc-help-system-file-name="index.xml" data-mc-path-to-help-system="../../../../../../../" data-mc-target-type="WebHelp2" data-mc-runtime-file-type="Topic" data-mc-preload-images="false" data-mc-in-preview-mode="false" data-mc-toc-path="Developer Tools|Desktop Developer Tools|NVIDIA Nsight Visual Studio Edition|NVIDIA Nsight Visual Studio Edition 4.7|Analysis Tools|CUDA Experiments|Kernel-Level Experiments">
+    <!-- saved from url=(0016)http://localhost -->
+    <head>
+        <meta charset="utf-8" />
+        <meta name="googlebot" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><title>实际 FLOPS</title>
+        <link rel="shortcut icon" href="../../../../../../Resources/MasterPages/nvidia.ico" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/Slideshow.css" rel="stylesheet" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/TextEffects.css" rel="stylesheet" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/Topic.css" rel="stylesheet" />
+        <link href="../../../../../../resources/stylesheets/style.css" rel="stylesheet" />
+        <style>/*&lt;meta /&gt;*/
+
+.button.previous-topic-button
+{
+	-pie-background: url('../../../../../../../Skins/Default/Stylesheets/Images/navigate-previous.png') no-repeat center center, linear-gradient(#ffffff, #ececec);
+}
+
+.button.current-topic-index-button
+{
+	-pie-background: linear-gradient(#ffffff, #ececec);
+}
+
+.button.next-topic-button
+{
+	-pie-background: url('../../../../../../../Skins/Default/Stylesheets/Images/navigate-next.png') no-repeat center center, linear-gradient(#ffffff, #ececec);
+}
+
+.needs-pie
+{
+	behavior: url('../../../../../../../Resources/Scripts/PIE.htc');
+}
+
+</style>
+        <script src="../../../../../../../Resources/Scripts/custom.modernizr.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/jquery.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/foundation.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/plugins.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/require.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/require.config.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/MadCapAll.js">
+        </script>
+        <script src="../../../../../../../Skins/Default/Scripts/Toolbar.js">
+        </script>
+    </head>
+    <body>
+        <p class="MCWebHelpFramesetLink MCWebHelpFramesetLinkTop"><a href="../../../../../../../index.html#developertools/desktop/analysis/report/cudaexperiments/kernellevel/achievedflops.htm">打开带导航的主题视图</a>
+        </p>
+        <div class="MCBreadcrumbsBox_site.css_0"><span class="MCBreadcrumbsPrefix">当前位置： </span><a class="MCBreadcrumbsLink" href="../../../../../developer_tools.htm">开发者工具</a><span class="MCBreadcrumbsDivider"> &gt; </span><a class="MCBreadcrumbsLink" href="../../../../../desktop_devtools.htm">桌面开发者工具</a><span class="MCBreadcrumbsDivider"> &gt; </span><a class="MCBreadcrumbsLink" href="../../../../nvidia_nsight.htm">NVIDIA Nsight Visual Studio Edition</a><span class="MCBreadcrumbsDivider"> &gt; </span><span class="MCBreadcrumbs">实际 FLOPS</span>
+        </div><a name="kanchor135"></a>
+        <div id="pageheader">
+            <h1><span class="SystemTitle">实际 FLOPS</span>
+            </h1>
+            <p style="font-size: 8pt;"><span style="color: #696969;">NVIDIA® Nsight™ Development Platform, Visual Studio Edition 4.7 用户指南</span>
+                <br /><span id="feedbacklink" style="font-size: 8pt; font-weight: normal;"><a href="mailto:devtools-support@nvidia.com?subject=Documentation Feedback: Nsight Visual Studio Edition User Guide">发送反馈</a></span>
+                <br />
+            </p>
+            <hr width="100%" size="0" align="center" />
+        </div>
+        <h3><a id="Overview"></a>概述</h3>
+        <p>
+          每秒浮点运算次数（FLOPS）是比较不同算法、不同实现变体或不同计算设备的常用指标。在优化 kernel 代码时，它的主要价值在于估计一种实现与目标设备的理论算术峰值性能的接近程度。基于此，它可以用来跟踪 kernel 性能优化的进展；尽管该指标本身对"是什么导致了性能偏低"提供的洞察有限。
+        </p>
+        <h5><a id="Background"></a>背景</h5>
+        <p>
+          所有 CUDA 计算设备都遵循 IEEE 754-2008 二进制浮点表示标准，但存在一些小的例外。这些例外在 CUDA C Programming Guide 的 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#floating-point-standard.xml">浮点标准</a> 一节中有详细描述。其中一个关键差异是融合乘加（<code>FMA</code>）指令，它将乘法和加法合并为一条指令执行。其结果通常与分别执行两步运算所得到的结果略有不同。
+        </p>
+        <p>
+          本文档中对具体汇编指令的引用，指的是硬件的实际指令集架构（ISA），称为 SASS。关于不同 CUDA 计算架构 SASS 汇编指令的描述和完整列表，请参阅 NVIDIA CUDA 工具 <a href="http://docs.nvidia.com/cuda/pdf/cuobjdump.pdf">cuobjdump</a> 的文档。
+        </p>
+        <h3><a id="Charts"></a>图表</h3>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="FloatingPointOperations"></a>浮点运算</h4>
+                    <img src="achievedflopschartfloatingpointoperations.png" style="float: right;mc-thumbnail: none;" alt="浮点运算" />
+                    <p>
+          报告按指令类别分组的已执行浮点指令命中数的加权和。所应用的权重可以在数据收集前通过 Activity 页面上的 <a href="../../../activity/activitytype/profilesettings/experimentconfiguration/experimentconfiguration.htm">实验配置</a> 自定义。
+        </p>
+                    <p style="padding:10px;background-color:#eaefe0">
+          根据实际操作和所使用的编译器选项不同，CUDA C 中一条浮点指令在汇编代码中可能对应多条指令。所报告的数值是基于已执行的汇编指令，因此数字可能与仅从 CUDA C 代码推断出的预期不一致。可使用 <a href="../../../../analysis_source_code_correlation.htm#SourceView">源码视图</a> 页面研究高级代码与汇编代码之间的映射关系。
+        </p>
+                    <h5>指标</h5>
+                    <p><b>Single ADD</b>
+          所有已执行的单精度浮点加法（<code>FADD</code>）的加权和。默认权重为 1。
+        </p>
+                    <p><b>Single MUL</b>
+          所有已执行的单精度浮点乘法（<code>FMUL</code>）的加权和。默认权重为 1。
+        </p>
+                    <p><b>Single FMA</b>
+          所有已执行的单精度浮点融合乘加（<code>FFMA</code>）指令的加权和。是否将浮点乘法与加法/减法合并为浮点乘加运算可通过 <code>--fmad</code> 编译器选项控制。默认权重为 2。
+        </p>
+                    <p><b>Single Special</b>
+          所有已执行的单精度特殊运算的加权和，包括倒数（<code>RCP</code>）、倒数平方根（<code>RSQ</code>）、正弦或余弦（<code>SIN</code>/<code>COS</code>）、以 2 为底的指数（<code>EX2</code>）以及以 2 为底的对数（<code>LG2</code>）。每个特殊函数都可以单独配置权重。默认权重为 1；其中 <code>RSQ</code> 的默认权重为 2。
+        </p>
+                    <p><b>Double ADD</b>
+          所有已执行的双精度浮点加法（<code>DADD</code>）的加权和。默认权重为 1。
+        </p>
+                    <p><b>Double MUL</b>
+          所有已执行的双精度浮点乘法（<code>DMUL</code>）的加权和。默认权重为 1。
+        </p>
+                    <p><b>Double FMA</b>
+          所有已执行的双精度融合乘加（<code>DFMA</code>）指令的加权和。是否将浮点乘法与加法/减法合并为浮点乘加运算可通过 <code>--fmad</code> 编译器选项控制。默认权重为 2。
+        </p>
+                    <p><b>Double Special</b>
+          所有已执行的双精度特殊运算的加权和，包括倒数（<code>RCP</code>）和倒数平方根（<code>RSQ</code>）。两个特殊函数可以分别配置权重。<code>RCP</code> 的默认权重为 1；<code>RSQ</code> 的默认权重为 2。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <p>
+        </p>
+        <table style="background-color:white;border-style:none;margin:0;padding:0">
+            <tr>
+                <td style="background-color:white;border-style:none;margin:0;padding:0">
+                    <h4><a id="FloatingPointOperationsPerSecond"></a>每秒浮点运算次数</h4>
+                    <img src="achievedflopschartfloatingpointoperationspersecond.png" style="float: right;mc-thumbnail: none;" alt="每秒浮点运算次数" />
+                    <p>
+          报告单精度和双精度下，每秒已执行浮点指令命中数的加权和。该图表是一个堆叠柱状图，所使用的指令类别与 <a href="#FloatingPointOperations">浮点运算</a> 图表完全相同。
+        </p>
+                    <h5>指标</h5>
+                    <p><b>Single</b>
+          所有已执行的单精度运算每秒的加权和。一个 CUDA 设备的单精度浮点峰值性能定义为 CUDA Cores 数乘以图形时钟频率再乘以 2。乘以 2 的因子来自使用融合乘加（<code>FFMA</code>）指令一次执行两次运算的能力。仅当实验配置为使用默认权重时，该理论峰值才是有效的上界。自定义权重会导致不同的理论峰值。
+        </p>
+                    <p><b>Double</b>
+          所有已执行的双精度运算每秒的加权和。
+        </p>
+                </td>
+            </tr>
+        </table>
+        <h3><a id="Analysis"></a>分析</h3>
+        <p>
+          CUDA C Best Practices Guide 给出了若干优化浮点 <a href="http://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#arithmetic-instructions">算术指令</a> 的通用建议：
+          <ul style="list-style-type:none"><li value="1"><a href="http://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#division-and-modulo-operations">倒数平方根</a></li><li value="2"><a href="http://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#other-arithmetic-instructions">其他算术指令</a>：避免 double 到 float 的自动转换。
+            </li><li value="3"><a href="http://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#math-libraries">数学库</a>：当速度优先于精度时使用 fast math 库。在可行的情况下，优先使用更快、更专用的数学函数，避免使用较慢、更通用的版本。
+            </li><li value="4"><a href="http://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#precision-related-compiler-flags">精度相关的编译器选项</a></li></ul></p>
+        <p>
+          同时也尽量减少所执行的低吞吐量算术指令数量。CUDA C Programming Guide 给出了各计算能力下所有原生 <a href="http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#arithmetic-instructions">算术指令</a> 的预期吞吐量列表。
+        </p>
+        <div id="pagefooter">
+            <br />
+        </div>
+        <hr style="height: 1px;" width="100%" size="0" align="center" />
+        <script type="text/javascript" src="../../../../../../resources/stylesheets/run_prettify.js?lang=vb" autoload="true">
+        </script>
+        <p>
+        </p>
+        <div class="buttons inline-buttons clearfix topicToolbarProxy topicToolbarProxysite.css" style="mc-topic-toolbar-items: ;">
+            <div class="button-group-container-left">
+                <button class="button needs-pie previous-topic-button" type="button" title="导航到上一主题">
+                    <img src="../../../../../../../Skins/Default/Stylesheets/Images/transparent.gif" alt="上一主题" />
+                </button>
+                <div class="button current-topic-index-button disabled"><span class="sequence-index"></span> / <span class="sequence-total"></span></div>
+                <button class="button needs-pie next-topic-button" type="button" title="导航到下一主题">
+                    <img src="../../../../../../../Skins/Default/Stylesheets/Images/transparent.gif" alt="下一主题" />
+                </button>
+            </div>
+        </div>
+        <p> <![CDATA[ ]]></p>
+        <p><span style="color: #696969; font-size: 8pt;">NVIDIA GameWorks Documentation Rev. 1.0.150630 ©2015. NVIDIA Corporation. All Rights Reserved.</span>
+        </p>
+    </body>
+</html>

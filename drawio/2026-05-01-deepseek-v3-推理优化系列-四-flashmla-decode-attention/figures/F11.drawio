@@ -1,0 +1,58 @@
+<mxfile host="app.diagrams.net" modified="2026-05-07T00:00:00.000Z" agent="Codex svg-to-drawio" version="24.7.17" type="device">
+  <diagram id="F11" name="F11">
+    <mxGraphModel dx="1000" dy="380" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1000" pageHeight="380" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="c2" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=none;strokeWidth=1;" parent="1" vertex="1">
+          <mxGeometry x="0" y="0" width="1000" height="380" as="geometry" />
+        </mxCell>
+        <mxCell id="c3" value="寄存器约束决定调度形态" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=24;fontColor=#24292f;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="363" y="14.08" width="274" height="34.8" as="geometry" />
+        </mxCell>
+        <mxCell id="c4" value="The output tile must stay in registers, so FlashMLA splits the V side across two warp groups." style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=13;fontColor=#57606a;fontStyle=0;" parent="1" vertex="1">
+          <mxGeometry x="189.11" y="51.96" width="621.78" height="18.85" as="geometry" />
+        </mxCell>
+        <mxCell id="c5" value="" style="rounded=1;whiteSpace=wrap;html=1;absoluteArcSize=1;arcSize=8;fillColor=#fff5f0;strokeColor=#b85450;strokeWidth=2;" parent="1" vertex="1">
+          <mxGeometry x="80" y="102" width="360" height="104" as="geometry" />
+        </mxCell>
+        <mxCell id="c6" value="单个 warp group 持有完整 O" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=16;fontColor=#24292f;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="152.92" y="114.72" width="214.16" height="23.2" as="geometry" />
+        </mxCell>
+        <mxCell id="c7" value="O ∈ ℝ64×512" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily='STIX Two Math', 'Cambria Math', 'Times New Roman', serif;fontSize=22;fontColor=#b85450;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="188.34" y="140.24" width="143.32" height="31.9" as="geometry" />
+        </mxCell>
+        <mxCell id="c8" value="64×512 / 128 = 256 reg/thread &gt; 255" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily='STIX Two Math', 'Cambria Math', 'Times New Roman', serif;fontSize=15;fontColor=#b85450;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="119.1" y="173.8" width="281.8" height="21.75" as="geometry" />
+        </mxCell>
+        <mxCell id="c9" value="" style="rounded=1;whiteSpace=wrap;html=1;absoluteArcSize=1;arcSize=8;fillColor=#f4faf4;strokeColor=#5fa55f;strokeWidth=2;" parent="1" vertex="1">
+          <mxGeometry x="560" y="102" width="360" height="104" as="geometry" />
+        </mxCell>
+        <mxCell id="c10" value="两个 warp groups 分摊 O" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=16;fontColor=#24292f;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="644.6" y="114.72" width="190.8" height="23.2" as="geometry" />
+        </mxCell>
+        <mxCell id="c11" value="O = [OL | OR]" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily='STIX Two Math', 'Cambria Math', 'Times New Roman', serif;fontSize=22;fontColor=#5fa55f;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="667.02" y="140.24" width="145.96" height="31.9" as="geometry" />
+        </mxCell>
+        <mxCell id="c12" value="每组只持有 64×256 的半个输出" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily='STIX Two Math', 'Cambria Math', 'Times New Roman', serif;fontSize=15;fontColor=#5fa55f;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="627.9" y="173.8" width="224.2" height="21.75" as="geometry" />
+        </mxCell>
+        <mxCell id="c13" value="" style="edgeStyle=none;html=1;rounded=0;strokeColor=#57606a;strokeWidth=1.8;endArrow=block;endFill=1;startArrow=none;startFill=0;" parent="1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="440" y="154" as="sourcePoint" />
+            <mxPoint x="560" y="154" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c14" value="" style="rounded=1;whiteSpace=wrap;html=1;absoluteArcSize=1;arcSize=8;fillColor=#f6f8fa;strokeColor=#d0d7de;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="120" y="260" width="760" height="82" as="geometry" />
+        </mxCell>
+        <mxCell id="c15" value="SM register file: 65,536 × 32-bit" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;fontSize=15;fontColor=#24292f;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="366" y="271.8" width="268" height="21.75" as="geometry" />
+        </mxCell>
+        <mxCell id="c16" value="完整 O 占 32,768 个 registers；两个完整 O 会吃掉整个 SM register file。" style="text=1;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily='STIX Two Math', 'Cambria Math', 'Times New Roman', serif;fontSize=16;fontColor=#57606a;fontStyle=0;" parent="1" vertex="1">
+          <mxGeometry x="219" y="298.72" width="562" height="23.2" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

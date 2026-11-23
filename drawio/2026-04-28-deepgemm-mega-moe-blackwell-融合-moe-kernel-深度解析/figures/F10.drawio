@@ -1,0 +1,61 @@
+<mxfile host="app.diagrams.net" modified="2026-05-05T00:00:00.000Z" agent="Codex" version="24.7.17" type="device">
+  <diagram id="F10" name="F10">
+    <mxGraphModel dx="1000" dy="280" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1000" pageHeight="280" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="c2" value="mbarrier phase-bit reuse" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=24;fontColor=#24292f;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="312.44" y="14" width="375.12" height="32.4" />
+        </mxCell>
+        <mxCell id="c3" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef7ff;strokeColor=#4a6fd3;strokeWidth=2;fontFamily=Helvetica;fontColor=#24292f" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="95" y="100" width="240" height="70" />
+        </mxCell>
+        <mxCell id="c4" value="phase = 0" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=18;fontColor=#4a6fd3;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="155.78" y="110" width="118.44" height="24.3" />
+        </mxCell>
+        <mxCell id="c5" value="producer fills slot" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#57606a;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="129.43" y="139" width="171.14" height="18" />
+        </mxCell>
+        <mxCell id="c6" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f4faf4;strokeColor=#5fa55f;strokeWidth=2;fontFamily=Helvetica;fontColor=#24292f" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="380" y="100" width="240" height="70" />
+        </mxCell>
+        <mxCell id="c7" value="arrive complete" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=18;fontColor=#5fa55f;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="407.3" y="110" width="185.4" height="24.3" />
+        </mxCell>
+        <mxCell id="c8" value="phase flips" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#57606a;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="446.67" y="139" width="106.66" height="18" />
+        </mxCell>
+        <mxCell id="c9" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fbf0fb;strokeColor=#a33ea1;strokeWidth=2;fontFamily=Helvetica;fontColor=#24292f" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="665" y="100" width="240" height="70" />
+        </mxCell>
+        <mxCell id="c10" value="wait(0) returns" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=18;fontColor=#a33ea1;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="692.3" y="110" width="185.4" height="24.3" />
+        </mxCell>
+        <mxCell id="c11" value="consumer owns data" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#57606a;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="703.46" y="139" width="163.08" height="18" />
+        </mxCell>
+        <mxCell id="c12" value="" style="endArrow=block;html=1;rounded=0;strokeColor=#24292f;strokeWidth=2;fontFamily=Helvetica" parent="1" edge="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint x="335" y="135" as="sourcePoint" />
+            <mxPoint x="380" y="135" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c13" value="" style="endArrow=block;html=1;rounded=0;strokeColor=#24292f;strokeWidth=2;fontFamily=Helvetica" parent="1" edge="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint x="620" y="135" as="sourcePoint" />
+            <mxPoint x="665" y="135" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c14" value="" style="endArrow=block;html=1;rounded=0;curved=1;strokeColor=#57606a;strokeWidth=2;fontFamily=Helvetica;dashed=1;dashPattern=8 6" parent="1" edge="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint x="785" y="172" as="sourcePoint" />
+            <mxPoint x="215" y="172" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c15" value="The same slot can be reused because the phase disambiguates old and new rounds." style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#57606a;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="172.63" y="233" width="654.74" height="18" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

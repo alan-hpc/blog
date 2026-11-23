@@ -1,0 +1,283 @@
+<mxfile host="app.diagrams.net" agent="svg2drawio">
+  <diagram id="conv" name="Page-1">
+    <mxGraphModel dx="1099" dy="2642" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="620" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="v2" parent="1" style="rounded=0;fillColor=#fff;strokeColor=none;html=1;" value="" vertex="1">
+          <mxGeometry height="620" width="1100" as="geometry" />
+        </mxCell>
+        <mxCell id="v6" parent="1" style="rounded=0;fillColor=#fafbfc;strokeColor=#d0d7de;strokeWidth=1;html=1;" value="" vertex="1">
+          <mxGeometry height="489" width="940" x="80" y="19" as="geometry" />
+        </mxCell>
+        <mxCell id="v3" parent="1" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=16;fontColor=#111827;fontStyle=1;" value="C / B 阈值地图 · 4 个代表性 GPU 在 V4-Pro MoE 上的位置" vertex="1">
+          <mxGeometry height="22" width="458" x="325" y="46" as="geometry" />
+        </mxCell>
+        <mxCell id="v4" parent="1" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=11;fontColor=#6b7280;" value="阈值 = 2·d_intermediate = 6144 FLOPs/Byte · 横轴：FP8 dense compute · 纵轴：NVLink per-direction BW" vertex="1">
+          <mxGeometry height="15" width="620" x="240" y="74.3" as="geometry" />
+        </mxCell>
+        <mxCell id="v5" parent="1" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=10;fontColor=#9ca3af;fontStyle=2;" value="公式：required_BW (GB/s) = compute (PFLOPs) × 1024 / 6.144 · 紫色虚线即为这条等式曲线" vertex="1">
+          <mxGeometry height="14" width="434" x="333" y="93.08" as="geometry" />
+        </mxCell>
+        <mxCell id="v7" edge="1" parent="1" style="endArrow=none;strokeColor=#000000;strokeWidth=1;html=1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="140" y="130" />
+              <mxPoint x="692" y="130" />
+            </Array>
+            <mxPoint x="140" y="450" as="sourcePoint" />
+            <mxPoint x="140" y="450" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="v8" edge="1" parent="1" style="endArrow=none;strokeColor=#000000;strokeWidth=1;html=1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="692" y="130" />
+              <mxPoint x="980" y="130" />
+              <mxPoint x="980" y="450" />
+            </Array>
+            <mxPoint x="140" y="450" as="sourcePoint" />
+            <mxPoint x="140" y="450" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="v9" edge="1" parent="1" style="endArrow=none;strokeColor=#333;strokeWidth=1;html=1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="140" y="450" as="sourcePoint" />
+            <mxPoint x="980" y="450" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="v10" edge="1" parent="1" style="endArrow=none;strokeColor=#333;strokeWidth=1;html=1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="140" y="130" as="sourcePoint" />
+            <mxPoint x="140" y="450" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="v11" edge="1" parent="1" style="endArrow=none;strokeColor=#e5e7eb;strokeWidth=0.7;html=1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="255" y="130" as="sourcePoint" />
+            <mxPoint x="255" y="450" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="v12" edge="1" parent="1" style="endArrow=none;strokeColor=#e5e7eb;strokeWidth=0.7;html=1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="370" y="130" as="sourcePoint" />
+            <mxPoint x="370" y="450" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="v13" edge="1" parent="1" style="endArrow=none;strokeColor=#e5e7eb;strokeWidth=0.7;html=1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="485" y="130" as="sourcePoint" />
+            <mxPoint x="485" y="450" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="v14" edge="1" parent="1" style="endArrow=none;strokeColor=#e5e7eb;strokeWidth=0.7;html=1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="600" y="130" as="sourcePoint" />
+            <mxPoint x="600" y="450" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="v15" edge="1" parent="1" style="endArrow=none;strokeColor=#e5e7eb;strokeWidth=0.7;html=1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="715" y="130" as="sourcePoint" />
+            <mxPoint x="715" y="450" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="v16" edge="1" parent="1" style="endArrow=none;strokeColor=#e5e7eb;strokeWidth=0.7;html=1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="830" y="130" as="sourcePoint" />
+            <mxPoint x="830" y="450" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="v17" edge="1" parent="1" style="endArrow=none;strokeColor=#e5e7eb;strokeWidth=0.7;html=1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="945" y="130" as="sourcePoint" />
+            <mxPoint x="945" y="450" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="v18" parent="1" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=10;fontColor=#555;" value="0" vertex="1">
+          <mxGeometry height="14" width="40" x="120" y="459.08" as="geometry" />
+        </mxCell>
+        <mxCell id="v19" parent="1" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=10;fontColor=#555;" value="5" vertex="1">
+          <mxGeometry height="14" width="40" x="235" y="459.08" as="geometry" />
+        </mxCell>
+        <mxCell id="v20" parent="1" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=10;fontColor=#555;" value="10" vertex="1">
+          <mxGeometry height="14" width="40" x="350" y="459.08" as="geometry" />
+        </mxCell>
+        <mxCell id="v21" parent="1" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=10;fontColor=#555;" value="15" vertex="1">
+          <mxGeometry height="14" width="40" x="465" y="459.08" as="geometry" />
+        </mxCell>
+        <mxCell id="v22" parent="1" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=10;fontColor=#555;" value="20" vertex="1">
+          <mxGeometry height="14" width="40" x="580" y="459.08" as="geometry" />
+        </mxCell>
+        <mxCell id="v23" parent="1" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=10;fontColor=#555;" value="25" vertex="1">
+          <mxGeometry height="14" width="40" x="695" y="459.08" as="geometry" />
+        </mxCell>
+        <mxCell id="v24" parent="1" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=10;fontColor=#555;" value="30" vertex="1">
+          <mxGeometry height="14" width="40" x="810" y="459.08" as="geometry" />
+        </mxCell>
+        <mxCell id="v25" parent="1" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=10;fontColor=#555;" value="35" vertex="1">
+          <mxGeometry height="14" width="40" x="925" y="459.08" as="geometry" />
+        </mxCell>
+        <mxCell id="v26" parent="1" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=13;fontColor=#333;fontStyle=1" value="peak compute (PFLOPs · FP8 dense)" vertex="1">
+          <mxGeometry height="16" width="235" x="442.5" y="479.52" as="geometry" />
+        </mxCell>
+        <mxCell id="v27" edge="1" parent="1" source="v46" style="endArrow=none;strokeColor=#e5e7eb;strokeWidth=0.7;html=1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="140" y="389" as="sourcePoint" />
+            <mxPoint x="980" y="389" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="v28" edge="1" parent="1" style="endArrow=none;strokeColor=#e5e7eb;strokeWidth=0.7;html=1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="140" y="325" as="sourcePoint" />
+            <mxPoint x="980" y="325" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="v29" edge="1" parent="1" style="endArrow=none;strokeColor=#e5e7eb;strokeWidth=0.7;html=1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="140" y="261" as="sourcePoint" />
+            <mxPoint x="980" y="261" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="v30" edge="1" parent="1" style="endArrow=none;strokeColor=#e5e7eb;strokeWidth=0.7;html=1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="140" y="197" as="sourcePoint" />
+            <mxPoint x="980" y="197" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="v31" edge="1" parent="1" style="endArrow=none;strokeColor=#e5e7eb;strokeWidth=0.7;html=1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="140" y="133" as="sourcePoint" />
+            <mxPoint x="980" y="133" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="v32" parent="1" style="text;html=1;align=right;verticalAlign=middle;whiteSpace=wrap;fontSize=10;fontColor=#555;" value="0" vertex="1">
+          <mxGeometry height="14" width="40" x="90" y="442.08" as="geometry" />
+        </mxCell>
+        <mxCell id="v33" parent="1" style="text;html=1;align=right;verticalAlign=middle;whiteSpace=wrap;fontSize=10;fontColor=#555;" value="800" vertex="1">
+          <mxGeometry height="14" width="40" x="90" y="382.08" as="geometry" />
+        </mxCell>
+        <mxCell id="v34" parent="1" style="text;html=1;align=right;verticalAlign=middle;whiteSpace=wrap;fontSize=10;fontColor=#555;" value="1600" vertex="1">
+          <mxGeometry height="14" width="40" x="90" y="318.08" as="geometry" />
+        </mxCell>
+        <mxCell id="v35" parent="1" style="text;html=1;align=right;verticalAlign=middle;whiteSpace=wrap;fontSize=10;fontColor=#555;" value="2400" vertex="1">
+          <mxGeometry height="14" width="40" x="90" y="254.08" as="geometry" />
+        </mxCell>
+        <mxCell id="v36" parent="1" style="text;html=1;align=right;verticalAlign=middle;whiteSpace=wrap;fontSize=10;fontColor=#555;" value="3200" vertex="1">
+          <mxGeometry height="14" width="40" x="90" y="190.08" as="geometry" />
+        </mxCell>
+        <mxCell id="v37" parent="1" style="text;html=1;align=right;verticalAlign=middle;whiteSpace=wrap;fontSize=10;fontColor=#555;" value="4000" vertex="1">
+          <mxGeometry height="14" width="40" x="90" y="126.08" as="geometry" />
+        </mxCell>
+        <mxCell id="v38" parent="1" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=12;fontColor=#333;rotation=90;fontStyle=1" value="NVLink BW (GB/s · per direction)" vertex="1">
+          <mxGeometry height="16" width="228" x="-18" y="294" as="geometry" />
+        </mxCell>
+        <mxCell id="v39" edge="1" parent="1" style="endArrow=none;strokeColor=#a33ea1;strokeWidth=2.2;dashed=1;html=1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="140" y="450" as="sourcePoint" />
+            <mxPoint x="692" y="130" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="v40" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=12;fontColor=#a33ea1;fontStyle=1;" value="阈值线 · C/B = 6144 FLOPs/B" vertex="1">
+          <mxGeometry height="16" width="178" x="560" y="292.52" as="geometry" />
+        </mxCell>
+        <mxCell id="v41" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=13;fontColor=#1a3d1a;fontStyle=1;" value="✓ BW 富余区" vertex="1">
+          <mxGeometry height="18" width="117" x="240" y="190.96" as="geometry" />
+        </mxCell>
+        <mxCell id="v42" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=10;fontColor=#1a3d1a;" value="通信完全可藏 (compute-bound)" vertex="1">
+          <mxGeometry height="14" width="143" x="240" y="214.08" as="geometry" />
+        </mxCell>
+        <mxCell id="v43" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=13;fontColor=#7a2f2b;fontStyle=1;" value="⚠ BW 不足区" vertex="1">
+          <mxGeometry height="18" width="97" x="770" y="380.96" as="geometry" />
+        </mxCell>
+        <mxCell id="v44" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=10;fontColor=#7a2f2b;" value="通信成瓶颈 (comm-bound)" vertex="1">
+          <mxGeometry height="14" width="136" x="770" y="404.08" as="geometry" />
+        </mxCell>
+        <mxCell id="v45" parent="1" style="ellipse;fillColor=#4a6fd3;strokeColor=#fff;strokeWidth=2;html=1;" value="" vertex="1">
+          <mxGeometry height="18" width="18" x="177" y="405" as="geometry" />
+        </mxCell>
+        <mxCell id="v47" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=10;fontColor=#1a2d55;" value="1.98 PFLOPs · 450 GB/s · NVLink 4" vertex="1">
+          <mxGeometry height="14" width="214" x="268" y="413.08" as="geometry" />
+        </mxCell>
+        <mxCell id="v48" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=11;fontColor=#1a3d1a;" value="余量 1.36×" vertex="1">
+          <mxGeometry height="15" width="98" x="271" y="427.08" as="geometry" />
+        </mxCell>
+        <mxCell id="v49" parent="1" style="ellipse;fillColor=#4a6fd3;strokeColor=#fff;strokeWidth=2;html=1;" value="" vertex="1">
+          <mxGeometry height="18" width="18" x="235" y="369" as="geometry" />
+        </mxCell>
+        <mxCell id="v50" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=12;fontColor=#1a2d55;fontStyle=1;" value="B200" vertex="1">
+          <mxGeometry height="16" width="40" x="228" y="339.52" as="geometry" />
+        </mxCell>
+        <mxCell id="v51" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=10;fontColor=#1a2d55;" value="4.5 PFLOPs · 900 GB/s · NVLink 5" vertex="1">
+          <mxGeometry height="14" width="208" x="228" y="307.08" as="geometry" />
+        </mxCell>
+        <mxCell id="v52" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=11;fontColor=#1a3d1a;" value="余量 1.20×" vertex="1">
+          <mxGeometry height="15" width="95" x="228" y="322.3" as="geometry" />
+        </mxCell>
+        <mxCell id="v53" parent="1" style="ellipse;fillColor=none;strokeColor=#e0b300;strokeWidth=3;html=1;" value="" vertex="1">
+          <mxGeometry height="28" width="28" x="230" y="364" as="geometry" />
+        </mxCell>
+        <mxCell id="v58" parent="1" style="ellipse;fillColor=#b85450;strokeColor=#fff;strokeWidth=2;html=1;" value="" vertex="1">
+          <mxGeometry height="22" width="22" x="934" y="151" as="geometry" />
+        </mxCell>
+        <mxCell id="v59" parent="1" style="text;html=1;align=right;verticalAlign=middle;whiteSpace=wrap;fontSize=12;fontColor=#7a2f2b;fontStyle=1;" value="Rubin Ultra" vertex="1">
+          <mxGeometry height="16" width="200" x="773" y="187.52" as="geometry" />
+        </mxCell>
+        <mxCell id="v60" parent="1" style="text;html=1;align=right;verticalAlign=middle;whiteSpace=wrap;fontSize=10;fontColor=#7a2f2b;" value="35 PFLOPs · 3600 GB/s · NVLink 7" vertex="1">
+          <mxGeometry height="14" width="208" x="765" y="205.08" as="geometry" />
+        </mxCell>
+        <mxCell id="v61" parent="1" style="text;html=1;align=right;verticalAlign=middle;whiteSpace=wrap;fontSize=11;fontColor=#7a2f2b;" value="余量 0.62×（穿过阈值，BW 不足）" vertex="1">
+          <mxGeometry height="15" width="188" x="795" y="220.3" as="geometry" />
+        </mxCell>
+        <mxCell id="v62" edge="1" parent="1" style="endArrow=none;strokeColor=#a33ea1;strokeWidth=1.2;dashed=1;html=1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="945" y="162" as="sourcePoint" />
+            <mxPoint x="945" y="132" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="v63" parent="1" style="ellipse;fillColor=#a33ea1;strokeColor=#fff;strokeWidth=1.5;html=1;" value="" vertex="1">
+          <mxGeometry height="8" width="8" x="941" y="128" as="geometry" />
+        </mxCell>
+        <mxCell id="v64" parent="1" style="text;html=1;align=right;verticalAlign=middle;whiteSpace=wrap;fontSize=9;fontColor=#a33ea1;" value="阈值要求: 5833 GB/s" vertex="1">
+          <mxGeometry height="13" width="88" x="885" y="113.08" as="geometry" />
+        </mxCell>
+        <mxCell id="v65" edge="1" parent="1" style="endArrow=none;strokeColor=#9ca3af;strokeWidth=1.4;html=1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="244" y="378" />
+            </Array>
+            <mxPoint x="186" y="414" as="sourcePoint" />
+            <mxPoint x="945" y="162" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="v66" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=11;fontColor=#6b7280;fontStyle=2;" value="代际算力轨迹（同比例外推）" vertex="1">
+          <mxGeometry height="15" width="186" x="560" y="278.3" as="geometry" />
+        </mxCell>
+        <mxCell id="v67" parent="1" style="rounded=1;arcSize=8;fillColor=#f9fafb;strokeColor=#e5e7eb;strokeWidth=1;html=1;" value="" vertex="1">
+          <mxGeometry height="126" width="957" x="79" y="516" as="geometry" />
+        </mxCell>
+        <mxCell id="v68" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=11;fontColor=#333;" value="• ：V4-Pro MoE 的通信可以完全藏在计算之下，NVLink 不是瓶颈。" vertex="1">
+          <mxGeometry height="16" width="395" x="80" y="523.52" as="geometry" />
+        </mxCell>
+        <mxCell id="v69" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=11;fontColor=#333;" value="• （FP8 4.5P / NVLink 900 GB/s 都不变）；B300 升级在 FP4 (+50%) 与 HBM (180→288 GB)，对 V4 MoE 的 C/B 故事不变。" vertex="1">
+          <mxGeometry height="16" width="670" x="80" y="551.52" as="geometry" />
+        </mxCell>
+        <mxCell id="v70" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=11;fontColor=#333;" value="• ：FP8 涨 7.8×（4.5 → 35P）但 NVLink 只涨 4×（900 → 3600 GB/s）→ 余量从 1.20× 跌到 0.62×。" vertex="1">
+          <mxGeometry height="16" width="655" x="80" y="579.52" as="geometry" />
+        </mxCell>
+        <mxCell id="v71" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=11;fontColor=#333;" value="• 论文 §3.1.2 ① 真正预言的时刻：，从 Rubin 代起按 C/B 阈值重新平衡硬件设计成为必需。" vertex="1">
+          <mxGeometry height="16" width="535" x="80" y="607.52" as="geometry" />
+        </mxCell>
+        <mxCell id="5lUS3pVNiicDWoDunTnB-1" edge="1" parent="1" style="endArrow=none;strokeColor=#e5e7eb;strokeWidth=0.7;html=1" target="v46" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="140" y="389" as="sourcePoint" />
+            <mxPoint x="980" y="389" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="v46" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=12;fontColor=#1a2d55;fontStyle=1;" value="H100 / H200" vertex="1">
+          <mxGeometry height="16" width="81" x="192" y="413" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

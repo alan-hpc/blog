@@ -1,0 +1,103 @@
+<mxfile host="app.diagrams.net" modified="2026-05-05T00:00:00.000Z" agent="Codex" version="24.7.17" type="device">
+  <diagram id="F2" name="F2">
+    <mxGraphModel dx="1000" dy="280" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1000" pageHeight="280" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="c2" value="SM100 hierarchy used by Mega MoE" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=24;fontColor=#24292f;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="252.92" y="14" width="494.16" height="32.4" />
+        </mxCell>
+        <mxCell id="c3" value="The kernel is tuned at every Blackwell execution level" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=14;fontColor=#57606a;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="256.64" y="58" width="486.72" height="18.9" />
+        </mxCell>
+        <mxCell id="c4" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef7ff;strokeColor=#4a6fd3;strokeWidth=2;fontFamily=Helvetica;fontColor=#24292f" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="55" y="112" width="154" height="96" />
+        </mxCell>
+        <mxCell id="c5" value="Grid" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=17;fontColor=#24292f;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="101.92" y="128" width="60.16" height="22.95" />
+        </mxCell>
+        <mxCell id="c6" value="persistent" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#57606a;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="82.7" y="159" width="98.6" height="18" />
+        </mxCell>
+        <mxCell id="c7" value="all SMs" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#57606a;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="94.79" y="176" width="74.42" height="18" />
+        </mxCell>
+        <mxCell id="c8" value="" style="endArrow=block;html=1;rounded=0;strokeColor=#4a6fd3;strokeWidth=2;fontFamily=Helvetica" parent="1" edge="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint x="215" y="160" as="sourcePoint" />
+            <mxPoint x="237" y="160" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c9" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f4faf4;strokeColor=#5fa55f;strokeWidth=2;fontFamily=Helvetica;fontColor=#24292f" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="243" y="112" width="154" height="96" />
+        </mxCell>
+        <mxCell id="c10" value="Cluster" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=17;fontColor=#24292f;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="274.11" y="128" width="91.78" height="22.95" />
+        </mxCell>
+        <mxCell id="c11" value="2 CTA" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#57606a;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="290.85" y="159" width="58.3" height="18" />
+        </mxCell>
+        <mxCell id="c12" value="UMMA multicast" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#57606a;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="254.58" y="176" width="130.84" height="18" />
+        </mxCell>
+        <mxCell id="c13" value="" style="endArrow=block;html=1;rounded=0;strokeColor=#5fa55f;strokeWidth=2;fontFamily=Helvetica" parent="1" edge="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint x="403" y="160" as="sourcePoint" />
+            <mxPoint x="425" y="160" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c14" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e7;strokeColor=#e0b300;strokeWidth=2;fontFamily=Helvetica;fontColor=#24292f" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="431" y="112" width="154" height="96" />
+        </mxCell>
+        <mxCell id="c15" value="CTA" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=17;fontColor=#24292f;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="483.19" y="128" width="49.62" height="22.95" />
+        </mxCell>
+        <mxCell id="c16" value="512 thr" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#57606a;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="470.79" y="159" width="74.42" height="18" />
+        </mxCell>
+        <mxCell id="c17" value="SMEM + mbarrier" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#57606a;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="438.55" y="176" width="138.9" height="18" />
+        </mxCell>
+        <mxCell id="c18" value="" style="endArrow=block;html=1;rounded=0;strokeColor=#e0b300;strokeWidth=2;fontFamily=Helvetica" parent="1" edge="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint x="591" y="160" as="sourcePoint" />
+            <mxPoint x="613" y="160" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c19" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fbf0fb;strokeColor=#a33ea1;strokeWidth=2;fontFamily=Helvetica;fontColor=#24292f" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="619" y="112" width="154" height="96" />
+        </mxCell>
+        <mxCell id="c20" value="Warpgroup" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=17;fontColor=#24292f;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="639.57" y="128" width="112.86" height="22.95" />
+        </mxCell>
+        <mxCell id="c21" value="128 thr" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#57606a;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="658.79" y="159" width="74.42" height="18" />
+        </mxCell>
+        <mxCell id="c22" value="UMMA / epilogue" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#57606a;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="626.55" y="176" width="138.9" height="18" />
+        </mxCell>
+        <mxCell id="c23" value="" style="endArrow=block;html=1;rounded=0;strokeColor=#a33ea1;strokeWidth=2;fontFamily=Helvetica" parent="1" edge="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint x="779" y="160" as="sourcePoint" />
+            <mxPoint x="801" y="160" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c24" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f6f8fa;strokeColor=#57606a;strokeWidth=2;fontFamily=Helvetica;fontColor=#24292f" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="807" y="112" width="154" height="96" />
+        </mxCell>
+        <mxCell id="c25" value="Warp" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=17;fontColor=#24292f;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="853.92" y="128" width="60.16" height="22.95" />
+        </mxCell>
+        <mxCell id="c26" value="role split" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#57606a;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="834.7" y="159" width="98.6" height="18" />
+        </mxCell>
+        <mxCell id="c27" value="D / TMA / EPI" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#57606a;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="822.61" y="176" width="122.78" height="18" />
+        </mxCell>
+        <mxCell id="c28" value="A single optimization point is not enough: overlap needs hierarchy + memory + sync together." style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Helvetica;fontSize=13;fontColor=#57606a;fontStyle=0" parent="1" vertex="1">
+          <mxGeometry as="geometry" x="120.24" y="232" width="759.52" height="18" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

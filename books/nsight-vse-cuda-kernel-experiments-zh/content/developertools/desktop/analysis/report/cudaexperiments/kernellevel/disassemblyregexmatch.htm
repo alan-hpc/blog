@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html xmlns:MadCap="http://www.madcapsoftware.com/Schemas/MadCap.xsd" lang="en-us" xml:lang="en-us" data-mc-search-type="Stem" data-mc-help-system-file-name="index.xml" data-mc-path-to-help-system="../../../../../../../" data-mc-target-type="WebHelp2" data-mc-runtime-file-type="Topic" data-mc-preload-images="false" data-mc-in-preview-mode="false" data-mc-toc-path="Developer Tools|Desktop Developer Tools|NVIDIA Nsight Visual Studio Edition|NVIDIA Nsight Visual Studio Edition 4.7|Analysis Tools|CUDA Experiments|Kernel-Level Experiments">
+    <!-- saved from url=(0016)http://localhost -->
+    <head>
+        <meta charset="utf-8" />
+        <meta name="googlebot" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><title>反汇编正则匹配</title>
+        <link rel="shortcut icon" href="../../../../../../Resources/MasterPages/nvidia.ico" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/Slideshow.css" rel="stylesheet" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/TextEffects.css" rel="stylesheet" />
+        <link href="../../../../../../../Skins/Default/Stylesheets/Topic.css" rel="stylesheet" />
+        <link href="../../../../../../resources/stylesheets/style.css" rel="stylesheet" />
+        <style>/*&lt;meta /&gt;*/
+
+.button.previous-topic-button
+{
+	-pie-background: url('../../../../../../../Skins/Default/Stylesheets/Images/navigate-previous.png') no-repeat center center, linear-gradient(#ffffff, #ececec);
+}
+
+.button.current-topic-index-button
+{
+	-pie-background: linear-gradient(#ffffff, #ececec);
+}
+
+.button.next-topic-button
+{
+	-pie-background: url('../../../../../../../Skins/Default/Stylesheets/Images/navigate-next.png') no-repeat center center, linear-gradient(#ffffff, #ececec);
+}
+
+.needs-pie
+{
+	behavior: url('../../../../../../../Resources/Scripts/PIE.htc');
+}
+
+</style>
+        <script src="../../../../../../../Resources/Scripts/custom.modernizr.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/jquery.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/foundation.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/plugins.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/require.min.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/require.config.js">
+        </script>
+        <script src="../../../../../../../Resources/Scripts/MadCapAll.js">
+        </script>
+        <script src="../../../../../../../Skins/Default/Scripts/Toolbar.js">
+        </script>
+    </head>
+    <body>
+        <p class="MCWebHelpFramesetLink MCWebHelpFramesetLinkTop"><a href="../../../../../../../index.html#developertools/desktop/analysis/report/cudaexperiments/kernellevel/disassemblyregexmatch.htm">打开带导航的主题视图</a>
+        </p>
+        <div class="MCBreadcrumbsBox_site.css_0"><span class="MCBreadcrumbsPrefix">当前位置： </span><a class="MCBreadcrumbsLink" href="../../../../../developer_tools.htm">开发者工具</a><span class="MCBreadcrumbsDivider"> &gt; </span><a class="MCBreadcrumbsLink" href="../../../../../desktop_devtools.htm">桌面开发者工具</a><span class="MCBreadcrumbsDivider"> &gt; </span><a class="MCBreadcrumbsLink" href="../../../../nvidia_nsight.htm">NVIDIA Nsight Visual Studio Edition</a><span class="MCBreadcrumbsDivider"> &gt; </span><span class="MCBreadcrumbs">反汇编正则匹配</span>
+        </div><a name="kanchor150"></a>
+        <div id="pageheader">
+            <h1><span class="SystemTitle">反汇编正则匹配</span>
+            </h1>
+            <p style="font-size: 8pt;"><span style="color: #696969;">NVIDIA® Nsight™ Development Platform, Visual Studio Edition 4.7 用户指南</span>
+                <br /><span id="feedbacklink" style="font-size: 8pt; font-weight: normal;"><a href="mailto:devtools-support@nvidia.com?subject=Documentation Feedback: Nsight Visual Studio Edition User Guide">发送反馈</a></span>
+                <br />
+            </p>
+            <hr width="100%" size="0" align="center" />
+        </div>
+        <h3><a id="Overview"></a>概述</h3>
+        <p>
+          Disassembly Regex（反汇编正则匹配）实验是一个用于创建自定义实验、对指令类别进行计数的框架。该实验通过脚本进行配置：用正则表达式指定要对哪些汇编指令计数，并将这些计数的加权和命名为指定的名字。结果以图表方式呈现，图表的属性可由脚本控制。Activity 页面上的脚本编辑器提供交互式指引，以确保脚本格式正确。本实验为捕获那些定义可能各异的指标（例如每秒浮点运算次数 FLOPS）提供了一种便捷方式。
+        </p>
+        <h5><a id="Background"></a>背景</h5>
+        <p>
+          统计某一类指令的执行频率是衡量性能的常用方法。像 IPC（每周期指令数）和 FLOPS 这样的通用指标之所以流行，是因为它们概念简单、在所有架构上都可用；但即使是如此简单的指标，要做精确定义也可能并不容易。例如，在统计浮点运算时，一次融合乘加（fused-multiply-add）可以算作一次操作，也可以算作两次；精度转换可以算作零次、一次或某个分数值。能够快速重新定义要统计哪些指令以及它们的权重，就可以快速尝试不同定义的指标。本实验使用一种易于学习的脚本语言，在便利性和灵活性之间取得平衡。该语言定义了以下几类对象及其关系：
+        </p>
+        <h5><a id="Regex"></a>[Regex]</h5>
+        <p>
+          一个命名对象，表示一个符合 ECMAscript 标准的正则表达式。本实验会把 kernel 反汇编为 SASS，生成 <a href="../../../../analysis_source_code_correlation.htm#SourceView">Source View</a> 页面中所显示的字符串值。正则表达式会被应用到每条反汇编指令上，匹配该正则的指令会被打补丁，使得每次该指令执行时都为某个计数加一。还可通过额外选项控制正则的应用方式。Search/Match 决定是在该行中搜索匹配，还是要求正则必须匹配整行。Predicate/Opcode/Instruction/Args/Comment 选择要匹配该行的哪一部分（注意 Instruction 是 Source View 中显示的完整指令助记符，而 Opcode 是指令中第一个点之前的那部分）。计数可以按线程或按 warp 进行。例如，一条在循环中执行 100 次的指令，在按 warp 模式下会使计数增加 100；在按线程模式下，若所有线程都活跃，则会增加 3200。
+        </p>
+        <h5><a id="Counter"></a>[Counter]</h5>
+        <p>
+          一个命名对象，表示若干 [Regex] 计数的加权和。Regex 对象按名称指定，每行一个，前面跟有权重。权重可以是任意正负整数或浮点数值。Regex 对象可以被多个 Counter 对象使用。
+        </p>
+        <h5><a id="Group"></a>[Group]</h5>
+        <p>
+          一个命名对象，表示要在报告页上以图表形式显示的一组 [Counter] 值。Counter 对象按名称指定，每行一个。Counter 对象可以被多个 Group 对象使用。图表类型是 Group 的一个选项。可以是柱状图（每个 counter 各为一根柱）、堆叠柱状图（每根柱由指定相同堆叠名的多个 counter 段组成）或饼图（每个 counter 占饼图的一块）。是显示计数值还是显示速率（计数除以时间）也是 Group 的一个选项。关于图表外观示例，请参见 <a href="achievedflops.htm">实际 FLOPS</a> 实验。
+        </p>
+        <h5><a id="ScriptSyntax"></a>脚本语法</h5>
+        <p>
+          每个对象在一行中以方括号指定，括号内是类型，后接名称。名称可以包含空格以及除方括号外的任意字符。该对象的选项可以追加在该行末尾。对于 Regex 对象，定义行紧接着的一行是正则字符串，可以使用任意字符（转义按预期方式工作）。对于 Counter 和 Group 对象，从定义行往下、直到下一个定义行之间的所有行用于指定其成员（Counter 指定一组 Regex，Group 指定一组 Counter）。除了定义正则字符串的行之外（其中所有字符都被视为正则的一部分），脚本格式会忽略空白字符以及以 # 开头的行（用于书写注释）。Activity 页面上的脚本编辑器会在你修改时即时解析，并在出现错误时给出说明。如果脚本无效，Activity 将不允许启动。
+        </p>
+        <div style="text-align: center;">
+            <img src="disassemblyregexmatchparseerror.png" style="mc-thumbnail: none;" />
+            <p><i>在第 3 行输入 [foo] 后，脚本编辑器说明 'foo' 不是 Regex 对象的有效选项，并列出了所有合法选项。</i>
+            </p>
+        </div>
+        <h5><a id="ScriptExamples"></a>脚本示例</h5>
+        <p>
+          新建一个 Disassembly Regex 实验时显示的文本就是一个带有详细注释的示例，可用于演示语法。更复杂的示例由 <a href="achievedflops.htm">实际 FLOPS</a> 和 <a href="achievediops.htm">实际 IOPS</a> 实验提供，它们都基于 Disassembly Regex 实验。可以把它们脚本的内容复制并粘贴到一个新的 Disassembly Regex 实验中进行修改。
+        </p>
+        <h3><a id="Analysis"></a>分析</h3>
+        <ul style="list-style-type:none">
+            <li value="1">
+            如果指令执行速率低于预期……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……如果可能，尝试增加活跃 warp 的数量。使用 <a href="achievedoccupancy.htm">实际占用率</a>、<a href="issueefficiency.htm">发射效率</a> 和 <a href="instructionstatistics.htm">指令统计</a> 实验来判断指令发射率是否偏低。
+                     </li></ul></li>
+            <li value="2">
+            尝试复制一个 Regex，一个使用 [PerThread]，另一个使用 [PerWarp]。为每个分别添加一个 Counter，并按设备的 warp 大小对按 warp 的值加权。如果按线程的值更低……
+            <ul style="list-style-type:none"><li style="text-indent:-20px;" value="1">
+                ……使用 <a href="branchstatistics.htm">分支统计</a> 实验来调查为什么会经常出现 warp 中许多线程被谓词屏蔽的情况。
+              </li></ul></li>
+        </ul>
+        <div id="pagefooter">
+            <br />
+        </div>
+        <hr style="height: 1px;" width="100%" size="0" align="center" />
+        <script type="text/javascript" src="../../../../../../resources/stylesheets/run_prettify.js?lang=vb" autoload="true">
+        </script>
+        <p>
+        </p>
+        <div class="buttons inline-buttons clearfix topicToolbarProxy topicToolbarProxysite.css" style="mc-topic-toolbar-items: ;">
+            <div class="button-group-container-left">
+                <button class="button needs-pie previous-topic-button" type="button" title="导航到上一篇">
+                    <img src="../../../../../../../Skins/Default/Stylesheets/Images/transparent.gif" alt="上一主题" />
+                </button>
+                <div class="button current-topic-index-button disabled"><span class="sequence-index"></span> / <span class="sequence-total"></span></div>
+                <button class="button needs-pie next-topic-button" type="button" title="导航到下一篇">
+                    <img src="../../../../../../../Skins/Default/Stylesheets/Images/transparent.gif" alt="下一主题" />
+                </button>
+            </div>
+        </div>
+        <p> <![CDATA[ ]]></p>
+        <p><span style="color: #696969; font-size: 8pt;">NVIDIA GameWorks Documentation Rev. 1.0.150630 ©2015. NVIDIA Corporation. All Rights Reserved.</span>
+        </p>
+    </body>
+</html>

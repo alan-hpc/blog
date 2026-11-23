@@ -1,0 +1,1242 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DeepSeek mHC 深度科普：从残差高速公路到可守恒多流连接</title>
+
+
+  <!-- Fonts: JetBrains Mono for code -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&amp;display=swap" rel="stylesheet">
+  <!-- Highlight.js: Monokai Sublime theme -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/monokai-sublime.min.css">
+  <!-- KaTeX -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <!-- Shared reader styles -->
+  <link rel="stylesheet" href="/blog/readers/reader.css">
+  <style>
+    .section-h.lv3 {
+      margin: 1.35rem 0 .45rem;
+      font-size: 1.02rem;
+      line-height: 1.45;
+      font-weight: 700;
+      color: #3f3a34;
+    }
+  </style>
+</head>
+<body>
+<div id="lb" onclick="lbClose(event)" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:999;align-items:center;justify-content:center;cursor:zoom-out;">
+  <img id="lb-img" src="" style="max-width:90vw;max-height:90vh;border-radius:4px;box-shadow:0 8px 40px rgba(0,0,0,.6)">
+</div>
+<nav id="sb">
+  <div id="sb-title">
+    <p class="zh"><a href="https://alan-hpc.github.io/blog/" target="_blank">YANG MIN · 技术博客</a></p>
+    <h2 class="section-h lv1" id="DeepSeek-mHC-Manifold-Constrained-Hyper-Connections">DeepSeek mHC · 可守恒的多流残差连接</h2>
+  </div>
+  <div class="ti tl1"><a href="#背景与符号约定">Prologue · 读前先抓住三条直觉</a></div>
+<div class="ti tl1"><a href="#1-为什么需要-mHC">1 · 从 Residual 到 mHC：问题和失败模式</a></div>
+<div class="ti tl1"><a href="#3-mHC-的结构设计">2 · 核心机制：Birkhoff 约束如何恢复稳定</a></div>
+<div class="ti tl1"><a href="#4-实验说明了什么">3 · 论文证据：稳定性、能力和规模化</a></div>
+<div class="ti tl1"><a href="#5-mHC代码如何实现">4 · 工程落地：TileKernels 如何压成本</a></div>
+<div class="ti tl1"><a href="#7-读者应该带走什么">5 · 结论：什么时候值得用 mHC</a></div>
+<div class="ti tl1"><a href="#references">参考资料</a></div>
+
+</nav>
+<div id="reader">
+  <div id="reader-inner">
+    <header class="book-header">
+      <p class="kicker"><a href="https://alan-hpc.github.io/blog/" target="_blank">YANG MIN · 技术博客</a></p>
+      <h1>DeepSeek mHC：从残差高速公路到可守恒多流连接</h1>
+      <p class="subtitle zh">这篇文章按五段主线来读：先抓残差直觉和 HC 失稳，再进入 Birkhoff/Sinkhorn 机制，然后看论文证据，最后落到 TileKernels 的工程成本。</p>
+    </header>
+
+    <div class="kbox reader-route" id="reader-route">
+      <span class="k-label">READING MAP</span>
+      <b>读完本文只抓三条线：</b>
+      <ol class="zh-list">
+        <li>对象：mHC 改 transformer 的 residual topology，不替换 attention、MoE 或 FFN。</li>
+        <li>矛盾：HC 加宽残差流，但无约束 $H^{res}$ 在深层里会变成危险的矩阵连乘。</li>
+        <li>落地：Birkhoff 约束修稳定，fused kernel / recompute / overlap 把 n-stream 成本压到可训练范围。</li>
+      </ol>
+    </div>
+
+<!-- ============================================================ -->
+<!-- PROLOGUE -->
+<!-- ============================================================ -->
+<section class="prologue" id="prologue">
+  <h2 class="section-h lv1" id="背景与符号约定">Prologue · 读前先抓住三条直觉</h2>
+  <p class="zh">正文不急着进公式，先把三条读者必须带着走的直觉放在一起：残差连接为什么稳定、HC 为什么想把残差流加宽、mHC 为什么必须给流间 mixing 加上 Birkhoff 约束。后文只沿着五段主线展开：问题和失败模式 → 核心机制 → 论文证据 → 工程落地 → 适用边界。</p>
+
+  <div class="prologue-toc">
+    <b style="color:#7a4e00">本节速览</b>
+    <ol class="zh-list">
+      <li><a href="#pr-s1">① 从 Residual 到 HC/mHC 的结构演化</a><span class="toc-sub">B1 / B2 / B3 原图</span></li>
+      <li><a href="#pr-s2">② Pre-norm 保稳定，但单流残差有带宽瓶颈</a><span class="toc-sub">B4 / B5 原图</span></li>
+      <li><a href="#pr-s3">③ Birkhoff polytope 是安全 mixing 空间</a><span class="toc-sub">安全 mixing / 凸包</span></li>
+      <li><a href="#pr-s4">④ 全文符号速查表</a><span class="toc-sub">n / C / L / H_res / α / β</span></li>
+    </ol>
+  </div>
+
+  <h3 class="section-h lv2" id="pr-s1">① 从 Residual 到 HC/mHC 的结构演化</h3>
+  <p class="zh">残差连接（He et al. 2016）的核心信念是：<b>叠层之后，至少不会比不叠更差</b> 。把它写成式子就是 $x_{l+1}=x_l+F(x_l)$，恒等映射 $I$ 始终在反向传播路径上，梯度 $\partial L/\partial x_l$ 至少有一份不衰减的"高速公路"。</p>
+
+  <div class="side-by-side">
+    <figure class="fig src">
+      <img src="figs/blog_residual_connections_light.png" alt="A residual connection as a network diagram">
+      <figcaption><span class="attr">B1</span><b>Ivo Verhoeven · 原图</b>　把残差连接画成网络图：上游 hidden 在 sublayer 旁边走"高速公路"绕过，与 sublayer 输出相加。这条直通通道是后面所有"identity-mapping 信念"的物理对应。</figcaption>
+    </figure>
+    <figure class="fig src">
+      <img src="figs/blog_residual_connections_unrolled_light.png" alt="A residual connection as an unrolled network diagram">
+      <figcaption><span class="attr">B2</span><b>Ivo Verhoeven · 改自 Veit et al. 2016</b>　把残差网络沿层展开：每一层等价于"原信号 + 一条 sublayer 分支"，整个 L 层 ResNet 其实是 $2^L$ 条不同长度的路径的集成。<b>这条直观让我们看见：identity 通道是"梯度的最短路径"，断它即崩。</b></figcaption>
+    </figure>
+  </div>
+
+  <p class="zh">这条 identity 通道的数学保障是：单位矩阵在矩阵乘法下幂等，$I^L = I$，连乘不爆不衰。把它写成多层展开：</p>
+
+  <div class="formula-box sm-box">
+    <div class="formula-label">📐 Eq. 1 / 2 · 残差连接的多层展开（论文）</div>
+    $$ x_{l+1} = x_l + F(x_l, W_l) \quad\Rightarrow\quad x_L = x_l + \sum_{i=l}^{L-1} F(x_i, W_i) $$
+    <p class="zh">从第 $l$ 层走到第 $L$ 层只是"加上沿途所有 sublayer 输出的和"。这是<b>线性叠加</b> ，没有任何乘积链条，所以也就没有谱范数 / 梯度的指数行为。
+</p></div>
+
+  <p class="zh">但单条残差流终究是个"窄通道"——所有信息必须挤过同一个 $C$ 维 vector。<b>Hyper-Connections (HC, Zhu et al. 2024)</b> 提议把残差加宽为 $n$ 条并行流（论文常用 $n=4$），用三组学习矩阵在流之间做混合：</p>
+
+  <figure class="fig src">
+    <img src="figs/blog_hc_n2_base_plain_light.png" alt="HC residual network graph for N=2">
+    <figcaption><span class="attr">B3</span><b>Ivo Verhoeven · 原图</b>　Hyper-Connections 的网络图（$n=2$ 示意）：上游 $n$ 流通过 $H^{pre}$ 投影成 sublayer 的输入；sublayer 输出通过 $H^{post}$ 加回 $n$ 流；同时各流之间还有一个 $n\times n$ 的混合矩阵 $H^{res}$。比起单条残差，HC 提供了 $n$ 倍的"残差带宽"。</figcaption>
+  </figure>
+
+  <figure class="fig src">
+    <img src="figs/paper_fig1.png" alt="Paper Figure 1: residual / HC / mHC concept">
+    <figcaption><span class="attr">P1</span><b>mHC paper Figure 1</b>　论文最经典的一张对比图：(a) 标准残差 $x_{l+1}=x_l+F(\cdot)$ 一条单流通；(b) HC 把残差加宽到 $n$ 流，但 $H^{res}_l$ 无任何约束；(c) <b>mHC 在 $H^{res}_l$ 上加 manifold 约束</b>（论文说"projects the residual connection space of HC onto a specific manifold to restore the identity mapping property"）。结构设计部分会展开"该 manifold = Birkhoff polytope = 双随机矩阵集合"。</figcaption>
+  </figure>
+
+  <h3 class="section-h lv2" id="pr-s2">② Pre-norm 保稳定，但单流残差有带宽瓶颈</h3>
+  <p class="zh">HC 之所以诞生，不是因为 pre-norm 会让浅层信息消失；恰好相反，pre-norm 的优点就是保住一条很干净的 identity 通道。真正的瓶颈在于：DeepSeek-V3/V4 这类现代 transformer 基本都把所有层的信息写进同一条残差流，稳定是稳定了，但拓扑表达力和残差带宽都被压在一条通道里。Verhoeven 的两张图分别解释了"稳定从哪里来"和"瓶颈在哪里"。</p>
+
+  <div class="side-by-side">
+    <figure class="fig src">
+      <img src="figs/blog_pre_and_post_norm_light.png" alt="Pre- and post-norm residual blocks">
+      <figcaption><span class="attr">B4</span><b>Ivo Verhoeven · 原图</b>　Pre-norm（左）vs post-norm（右）的残差块：pre-norm 是 $x+\mathrm{sublayer}(\mathrm{LN}(x))$，LayerNorm 和 sublayer 都在分支里，主干上的 $x$ 可以直接加到下一层；post-norm 是 $\mathrm{LN}(x+\mathrm{sublayer}(x))$，每一层都会在残差相加后再整体归一化一次。<b>所以 pre-norm 的梯度路径短</b> ：反向时总有一条几乎直接的 identity 路径。但也正因为这条主干就是模型一路传递的"干净状态"，任何放到主干上的可学习 mixing 都必须接近 identity / norm-preserving，否则跨层连乘会污染这条稳定通道。</figcaption>
+    </figure>
+    <figure class="fig src">
+      <img src="figs/blog_baseline_connection_pattern_light.png" alt="layer contribution pattern">
+      <div class="axis-guide" aria-label="heatmap axis guide">
+        <span><b>横轴 x</b> 源层 i</span>
+        <span><b>纵轴 y</b> 目标层 j</span>
+        <span><b>颜色</b> 贡献强度</span>
+      </div>
+      <figcaption><span class="attr">B5</span><b>Ivo Verhoeven · 改自 Zhu et al. 2024 Figure 7</b>　深 transformer 里的"前层对后层贡献度"热力图。<b>读图方式</b> ：横轴是源层 $i$（信息从哪一层来），纵轴是目标层 $j$（观察哪一层的表示），只看 $i\le j$ 的下三角；颜色越深，表示第 $i$ 层对第 $j$ 层的表示贡献越大。左边 post-norm 的颜色主要贴着对角线，说明目标层主要依赖最近几层，越早的层越难影响很深的层；右边 pre-norm 的下三角几乎整块保持深色，说明早期层信息可以一路直达后续层。<b>因此这里不是 pre-norm 衰减，而是 post-norm 衰减。</b> HC/mHC 要解决的是另一件事：在保留 pre-norm 短梯度路径的同时，把单条残差主干扩成 $n$ 条可学习残差流，让不同层/不同语义的信息可以走不同通路。</figcaption>
+    </figure>
+  </div>
+
+  <div class="kbox">
+    <span class="k-label">WHY THIS MATTERS</span>
+    <b>一句话区分：</b> pre-norm 解决的是"能不能稳定传很深"，HC/mHC 解决的是"稳定传深之后，残差拓扑能不能更丰富"。标准 pre-norm 的多层展开近似是 $x_L=x_0+\sum_i F_i(\mathrm{LN}(x_i))$，identity 项一直在；HC 把这条主干改成多流残差网络，表达力变强，但如果 $H^{res}$ 无约束，identity 项前面会变成一串矩阵乘积。mHC 的 Birkhoff / Sinkhorn 约束，就是为了让"多流"不要破坏 pre-norm 本来最宝贵的稳定通道。
+  </div>
+
+  <p class="zh">HC 学到的连接性模式也很有意思：</p>
+  <figure class="fig src">
+    <img src="figs/blog_hc_connectivity_pattern_light.png" alt="HC learned connectivity">
+    <div class="axis-guide" aria-label="HC connectivity pattern guide">
+      <span><b>左 / 中 / 右</b> 不同残差流 slot</span>
+      <span><b>横轴 x</b> 来源层 i</span>
+      <span><b>纵轴 y</b> 目标层 j</span>
+      <span><b>红 / 蓝</b> 正 / 负贡献</span>
+    </div>
+    <figcaption><span class="attr">B6</span><b>Ivo Verhoeven · 改自 Zhu et al. 2024 Appendix D Figure 10 / Appendix F 讨论</b>　这不是 attention map，也不是三种模型对比；<b>左、中、右分别是 HC 的不同 residual stream / hyper-hidden slot 的展开连接矩阵</b> 。横轴表示信息从哪一层输出 $i$ 来，纵轴表示它被带到哪一个更深的层 $j$；只看下三角，因为深层只能接收浅层信息。颜色越深表示贡献绝对值越大，红色是正向写入，蓝色是负向抵消。<b>怎么看出“分化”：</b> 左图强颜色主要贴着对角线，说明这条流更像 ResNet 主干，主要保留相邻层的顺序传播；中图有明显竖向长条，说明某些来源层的输出会被这条流保存很多层，论文原图用 tick 标出 attention 层后可看到这些长程保留更多落在 FFN/MLP 相关位置；右图又是另一组远程正/负连接模式。也就是说，多条流不是复制同一条残差，而是在学不同的跨层记忆职责；这里的“专家”不是 MoE expert，而是 residual stream 的功能分工。</figcaption>
+  </figure>
+
+  <h3 class="section-h lv2" id="pr-s3">③ Birkhoff polytope 是安全 mixing 空间</h3>
+  <p class="zh">这里不能直接跳到定义。前面已经看到，HC 里真正危险的是 $H^{res}_l$：它每一层都会在 $n$ 条残差流之间做一次 mixing，单层看起来可能只是轻微重组，但深层模型里会变成 $\prod_l H^{res}_l$ 的连乘。如果这个 mixing 空间允许任意缩放或偏置，标准残差里的 identity 项就不再是 $I^L=I$，而是一串可能爆炸、塌缩或把某条流复制到所有流上的矩阵。</p>
+  <p class="zh">所以 mHC 需要的不是“越自由越好”的矩阵，而是一种<b>安全 mixing 空间</b> ：它要允许不同残差流交换信息；要包含 identity / permutation 这种无损重排；要保证单层不放大范数；还要在多层相乘后仍留在同一空间里。<b>Birkhoff polytope 刚好满足这个约束清单</b> ，所以它不是突兀的数学装饰，而是把 HC 的多流表达力重新套回 ResNet identity contract 的工具。</p>
+  <p class="zh">对一个 $n\times n$ 矩阵 $M$，若 $M_{ij}\geq 0$ 且每行每列之和都恰好为 1，称它为<b>双随机矩阵</b>（doubly stochastic matrix）。所有双随机矩阵构成的集合是一个 $(n-1)^2$ 维的凸多胞体，记作 $\mathcal{B}_n$（Birkhoff polytope）。<b>Birkhoff-von Neumann 定理</b> 给出它的顶点恰好是 $n!$ 个置换矩阵——也就是说，每个双随机矩阵都是置换矩阵的凸组合：</p>
+  $$ M\in\mathcal{B}_n \;\Longleftrightarrow\; M=\sum_{\sigma\in S_n} \lambda_\sigma P_\sigma, \quad \lambda_\sigma\geq 0,\;\sum_\sigma \lambda_\sigma =1 $$
+  <p class="zh">直观地说，$M$ 是一个<b>软置换</b> ：每条输出流从输入流分配权重，但权重总量守恒；每条输入流也不会被无限复制。相比无约束 $H^{res}$，它允许“重组”，但不允许“凭空放大”。本文核心要用的三条性质是：</p>
+  <ol class="zh-list">
+    <li><b>谱范数受限</b> ：$\|M\|_2 \leq 1$（论文 Section 4.1 "non-expansive"），$\mathbf{1}/\sqrt{n}$ 是 $M$ 的不动方向；</li>
+    <li><b>乘法封闭</b> ：$M_1,M_2\in\mathcal{B}_n \Rightarrow M_1 M_2\in\mathcal{B}_n$（行/列和守恒可链式验证）；</li>
+    <li><b>凸组合解释</b> ：$M\cdot x$ 是输入 $x$（沿 stream 维）的"重组"，feature mean 严格保持不变（$\sum_i (Mx)_i = \sum_i x_i$）。</li>
+  </ol>
+  <p class="zh">把 $H^{res}_l$ 约束在 $\mathcal{B}_n$ 上意味着：每一层仍然可以学习如何在 $n$ 条通路之间重新分配信息，但这种重新分配像“软排列”而不是任意线性变换；无论 transformer 多深，复合残差混合矩阵 $\prod_l H^{res}_l$ 都仍是双随机矩阵，identity-mapping 这条"高速公路"在数学上守住了。</p>
+
+  <h3 class="section-h lv2" id="pr-s4">④ 全文符号速查表</h3>
+  <div class="table-scroll"><table>
+    <tbody><tr><th>符号</th><th>含义</th><th>典型值 / 维度</th></tr>
+    <tr><td>$n$（或 mhc_mult）</td><td>残差流宽度 / expansion rate</td><td>4（所有论文实验）</td></tr>
+    <tr><td>$C$（或 $d_{model}$）</td><td>hidden dim</td><td>1280 (3B) / 1920 (9B) / 2560 (27B) / 7168 (V4-Pro)</td></tr>
+    <tr><td>$L$</td><td>transformer 总层数</td><td>12 / 18 / 30 / 60+</td></tr>
+    <tr><td>$x_l$</td><td>第 $l$ 层多流残差状态</td><td>$\mathbb{R}^{n\times C}$</td></tr>
+    <tr><td>$H^{pre}_l,H^{post}_l$</td><td>残差流 → sublayer 入 / 出 → 残差流</td><td>$\mathbb{R}^{1\times n}$（per token 动态）</td></tr>
+    <tr><td>$H^{res}_l$</td><td>残差流间混合矩阵（mHC 双随机）</td><td>$\mathbb{R}^{n\times n}$</td></tr>
+    <tr><td>$F$</td><td>sublayer：attention 或 FFN/MoE</td><td>—</td></tr>
+    <tr><td>$\alpha,\beta$</td><td>动态参数化的缩放、偏置</td><td>$\alpha$ init = <b>0.01</b>（论文 Table 5）</td></tr>
+    <tr><td>$\varphi$</td><td>per-token 的 $C\to n+n+n^2$ 投影矩阵</td><td>$\mathbb{R}^{C\times (2n+n^2)}$（n=4 时 = $C\times 24$）</td></tr>
+    <tr><td>$t_{max}$</td><td>Sinkhorn-Knopp 迭代轮数</td><td><b>20</b>（论文/所有实现）</td></tr>
+    <tr><td>$\mathcal{B}_n$</td><td>Birkhoff polytope（双随机矩阵集合）</td><td>$(n-1)^2$ 维</td></tr>
+    <tr><td>$L_r$</td><td>multilayer recompute 块大小</td><td>$L_r^*\approx\sqrt{nL/(n+2)}$</td></tr>
+  </tbody></table></div>
+</section>
+
+
+<!-- ============================================================ -->
+<!-- LAYER 1 -->
+<!-- ============================================================ -->
+<div class="layer-banner" id="layer1">
+  <div class="tag">01</div>
+  <h2 class="section-h lv1" id="1-为什么需要-mHC">1 · 从 Residual 到 mHC：问题和失败模式</h2>
+  <div class="s">这一章把动机和失败案例放在一起：为什么 transformer 想要更丰富的 residual topology，以及为什么无约束 HC 会在深层里失稳。</div>
+</div>
+
+<h3 class="section-h lv2" id="11-从残差连接说起">1.1 残差为什么像一条可微分高速公路</h3>
+
+<figure class="fig src">
+  <img src="figs/blog_resnet_loss_surfaces.png" alt="ResNet loss surfaces with/without residual">
+  <figcaption><span class="attr">B7</span><b>Ivo Verhoeven · 改自 Li et al. 2018</b>　这张图展示两种 ResNet 损失曲面：左图是不带残差连接的网络，右图是带残差连接的 ResNet。没有残差时损失曲面充满悬崖与脊；加了残差后曲面变得光滑可优化。<b>这是 identity 通道的"几何代价"——损失景观变 smooth。</b> 下一张图再看 DenseNet 的全互联 skip connection。</figcaption>
+</figure>
+
+<figure class="fig src">
+  <img src="figs/pytorch_densenet_architecture.png" alt="DenseNet architecture diagram showing dense skip connections">
+  <figcaption><span class="attr">B7b</span><b>PyTorch Hub · DenseNet 结构图</b>　DenseNet 把每一层与后续所有层直接相连：第 $l$ 层会接收前面所有 feature maps，自己的输出也会继续传给后面所有层。它把 ResNet 的一条 identity 高速公路推到“全互联 skip connection”的极端；HC/mHC 的动机可以理解成：希望获得更丰富的跨层拓扑，但不真的把 DenseNet 那种连接和激活存储成本完整搬进 LLM。</figcaption>
+</figure>
+
+<h3 class="section-h lv2" id="12-Hyper-Connection-想补上的能力">1.2 HC 如何把一条残差流扩成 n 条</h3>
+<p class="zh">HC 把递推从 $x\to x+F$ 改写为<b>三组矩阵 + 一份 sublayer</b> 。论文 Eq. 3：</p>
+
+<div class="formula-box std-box">
+  <div class="formula-label">⚠️ Eq. 3 · Hyper-Connections（HC）原始公式</div>
+  $$ x_{l+1} = H^{res}_l\,x_l + (H^{post}_l)^\top\, F\!\big(H^{pre}_l\,x_l,\,W_l\big) $$
+  <p class="zh">维度：$x_l\in\mathbb{R}^{n\times C}$，$H^{res}_l\in\mathbb{R}^{n\times n}$（流间混合），$H^{pre}_l,H^{post}_l\in\mathbb{R}^{1\times n}$（流→单一输入、单一输出→流）。当 $n=1, H^{res}=1, H^{pre}=H^{post}=1$ 时退化为标准残差。
+</p></div>
+
+<p class="zh">多层展开是判断这套递推稳不稳定的关键：</p>
+
+<div class="formula-box std-box">
+  <div class="formula-label">⚠️ Eq. 4 · HC 多层展开（论文）</div>
+  $$ x_L \;=\; \underbrace{\Big(\prod_{i=1}^{L-l} H^{res}_{L-i}\Big)\cdot x_l}_{\text{identity 通道}} \;+\; \sum_{i=l}^{L-1} \underbrace{\Big(\prod_{j=1}^{L-1-i} H^{res}_{L-j}\Big)}_{\text{第 }i\text{ 个 sublayer 输出的传播因子}} \!\cdot (H^{post}_i)^\top F(H^{pre}_i x_i, W_i) $$
+  <p class="zh">对比 Eq. 2，可以看到：<b>HC 把"线性叠加"换成了"矩阵连乘 + 线性叠加"</b> 。残差的稳定性取决于 $\prod H^{res}$ 的谱性质——而 HC 对 $H^{res}$ 没有任何约束。
+</p></div>
+
+<p class="zh">HC 实际的 $H^{res}_l$ 由<b>动态参数化</b> 得到（per token 计算）：</p>
+
+<div class="formula-box std-box">
+  <div class="formula-label">⚠️ Eq. 5 · HC 的动态参数化（per-token）</div>
+  $$ \widetilde{H}^{res}_l = \alpha^{res}_l\cdot \tanh(\bar{x}_l\,\varphi^{res}_l) + b^{res}_l,\quad H^{res}_l := \widetilde{H}^{res}_l\quad(\text{HC 直接使用 raw matrix，不再投影}) $$
+  <p class="zh">这里的 $\widetilde{H}^{res}_l$ 是<b>刚生成出来的 raw mixing 矩阵</b> ，$H^{res}_l := \widetilde{H}^{res}_l$ 的意思是：HC 原版没有后处理，不做 Sinkhorn、不强制非负、不强制行/列和为 1，也不保证 $\|H^{res}_l\|_2\le 1$。换句话说，"无约束"不是说没有参数化，而是说 raw matrix 直接进入残差连乘链。</p>
+  <p class="zh">$\bar x_l=\mathrm{RMSNorm}(x_l)$。<b>tanh ∈ (-1,1) 是元素级的</b> ——它只能限制单个 entry，不能限制整个矩阵的谱范数；再乘上可学的 $\alpha^{res}_l$（标量）和加上 $b^{res}_l$ 后，$\prod_l H^{res}_l$ 完全可能放大。论文 Appendix A.1 给出 $\alpha$ 初始化是 <b>0.01</b> ，意味着初期 HC 接近标准残差，但训练后期 $\alpha$ 学大就可能爆。
+</p></div>
+
+<h3 class="section-h lv2" id="13-mHC-的基本想法">1.3 mHC 的最小改动：只约束 $H^{res}$</h3>
+<p class="zh">mHC 的所有思路在 P1 中一目了然——保留 HC 的 $n$ 流结构、保留三组矩阵的形式，<b>只把 $H^{res}_l$ 改成"投影到 Birkhoff polytope 上"</b> 。具体的"投影"操作是 Sinkhorn-Knopp，我们留到结构设计部分详细展开。先看一句论文摘要里的关键定位：</p>
+
+<blockquote>
+"To address these challenges, we propose Manifold-Constrained Hyper-Connections (mHC), a general framework that projects the residual connection space of HC onto a specific manifold to <b>restore the identity mapping property</b> , while incorporating rigorous infrastructure optimization to ensure efficiency." <span class="attr">arxiv 2512.24880v2 · Abstract</span>
+</blockquote>
+
+<p class="zh">整个故事可以这样总结：</p>
+<div class="table-scroll"><table>
+  <tbody><tr><th>设计</th><th>残差形式</th><th>identity 性质</th><th>表达力</th><th>额外代价</th></tr>
+  <tr><td>Residual (2016)</td><td>$x+F$</td><td>✅ $I^L=I$</td><td>窄（单流）</td><td>—</td></tr>
+  <tr><td>HC (2024)</td><td>$H^{res}x+(H^{post})^\top F(H^{pre}x)$</td><td>❌ $\prod H^{res}\to\infty$</td><td>宽（n 流）</td><td>(5n+1)C I/O</td></tr>
+  <tr><td><b>mHC (2026)</b></td><td>同上，但 $H^{res}\in\mathcal{B}_n$</td><td>✅ $\prod H^{res}\in\mathcal{B}_n$</td><td>宽（n 流）</td><td>(5n+1)C + Sinkhorn → +6.7% wall-clock</td></tr>
+</tbody></table></div>
+
+
+<!-- ============================================================ -->
+<!-- FAILURE MODE -->
+<!-- ============================================================ -->
+<div class="kbox" id="layer2">
+  <span class="k-label">FAILURE MODE</span>
+  <b id="2-HC-为什么会失稳">HC 的失败：无约束 mixing 会变成矩阵连乘</b>
+  <p class="zh">这部分承接第 1 章的动机，把论文 Section 3 的 loss surge、gradient norm 和 Amax gain 串成一条因果链。</p>
+</div>
+
+<h3 class="section-h lv2" id="21-大规模训练里的失稳现象">1.4 27B 训练在 12k step 附近暴露问题</h3>
+<p class="zh">论文用 27B 配置（30 层 / hidden 2560 / n=4）做了"HC vs mHC"的训练对照，结果非常戏剧：</p>
+
+<figure class="fig src">
+  <img src="figs/paper_fig2.png" alt="Paper Figure 2: HC training instability">
+  <figcaption><span class="attr">P2</span><b>mHC paper Figure 2</b>　(a) HC 与 mHC 相对训练 loss 的绝对差距；(b) gradient norm 对比。论文原文："Figure 2 reveals an unexpected loss surge around the 12k step, highly correlated with instability in gradient norm"——loss 在 ~12k step 处突然飙升，与 gradient norm 的剧烈抖动一一对应。这种 surge 不是单点尖刺，而是一个持续的"区域"，对 LR schedule 几乎无法挽救。</figcaption>
+</figure>
+
+<h3 class="section-h lv2" id="22-问题出在跨层传播">1.5 单层看着正常，复合映射会爆</h3>
+<p class="zh">论文用一个非常工程化的指标——<b>Amax Gain Magnitude</b> ——来诊断 HC 的稳定性。定义是"最大绝对行和（forward）和列和（backward），在一条 sample sequence 上对所有 token 取平均"。直觉是：</p>
+<ul class="zh-list">
+  <li><b>$Amax = 1$</b> ：理想，对应严格的 identity 映射，信号 norm 守恒；</li>
+  <li><b>$Amax &gt; 1$</b> ：放大 → 数值溢出风险；</li>
+  <li><b>$Amax &lt; 1$</b> ：衰减 → 梯度消失。</li>
+</ul>
+
+<figure class="fig src">
+  <img src="figs/paper_fig3.png" alt="Paper Figure 3: propagation instability">
+  <figcaption><span class="attr">P3</span><b>mHC paper Figure 3</b>　HC 的传播稳定性分析。(a) 单层映射的 Amax gain：HC、mHC 都接近理想的 1.0，<b>看不出问题</b> 。(b) 复合映射的 Amax gain：HC 在 27B 模型中峰值<b>飙到 3000</b>（论文："Amax Gain Magnitude yields extreme values with peaks of 3000"）；mHC 在同一指标下稳定在 ~1.6。差距三个数量级，根因正是<b>无约束的 $\prod H^{res}$ 谱范数无界</b> 。</figcaption>
+</figure>
+
+<p class="zh">Verhoeven 在博客里把这张图重画并叠上 forward/backward 信号 magnitude 的逐层曲线：</p>
+
+<figure class="fig src">
+  <img src="figs/blog_mhc_forward_backward_gain_light.png" alt="Forward/backward signal magnitude per layer">
+  <figcaption><span class="attr">B8</span><b>Ivo Verhoeven · 改自 mHC paper Figures 3 &amp; 7</b>　每层 forward/backward 信号 max-abs 值（log 纵轴）：HC（红）随层深指数级增长，最高量级冲到 $10^3$；mHC（绿）始终被 1 量级 ceiling 死死压住。"<b>信号在前传里爆 = sublayer 输入数值不稳定 = MoE 路由器表现失常 = loss surge</b>"——这是 P2 与 P3 之间的因果链。</figcaption>
+</figure>
+
+<h3 class="section-h lv2" id="23-消融实验给出的边界">1.6 N=1 消融说明问题是乘性门控</h3>
+<p class="zh">Verhoeven 抓到的另一个重要现象：</p>
+
+<figure class="fig src">
+  <img src="figs/blog_hc_training_loss_light.png" alt="HC training loss for different N">
+  <figcaption><span class="attr">B9</span><b>Ivo Verhoeven · 改自 Zhu et al. 2024 Figure 5</b>　HC 在 OLMo-1B 上不同 $N$（残差流数）的训练 loss 曲线：$N=1$ 反而比 baseline ResNet 还高。<b>这是判定"问题不在加宽残差、而在无约束 scaling"的最直接证据</b> ——单流 HC（即"在残差通道上加一个标量 gating"）已经把 identity-mapping 破坏了。这条观察是 mHC 提出 manifold 约束的最强动机。</figcaption>
+</figure>
+
+<div class="deep-dive">
+<span class="dd-label">DEEP DIVE</span>
+<strong>"无约束的乘法门控"是 transformer 残差的暗坑</strong>
+<p class="zh">HC 的失败提醒我们：<b>任何 element-wise multiplicative gating 套在残差通道上，只要 gating 没有强制为 1 邻域，连乘后就会指数偏离</b> 。这不仅适用于 HC，也适用于 Highway networks、某些 LayerScale 实现、以及部分 deepnorm/postnorm 变体。一个一致的工程教训是：<b>残差通道上的可学习参数，要么用"加性 small init"（如 LayerScale γ_init=1e-4），要么用"乘性 unitary"（如 mHC 的 Sinkhorn projection / Newton-Schulz）；中间的"乘性自由 scalar/matrix"通常都不安全</b> 。
+</p></div>
+
+
+<!-- ============================================================ -->
+<!-- LAYER 3 -->
+<!-- ============================================================ -->
+<div class="layer-banner" id="layer3">
+  <div class="tag">02</div>
+  <h2 class="section-h lv1" id="3-mHC-的结构设计">2 · 核心机制：Birkhoff 约束如何恢复稳定</h2>
+  <div class="s">这一章从结构主图出发，解释 mHC 怎样把 HC 的多流表达力和标准残差的稳定传播重新放到一起。</div>
+</div>
+
+<div class="kbox" id="paper-figure-1-equation-map">
+  <span class="k-label">章节导读</span>
+  <b>这一章的阅读顺序：</b> 先用论文主图建立坐标，再把标准残差、HC、mHC 分别拆成公式。读者只要盯住一个变量：$H^{res}$ 到底是自由矩阵，还是被 Sinkhorn 投到 Birkhoff polytope 的双随机矩阵。
+</div>
+
+<h3 class="section-h lv2" id="31-先看论文主图">2.1 用论文主图建立结构坐标</h3>
+<p class="zh">论文主图把残差、HC、mHC 三种残差范式并排放在一起，结构对比一目了然。本节先把它<b>放大、拆解</b> ，让读者先建立整体结构感，再进入后面的机制解释。</p>
+
+<figure class="fig src">
+  <img src="figs/paper_fig1.png" alt="Paper Figure 1: residual / HC / mHC architecture comparison">
+  <figcaption><span class="attr">P1 (重看)</span><b>mHC paper Figure 1</b>　三栏结构对比。下面我们逐栏拆开：(a) 给出 Eq.1-2 的最小元件、(b) 给出 Eq.3-5 的 HC 加宽框架、(c) 给出 Eq.6-9 的 mHC manifold 投影修复。</figcaption>
+</figure>
+
+<h4 class="section-h lv3" id="32-mHC-Forward-预览">代码视角：先从 PyTorch 参考实现读 forward contract</h4>
+
+<p class="zh">在继续讲标准残差、HC 风险和 Birkhoff 约束之前，先用 <a href="https://github.com/tokenbender/mHC-manifold-constrained-hyper-connections/blob/main/hyper_connections/hyper_connections_mhc.py">tokenbender/mHC 的 <code>hyper_connections_mhc.py</code></a> 把 mHC forward 从代码视角预览一遍。这份实现更像一个<b>算法契约版</b> ：它把 mHC 包成 PyTorch module，可以包住任意 attention / FFN / MoE branch。读它最重要的是看清 <code>forward → width_connection → branch/closure → depth_connection</code> 这条链；第 4 章再回到 DeepSeek TileKernels 的 fused-kernel 落地。</p>
+
+<div class="kbox">
+  <span class="k-label">CODE BOUNDARY</span>
+  <b>注意边界：</b> tokenbender 版的 <code>H_res_logits</code> / <code>H_pre_logits</code> / <code>H_post_logits</code> 是每层可学习参数，<code>H_res</code> 通过 <code>sinkhorn_log</code> 投到 Birkhoff polytope；它不是 DeepSeek TileKernels 中的 token-conditioned <code>φ → σ/Sinkhorn</code> 融合实现。因此这张图用来理解 <b>forward contract</b> ，不是用来估算 V4-Pro 训练 kernel 性能。
+</div>
+
+<figure class="fig svg-wide">
+    <img src="figs/F9.svg" data-edit-src="figs/F9.drawio" alt="F9 tokenbender HyperConnections.forward 的清晰公式版结构图：自下而上的 mHC forward 数据流：从底部 residual streams 经 Res/Pre/Post Mapping 向上写回 next residuals，并逐层标注 shape。">
+    <figcaption><b>F9</b>　mHC forward 预览：底部 residual streams 先被 view 成多流张量；左路做 residual mixing，右路读出单流 branch 输入并写回；上方 Depth Connection 相加后 reshape 成下一层输入。下面的 Shape Legend 逐项解释公式和代码名。</figcaption>
+  </figure>
+
+<div class="kbox shape-legend-box">
+  <span class="k-label">SHAPE LEGEND</span>
+  <b>F9 里的符号到底是什么：</b>
+
+  <div class="shape-primer">
+    <div class="shape-card"><b><code>B</code></b> 真实 batch size。</div>
+    <div class="shape-card"><b><code>S</code></b> residual stream 数量，也就是论文里的 $n$ 条残差流。</div>
+    <div class="shape-card"><b><code>D</code></b> hidden / feature dimension。</div>
+    <div class="shape-card"><b><code>...</code></b> 被包住的 <code>Layer F</code> 自己保留的业务维；文本里通常是 token 维 <code>T</code>，图像里可以是 <code>H×W</code>。</div>
+  </div>
+
+  <div class="shape-flow">
+    <div class="step"><b>外部约定</b><code>(B*S, ..., D)</code><br>把 stream 折进 batch。</div>
+    <div class="step"><b>内部 view</b><code>B×...×S×D</code><br>还原真实 batch 和 S 条流。</div>
+    <div class="step"><b>左路</b><code>Res Mapping</code><br>得到 residual 底座 $m_t$。</div>
+    <div class="step"><b>右路</b><code>Pre → F → Post</code><br>得到 branch 写回项 $p_t$。</div>
+    <div class="step"><b>返回</b> $x_{l+1}^t=m_t+p_t$<br>再 reshape 回外部约定。</div>
+  </div>
+
+  <p class="zh">三组 <code>H_*</code> 都来自 tokenbender 每一层自己的 <code>nn.Parameter</code> logits：<code>H_pre_logits</code> 和 <code>H_post_logits</code> 都是 <code>1×S</code>，<code>H_res_logits</code> 是 <code>S×S</code>。这里的 <code>softmax(dim=-1)</code> 明确沿最后一维做，也就是沿 residual stream 轴 <code>S</code> 做；它不沿 batch、token、hidden 做，得到的权重会 broadcast 到 <code>B×...</code> 上。</p>
+
+  <div class="table-scroll"><table class="shape-table">
+    <tbody><tr><th>图中符号 / 计算框</th><th>shape</th><th>含义</th></tr>
+    <tr><td><span class="sym-name"><code>residuals</code></span></td><td class="shape-dim"><code>(B*S, ..., D)</code></td><td>输入时把每条 residual stream 当成一条扩展 batch。</td></tr>
+    <tr><td><span class="sym-name">$x_l$ / view 后 residual streams</span></td><td class="shape-dim"><code>B×...×S×D</code></td><td>还原出真实 batch 和 <code>S</code> 条残差流。</td></tr>
+    <tr><td><span class="sym-name"><code>H_res_logits</code></span></td><td class="shape-dim"><code>S×S</code></td><td>可学习的 stream-to-stream mixing logits；代码里对角线初始为 0，其余位置初始为 -8，先接近 identity。</td></tr>
+    <tr><td><span class="sym-name"><code>R</code> = Sinkhorn(<code>H_res_logits</code>)</span></td><td class="shape-dim"><code>S×S</code></td><td>双随机 mixing 矩阵；Sinkhorn 在这个 <code>S×S</code> 小矩阵上反复做行/列归一化，使行、列和都约等于 1。</td></tr>
+    <tr><td><span class="sym-name"><code>optional identity mix</code></span></td><td class="shape-dim"><code>S×S</code></td><td>若开启 identity mix，则 $R\leftarrow(1-\alpha)I+\alpha R$，让残差流保留一部分原始直通。</td></tr>
+    <tr><td><span class="sym-name">$m_t=\sum_s R_{s,t}\,x_l^s$</span></td><td class="shape-dim"><code>B×...×S×D</code></td><td>左路 residual mixing：把旧的 <code>S</code> 条流混成新的 <code>S</code> 条 residual 底座。</td></tr>
+    <tr><td><span class="sym-name"><code>H_pre_logits</code> / $\alpha$</span></td><td class="shape-dim"><code>1×S</code></td><td><code>alpha = softmax(H_pre_logits, dim=-1)</code> 沿 stream 轴归一化，从 <code>S</code> 条流里读出一个 branch 输入。</td></tr>
+    <tr><td><span class="sym-name">$u=\sum_s \alpha_s x_l^s$</span></td><td class="shape-dim"><code>B×...×D</code></td><td>右路 <code>Pre Mapping</code> 输出，送入普通 <code>Layer F</code>。</td></tr>
+    <tr><td><span class="sym-name"><code>Layer F</code></span></td><td class="shape-dim"><code>B×...×D → B×...×D</code></td><td>被包住的 attention / FFN / MoE，输入输出保持标准单流 shape。</td></tr>
+    <tr><td><span class="sym-name"><code>H_post_logits</code> / $\beta$</span></td><td class="shape-dim"><code>1×S</code></td><td><code>beta = softmax(H_post_logits, dim=-1)</code> 沿同一个 stream 轴归一化，把 branch 输出写回 <code>S</code> 条流。</td></tr>
+    <tr><td><span class="sym-name">$p_t=\beta_t F(u)$</span></td><td class="shape-dim"><code>B×...×S×D</code></td><td>右路 <code>Post Mapping</code> 输出：把单流 branch 输出分发回 <code>S</code> 条流。</td></tr>
+    <tr><td><span class="sym-name"><code>Depth Connection</code></span></td><td class="shape-dim"><code>B×...×S×D</code></td><td>逐目标流相加：$x_{l+1}^t=m_t+p_t$，代码里默认对应 <code>depth_residual_fn(add)</code> + dropout。</td></tr>
+    <tr><td><span class="sym-name"><code>next residuals</code> / return</span></td><td class="shape-dim"><code>B×...×S×D → (B*S, ..., D)</code></td><td>输出下一层的 <code>S</code> 条 residual stream，然后重新折回 tokenbender 外部约定。</td></tr>
+  </tbody></table></div>
+
+  <p class="zh">落到最常见的 transformer，就是：<code>(B*S, T, D)</code> 输入 → view 成 <code>(B, T, S, D)</code>；<code>R</code> 是 <code>(S,S)</code>，<code>alpha/beta</code> 是 <code>(1,S)</code>；<code>Pre Mapping</code> 与 <code>Layer F</code> 走 <code>(B,T,D)</code> 单流；<code>Res Mapping</code> 与 <code>Post Mapping</code> 回到 <code>(B,T,S,D)</code>；最后 reshape 回 <code>(B*S,T,D)</code>。
+</p></div>
+
+<div class="kbox code-reading">
+  <span class="k-label">READING GUIDE</span>
+  <b>按代码逐段读：</b>
+  <ul class="zh-list">
+    <li><b><code>width_connection</code></b> ：先做 <code>residual_transform</code>、<code>split_fracs</code>、<code>rearrange("(b s) ... d -&gt; b ... s d")</code>。mHC 在这份实现里强制 <code>num_fracs=1</code>、<code>num_input_views=1</code>，所以图里只保留一条 branch input view。</li>
+    <li><b><code>H_res</code></b> ：<code>H_res_logits</code> 经 <code>sinkhorn_log</code> 变成双随机矩阵；若开启 <code>mhc_residual_identity_mix</code>，再和单位阵做 <code>(1-alpha)I + alpha S</code> 混合。随后 <code>einsum("s t, ... s d -&gt; ... t d")</code> 把旧 S 条 residual 重新混合成 S 条 residual 底座。</li>
+    <li><b><code>H_pre/H_post</code></b> ：两者的原始量都是 <code>nn.Parameter</code> logits，shape 是 <code>(1,S)</code>。代码里的 <code>softmax(dim=-1)</code> 就是沿最后的 stream 维 <code>S</code> 做归一化；<code>H_pre</code> 把 S 条 residual 压成 branch 输入，<code>H_post</code> 作为 <code>beta</code> 存进 closure，等 branch 算完后再把单流输出广播回 S 条流。</li>
+    <li><b><code>forward</code></b> ：如果 module 初始化时传了 <code>branch</code>，就直接执行 branch 并回写；如果没传，就返回 <code>(branch_input, add_residual_fn)</code>，外部可以手动调用 branch，再把结果喂给 closure。这个 closure 模式正是 drop-in wrapper 最灵活的地方。</li>
+  </ul>
+</div>
+
+<h3 class="section-h lv2" id="33-标准残差的稳定直觉">2.2 从标准残差到 HC：稳定性为什么被破坏</h3>
+
+<figure class="fig svg-wide">
+  <img src="figs/F5.svg" data-edit-src="figs/F5.drawio" alt="F5 Paper Figure 1(a) 的&quot;元件级&quot;展开。三个核心要素：① 残差状态 $x_l\in\mathbb{R}^{T\times C}$；② identity 旁路（蓝色高速公路）；③ sublayer $F$ 与 sum 节点。Eq.1/Eq.2 直接对应图中的&quot;分流-计算-合并&quot;三段。多层展开是纯线性叠加——这是 (b)/(c) 都要尽量守住的不变量。">
+  <figcaption><b>F5</b>　Paper Figure 1(a) 的"元件级"展开。三个核心要素：① 残差状态 $x_l\in\mathbb{R}^{T\times C}$；② identity 旁路（蓝色高速公路）；③ sublayer $F$ 与 sum 节点。Eq.1/Eq.2 直接对应图中的"分流-计算-合并"三段。<b>多层展开是纯线性叠加</b> ——这是 (b)/(c) 都要尽量守住的不变量。</figcaption>
+</figure>
+
+<div class="formula-box sm-box">
+  <div class="formula-label">📐 Eq.1 → Eq.2 推导（线性叠加守恒）</div>
+  <p class="zh">从 Eq.1 出发递归代入：</p>
+  $$ x_{l+1} = x_l + F(x_l, W_l) $$
+  $$ x_{l+2} = x_{l+1} + F(x_{l+1}, W_{l+1}) = x_l + F(x_l, W_l) + F(x_{l+1}, W_{l+1}) $$
+  $$ \vdots $$
+  $$ x_L = x_l + \sum_{i=l}^{L-1} F(x_i, W_i) \quad\text{(Eq.2)} $$
+  <p class="zh">关键观察：$x_l$ 系数永远是 <b>1</b>（不是任何矩阵乘积链），所以梯度 $\partial x_L/\partial x_l = I + \text{Jacobian terms}$ 的 identity 分量始终保留——这是 ResNet 论文 (He et al. 2016) "<b>identity mapping is preserved</b>" 的本意。
+</p></div>
+
+<h4 class="section-h lv3" id="34-HC-的风险从哪里来">HC 的 identity 系数变成 $\prod H^{res}$</h4>
+
+<figure class="fig svg-wide">
+  <img src="figs/F6.svg" data-edit-src="figs/F6.drawio" alt="F6 Paper Figure 1(b) 的&quot;元件级 + 公式注解&quot;。$x_l\in\mathbb{R}^{n\times C}$ 多流分两路：上路 $H^{pre}\to F\to H^{post}$ 完成 sublayer 计算；下路 $H^{res}$ 直接做流间 mixing。Eq.3 给单层递推、Eq.4 给多层展开后的 $\prod H^{res}$ 乘积链、Eq.5 给参数化方式。问题在 Eq.4 出现的乘积链：$\prod H^{res}$ 谱范数完全不可控——这就是 P3 / B8 看到的&quot;复合 Amax 飙到 3000&quot;的数学根。">
+  <figcaption><b>F6</b>　Paper Figure 1(b) 的"元件级 + 公式注解"。$x_l\in\mathbb{R}^{n\times C}$ 多流分两路：上路 $H^{pre}\to F\to H^{post}$ 完成 sublayer 计算；下路 $H^{res}$ 直接做流间 mixing。Eq.3 给单层递推、Eq.4 给多层展开后的 $\prod H^{res}$ 乘积链、Eq.5 给参数化方式。<b>问题在 Eq.4 出现的乘积链：$\prod H^{res}$ 谱范数完全不可控</b> ——这就是 P3 / B8 看到的"复合 Amax 飙到 3000"的数学根。</figcaption>
+</figure>
+
+<div class="formula-box std-box">
+  <div class="formula-label">⚠️ Eq.3 → Eq.4 推导（矩阵乘积链是怎么冒出来的）</div>
+  <p class="zh">把 Eq.3 沿层数递归代入。令 $G_i := (H^{post}_i)^\top F(H^{pre}_i x_i, W_i)$ 表示第 $i$ 层 sublayer 的输出：</p>
+  $$ x_{l+1} = H^{res}_l x_l + G_l $$
+  $$ x_{l+2} = H^{res}_{l+1} x_{l+1} + G_{l+1} = H^{res}_{l+1}(H^{res}_l x_l + G_l) + G_{l+1} = H^{res}_{l+1}H^{res}_l x_l + H^{res}_{l+1}G_l + G_{l+1} $$
+  <p class="zh">继续到第 $L$ 层：</p>
+  $$ x_L = \underbrace{\Big(\prod_{i=1}^{L-l} H^{res}_{L-i}\Big)}_{\text{identity 通道的"系数矩阵"}} x_l + \sum_{i=l}^{L-1} \Big(\prod_{j=1}^{L-1-i} H^{res}_{L-j}\Big)\cdot G_i \quad\text{(Eq.4)} $$
+  <p class="zh"><b>对比 Eq.2</b> ：标准残差里 $x_l$ 系数是 $I$，这里是 $\prod H^{res}_l$。<b>没有任何机制保证它的谱范数 ≤ 1</b> ——这正是 mHC 要修的核心问题。
+</p></div>
+
+<h3 class="section-h lv2" id="35-为什么选择-Birkhoff-约束">2.3 Birkhoff polytope 提供守恒的 soft permutation</h3>
+<p class="zh">论文 Section 4.1 在 <b>Eq. 6</b> 给出双随机矩阵集合的形式定义：</p>
+
+<div class="formula-box sm-box">
+  <div class="formula-label">✅ Eq. 6 · Birkhoff polytope（论文 Section 4.1）</div>
+  $$ \mathcal{M}^{res} \;:=\; \Big\{\, H^{res}\in\mathbb{R}^{n\times n} \;\Big|\; H^{res}\mathbf{1}_n=\mathbf{1}_n,\;\mathbf{1}_n^\top H^{res}=\mathbf{1}_n^\top,\; H^{res}\geq 0 \,\Big\} $$
+  <p class="zh">三个条件：行和=1，列和=1，元素非负。论文紧接着列出三条性质（informal Lemma）：</p>
+  <ul class="zh-list">
+    <li><b>Norm Preservation</b> ：The spectral norm of a doubly stochastic matrix is bounded by 1 ($\|H^{res}\|_2\leq 1$). This implies that the learnable mapping is non-expansive.</li>
+    <li><b>Compositional Closure</b> ：The set of doubly stochastic matrices is closed under matrix multiplication. This ensures that the composite residual mapping across multiple layers $\prod H^{res}_i$ remains doubly stochastic.</li>
+    <li><b>Geometric Interpretation</b> ：$\mathcal{M}^{res}$ forms the Birkhoff polytope, the convex hull of the set of permutation matrices.</li>
+  </ul>
+</div>
+
+<div class="kbox">
+  <span class="k-label">WHY THESE THREE PROPERTIES ARE ENOUGH</span>
+  <b>三条性质到底为什么能“保住”残差链：</b>
+  <p class="zh"><b>性质 1：Norm Preservation 保的是 residual-mixing 链不主动放大。</b> 证明上可以借用性质 3：任意双随机矩阵都能写成置换矩阵的凸组合
+  $$ H^{res}=\sum_{\sigma\in S_n}\lambda_\sigma P_\sigma,\quad \lambda_\sigma\ge 0,\quad \sum_\sigma\lambda_\sigma=1. $$
+  每个置换矩阵 $P_\sigma$ 只是重排 $n$ 条流，$\|P_\sigma\|_2=1$；谱范数又是凸函数，所以
+  $$ \|H^{res}\|_2 \le \sum_\sigma \lambda_\sigma\|P_\sigma\|_2 = 1. $$
+  因此任意向量经过 $H^{res}$ 都不会在 L2 意义下被放大：$\|H^{res}v\|_2\le \|v\|_2$。反向传播里乘的是 $(H^{res})^\top$，谱范数相同，所以这条<b>残差 mixing 路径</b> 本身不会把梯度放大。注意：这不是说整个 Transformer 的梯度绝对不爆，sublayer $F$ 的 Jacobian 仍然另算；它保证的是 Eq.4 里 $\prod H^{res}$ 这条 identity-like 通道不再成为爆炸源。</p>
+  <p class="zh"><b>性质 2：Compositional Closure 保的是“多层之后约束还在”。</b> 若 $A,B\in\mathcal{B}_n$，则
+  $$ (AB)\mathbf{1}=A(B\mathbf{1})=A\mathbf{1}=\mathbf{1},\qquad \mathbf{1}^\top(AB)=(\mathbf{1}^\top A)B=\mathbf{1}^\top B=\mathbf{1}^\top, $$
+  且 $A,B\ge 0$ 推出 $AB\ge 0$，所以 $AB\in\mathcal{B}_n$。递推到很多层，$\prod_l H^{res}_l$ 仍是双随机矩阵，再结合性质 1 得到 $\|\prod_l H^{res}_l\|_2\le 1$。这就是“identity 通道闭合”的含义：从浅层到深层的系数不再跑出受控集合，仍然是一个守恒的 soft-mixing，而不是任意线性变换。</p>
+  <p class="zh"><b>性质 3：Geometric Interpretation 给的是可解释的参数空间。</b> Birkhoff-von Neumann 定理说双随机矩阵的顶点正好是 $n!$ 个置换矩阵。置换矩阵代表“把残差流重新编号”，不会缩放、不复制、不吞掉流；凸组合代表在这些重排之间做 soft 选择。因此 $H^{res}$ 不是被限制成一个固定 identity，而是在“所有软置换”的多面体里学习：允许跨流交换信息，但行和=1 防止某个输出流凭空放大，列和=1 防止某个输入流被无限复制。这正是 mHC 想要的折中：保留 HC 的多流表达力，同时恢复标准残差的守恒直觉。
+</p></div>
+
+<h4 class="section-h lv3" id="36-三组连接权重如何生成">$H^{pre}$ / $H^{post}$ / $H^{res}$ 由同一个轻量投影生成</h4>
+<p class="zh">有了 manifold 定义，剩下的工程问题是<b>如何把 raw 的 $\widetilde{H}$ 投到 $\mathcal{M}^{res}$ 上</b> 。论文 Eq. 7-8 给出完整方案：</p>
+
+<div class="formula-box sm-box">
+  <div class="formula-label">✅ Eq. 7 · 三组 raw 参数化（per-token, hidden-driven）</div>
+  $$ \widetilde{H}^{pre}_l = \alpha^{pre}_l\cdot(\bar{x}_l\,\varphi^{pre}_l)+b^{pre}_l \in\mathbb{R}^{1\times n} $$
+  $$ \widetilde{H}^{post}_l = \alpha^{post}_l\cdot(\bar{x}_l\,\varphi^{post}_l)+b^{post}_l \in\mathbb{R}^{1\times n} $$
+  $$ \widetilde{H}^{res}_l = \alpha^{res}_l\cdot\mathrm{mat}(\bar{x}_l\,\varphi^{res}_l)+b^{res}_l \in\mathbb{R}^{n\times n} $$
+  <p class="zh">其中 $\bar{x}_l=\mathrm{RMSNorm}(x_l)$ 是已归一化的多流残差，$\varphi^*_l\in\mathbb{R}^{C\times n}$ / $\mathbb{R}^{C\times n^2}$ 是轻量 Linear，$\alpha^*_l\in\mathbb{R}$ 是可学缩放（论文 init=0.01），$b^*_l$ 是可学偏置。三组合在一起就是 $\varphi_l\in\mathbb{R}^{C\times (2n+n^2)}$ 的<b>一个</b> 大 Linear（n=4 时 = $C\times 24$）：控制输入 $\bar{x}^{ctrl}_l$ 按 token 看是 $(T,C)$，投影输出 $z_l$ 是 $(T,2n+n^2)$，再切成 $(T,n)$、$(T,n)$、$(T,n^2)$ 三段。
+</p></div>
+
+<div class="formula-box sm-box">
+  <div class="formula-label">✅ Eq. 8 · 三种激活方式（投影到不同子集）</div>
+  $$ H^{pre}_l = \sigma\!\left(\widetilde{H}^{pre}_l\right) \;\in[0,1]^n $$
+  $$ H^{post}_l = 2\sigma\!\left(\widetilde{H}^{post}_l\right) \;\in[0,2]^n $$
+  $$ H^{res}_l = \mathrm{SinkhornKnopp}\!\left(\exp\!\big(\widetilde{H}^{res}_l\big)\right) \;\in\mathcal{B}_n $$
+</div>
+
+<p class="zh">三个不同的"激活函数"各有讲究。这里的 $\sigma(\cdot)$ 不是 $\delta$（delta），也不是统计里的标准差符号，而是 <b>sigmoid / logistic 函数</b> ：</p>
+$$ \sigma(z)=\frac{1}{1+\exp(-z)},\qquad \sigma(z)\in(0,1). $$
+<p class="zh">所以 $2\sigma(\cdot)$ 就是把 sigmoid 的输出范围从 $(0,1)$ 放大到 $(0,2)$。</p>
+<ul class="zh-list">
+  <li><b>$H^{pre}\in[0,1]^n$</b> ：决定 sublayer 从哪几条残差流取信息。语义上是"门控"，自然约束 0-1，所以用 $\sigma(\widetilde H^{pre})$ 把 raw value 压进 0-1。</li>
+  <li><b>$H^{post}\in[0,2]^n$</b> ：用 $2\sigma(\widetilde H^{post})$ 是为了允许"放大"——sublayer 输出可以以最多 2 倍权重写回残差，保留 LayerScale-style 表达力，但仍然有界。</li>
+  <li><b>$H^{res}\in\mathcal{B}_n$</b> ：流间 mixing 必须保 identity，所以走 Sinkhorn-Knopp。先 $\exp$ 把可能的负值搬到正半轴（Sinkhorn 要求非负输入），再 Sinkhorn 投影。这一步等价于<b>"在 log-space 上做 Sinkhorn"</b> ，论文 implementation 用 row-max-subtraction 实现数值稳定。</li>
+</ul>
+
+<h4 class="section-h lv3" id="37-Sinkhorn-投影在做什么">Sinkhorn 把 raw matrix 归一成双随机矩阵</h4>
+
+<div class="formula-box sm-box">
+  <div class="formula-label">✅ Eq. 9 · Sinkhorn-Knopp 迭代</div>
+  $$ M^{(0)} = \exp\!\big(\widetilde{H}^{res}_l\big),\quad M^{(t)} = T_r\!\big(T_c(M^{(t-1)})\big) $$
+  <p class="zh">其中 $T_r(M)_{ij} = M_{ij}/\sum_k M_{ik}$（行归一），$T_c(M)_{ij} = M_{ij}/\sum_k M_{kj}$（列归一）。论文和所有公开实现都默认 $t_{max}=20$；对正非奇异输入，收敛速度<b>几何级</b> ，n=4 时 20 轮后 row/col sum 与 1 的偏差通常在 $10^{-7}$ 以下。
+</p></div>
+
+<figure class="fig svg-wide">
+  <img src="figs/F1.svg" data-edit-src="figs/F1.drawio" alt="F1 Sinkhorn-Knopp 迭代的可视化。20 轮后矩阵已经&quot;严格&quot;双随机，谱范数为 1。注意 $T_c$ 是把&quot;列和&quot;推回 1，但会轻微破坏&quot;行和=1&quot;，下一轮 $T_r$ 再修复——所以&quot;行/列交替&quot;是必要的，不能只做单边。">
+  <figcaption><b>F1</b>　Sinkhorn-Knopp 迭代的可视化。20 轮后矩阵已经"严格"双随机，谱范数为 1。注意 $T_c$ 是把"列和"推回 1，但会轻微破坏"行和=1"，下一轮 $T_r$ 再修复——所以"行/列交替"是<b>必要的</b> ，不能只做单边。</figcaption>
+</figure>
+
+<h4 class="section-h lv3" id="38-mHC-如何恢复稳定传播">mHC 单层递推如何恢复稳定传播</h4>
+
+<figure class="fig svg-wide">
+  <img src="figs/F7.svg" data-edit-src="figs/F7.drawio" alt="F7 mHC 完整结构：标注 Hpre/Hpost/Hres shape，以及 pre/post/residual path 的乘法语义。">
+  <figcaption><b>F7</b>　Paper Figure 1(c) 的"完整元件 + 公式注解"。Linear $\varphi_l$ 产生的是三组控制权重，而不是 Layer F 的输入本身：它把 head input 投到 $z_l\in\mathbb{R}^{T\times(2n+n^2)}$，再 split 成 $\widetilde H^{pre}$ / $\widetilde H^{post}$ / $\widetilde H^{res}$。随后 Pre path 用 $H^{pre}$ 从多流 $x_l$ 里读出 $u_l\in\mathbb{R}^{T\times C}$；这个 $u_l$ 就是 Layer F 的输入，Layer F 输出 $v_l=F(u_l)$，再由 Post path 写回 $n$ 条 residual stream。</figcaption>
+</figure>
+
+<div class="kbox shape-legend-box">
+  <span class="k-label">SHAPE / OPERATION</span>
+  <p class="zh"><b>这里的“乘法”不是同一种乘法。</b> 从 kernel 角度看都包含逐元素 multiply；区别在于 pre/res 后面会沿 stream 轴做 reduction，而 post 不 reduction，只把单流 sublayer 输出广播写回 $n$ 条残差流。</p>
+  <div class="table-scroll"><table class="shape-table">
+    <tbody><tr><th>符号</th><th>per-token shape</th><th>带 token 维 shape</th><th>乘法语义</th></tr>
+    <tr><td class="sym-name">$x_l$</td><td>$(n,C)$</td><td>$(T,n,C)$</td><td>入口处普通 hidden 是 $(T,C)$；mHC 先通过 expand / broadcast 得到 $n$ 条 residual stream，形成 $x_0\in\mathbb{R}^{T\times n\times C}$。之后每一层传播的都是这个多流状态 $x_l$，不是每层再从 $(T,C)$ 重新生成。</td></tr>
+    <tr><td class="sym-name">Linear $\varphi_l$</td><td>$C\to(2n+n^2)$</td><td>$\bar{x}^{ctrl}_l:(T,C)\to z_l:(T,2n+n^2)$</td><td>$z_l[t,k]=\sum_c \bar{x}^{ctrl}_l[t,c]\varphi_l[c,k]$。这是普通 feature-axis linear projection；随后按 $n|n|n^2$ split 成 $\widetilde H^{pre}$、$\widetilde H^{post}$、$\widetilde H^{res}$，最后一段 reshape 为 $(T,n,n)$。</td></tr>
+    <tr><td class="sym-name">$H^{pre}$</td><td>$(1,n)$</td><td>$(T,n)$</td><td>$u[t,c]=\sum_s H^{pre}[t,s]x_l[t,s,c]$。这是沿 stream 轴 $s$ 的加权求和 / inner product，输出 $(T,C)$。</td></tr>
+    <tr><td class="sym-name">$u_l=H^{pre}_l x_l$</td><td>$(1,C)$</td><td>$(T,C)$</td><td><b>这就是 Layer F 的输入。</b> $u_l$ 是 data activation；上面的 Linear $\varphi_l$ 只是生成 $H^{pre}$ / $H^{post}$ / $H^{res}$ 这些控制权重，不是 $u_l$ 本身。Layer F 做 $v_l=F(u_l)$，shape 仍是 $(T,C)$。</td></tr>
+    <tr><td class="sym-name">$H^{post}$</td><td>$(n,1)$</td><td>$(T,n)$</td><td>$p[t,s,c]=H^{post}[t,s]v[t,c]$。这是 broadcast scalar-vector product，也可看成 $(n,1)\otimes(1,C)$ 的 outer product；<b>没有</b> $\sum_s$，输出 $(T,n,C)$。</td></tr>
+    <tr><td class="sym-name">$H^{res}$</td><td>$(n,n)$</td><td>$(T,n,n)$</td><td>$m[t,r,c]=\sum_s H^{res}[t,r,s]x_l[t,s,c]$。这是每个 token 上的 $n\times n$ 矩阵乘，沿 source stream $s$ 求和，输出 $(T,n,C)$。</td></tr>
+  </tbody></table></div>
+  <p class="mini-note"><b>实现口径补充：</b> F7 按论文公式展示 head-generation contract；DeepSeek TileKernels 的 <code>norm_fn</code> 会从 <code>(T,n,C)</code> 多流残差读数据，做分块投影与 RMS 聚合，传给 <code>pre_big_fuse</code> 的中间量是 <code>(n_splits,T,2n+n²)</code>，聚合后仍回到上表的 <code>z_l:(T,2n+n²)</code>。
+</p></div>
+
+<div class="formula-box sm-box">
+  <div class="formula-label">✅ mHC 的稳定性证明（Eq.6 三性质如何保住 Eq.4 的连乘）</div>
+  <p class="zh">把 Eq.4 里的 $H^{res}_l$ 约束在 $\mathcal{M}^{res}=\mathcal{B}_n$ 上后，连乘项满足：</p>
+  $$ \big\|\prod_{i=1}^{L-l} H^{res}_{L-i}\big\|_2 \leq \prod_{i=1}^{L-l} \|H^{res}_{L-i}\|_2 \leq \prod_{i=1}^{L-l} 1 = 1 $$
+  <p class="zh">第一步是矩阵谱范数的次乘性，第二步用 Eq.6 的 <b>Norm Preservation</b> 。同时 Eq.6 的 <b>Composition Closure</b> 给：</p>
+  $$ \prod_{i=1}^{L-l} H^{res}_{L-i} \in \mathcal{B}_n \quad\text{(乘积仍是双随机)} $$
+  <p class="zh">合在一起：<b>任意深度的复合 $H^{res}$ 仍然是谱范数 1 的双随机矩阵</b> ——这正是 P5 看到的"mHC 复合 Amax 稳定在 1.6"（不是 1.0 是因为 20 轮 Sinkhorn 仅近似投影）。
+</p></div>
+
+<h3 class="section-h lv2" id="39-训练时如何处理反向传播">2.4 训练时如何处理 Sinkhorn backward</h3>
+<p class="zh">Sinkhorn 在 PyTorch / TileLang 里允许 autograd 反向自动展开 20 步迭代，但<b>每一步的 forward 中间态都要保存</b> ——对 mHC 来说是 30 层 × 20 轮 = 600 个 $n\times n$ 矩阵每 token，显存爆。论文官方实现 <code>tile_kernels/mhc/sinkhorn_kernel.py</code> 选择"backward 时全部 recompute"：</p>
+
+<pre><code># tile_kernels/mhc/sinkhorn_kernel.py 反向策略（伪代码）
+@tilelang.jit(pass_configs={...})
+def _mhc_sinkhorn_bwd(hidden_size, token_block_size, repeat, eps):
+    # Inputs: grad_output, x (原始 H̃) — 都是 (T, n, n) fp32
+    # Output: grad_input (T, n, n) fp32
+    # Step 1: forward 重算 — exp 后 repeat 轮 row/col norm，中间态写 shared mem
+    # Step 2: 反向遍历 — 对每个 row/col norm 反向；row-max subtraction 的稳定路径需要 chain rule 配合
+    pass</code></pre>
+
+<p class="zh">这种做法<b>显存友好但计算多</b> ：bwd 比 fwd 多花 ~2× 时间（一次 fwd 重算 + 一次反向）。论文 Section 4.3.1 提到："Backward pass consolidated to reduce redundant reloading"——通过把所有中间态在 register/shared mem 上保留、整轮在一个 kernel 里跑完，避免反复读写 HBM。</p>
+
+<div class="warn">
+⚠️ <b>Megatron-LM PR #3828 review 抓到的两个真实 bug</b> ：
+<ol class="zh-list">
+  <li><b>Reference fallback <code>_ref_sinkhorn_fwd</code> 缺 row-max subtraction</b> ——纯 PyTorch fallback 在 bf16 下 exp 会 overflow（输入大时变 inf，后续除法 → NaN）。fused kernel 走的是 fp32 + log-space，不受影响。</li>
+  <li><b>eps 默认值从 1e-6 漂到 1e-8</b> ——精度参数小改动可能改变下游训练曲线，review bot 标出后才修。<b>提醒做精度对齐时务必检查 eps 这种"看上去无关紧要"的常量</b> 。</li>
+</ol>
+</div>
+
+<div class="deep-dive">
+<span class="dd-label">DEEP DIVE</span>
+<strong>能否用 implicit differentiation 一步反向？</strong>
+<p class="zh">理论上可以——Sinkhorn-Knopp 是<b>固定点迭代</b> ，固定点 $M^*$ 满足 $M^* = T_r(T_c(M^*))$。隐函数定理告诉我们 $\partial M^*/\partial \widetilde{H}$ 可以通过解一次线性系统得到，不必沿迭代图反向。OT 文献（Cuturi 2013, Adams &amp; Zemel 2011, Bayer et al. 2020）已有 closed-form Jacobian-vector product。但这条路径对 transformer 训练来说有<b>三个工程顾虑</b> ：(1) Sinkhorn 在 20 轮就近似收敛，"近似的不动点" 上做 implicit diff 误差 vs 显式微分需要量化；(2) 解线性系统每 token 要算一个 $n^2\times n^2$ 的 Jacobian，n=4 时是 $16\times 16$ 矩阵——register fit 但 numerical 风险更大；(3) 反向稳定性需要单独验证，DeepSeek 的工程选择是"先 explicit、后续优化"。这是后文潜在优化部分的 ⑦ 项。
+</p></div>
+
+
+<h4 class="section-h lv3" id="310-三种结构的取舍">三种结构的收益和代价</h4>
+
+<div class="table-scroll"><table>
+  <tbody><tr><th>子图</th><th>核心元件</th><th>核心公式</th><th>稳定性</th><th>缺点 / 收益</th></tr>
+  <tr><td>P1(a) Residual</td><td>identity 旁路 + sublayer + sum</td><td>Eq.1 / Eq.2</td><td>✅ 线性叠加，无矩阵乘积链</td><td>窄通道（单流 C）</td></tr>
+  <tr><td>P1(b) HC</td><td>n 流 + H^pre/H^post/H^res（无约束）</td><td>Eq.3 / Eq.4 / Eq.5</td><td>❌ ∏H^res 谱范数无界</td><td>带宽 n×，但 27B 训练 12k step loss surge</td></tr>
+  <tr><td>P1(c) mHC</td><td>同 HC + Sinkhorn 投影 H^res ∈ B_n</td><td>Eq.6 / Eq.7 / Eq.8 / Eq.9</td><td>✅ ‖∏H^res‖₂ = 1（接近）</td><td>带宽 n×，复合 Amax 1.6，6.7% 训练开销</td></tr>
+</tbody></table></div>
+
+
+<!-- ============================================================ -->
+<!-- LAYER 4 -->
+<!-- ============================================================ -->
+<div class="layer-banner" id="layer4">
+  <div class="tag">03</div>
+  <h2 class="section-h lv1" id="4-实验说明了什么">3 · 论文证据：稳定性、能力和规模化</h2>
+  <div class="s">这一章专门区分“数学上应该稳定”和“27B / token scaling 训练里真的稳定”。</div>
+</div>
+
+<h3 class="section-h lv2" id="41-稳定性是否真的改善">3.1 训练曲线：mHC 消掉 loss surge</h3>
+
+<div class="side-by-side">
+  <figure class="fig src">
+    <img src="figs/paper_fig5.png" alt="Paper Figure 5: mHC training stability">
+    <figcaption><span class="attr">P4</span><b>mHC paper Figure 5</b>　Baseline / HC / mHC 三者的 (a) 绝对训练 loss gap 和 (b) gradient norm。HC 在 ~12k step 处的红色 surge 区域非常醒目，mHC（绿）则全程贴着 baseline 平稳，且最终 loss 比 baseline 还低 <b>0.021</b>（论文："final loss reduction of 0.021"）。这是 mHC 的"<b>稳定性 + 准确率双收</b>"标志。</figcaption>
+  </figure>
+  <figure class="fig src">
+    <img src="figs/paper_fig7.png" alt="Paper Figure 7: mHC propagation stability">
+    <figcaption><span class="attr">P5</span><b>mHC paper Figure 7</b>　mHC 的传播 Amax gain：单层接近 1.1（20 轮迭代的微小近似误差），复合稳定在 ~1.6。论文："Compared to maximum gain magnitude of nearly 3000 in HC, mHC significantly reduces it by <b>three orders of magnitude</b> ." 注意单层 1.1 略大于理想 1.0——这是 20 轮 Sinkhorn 近似的合理代价，但完全够用。</figcaption>
+  </figure>
+</div>
+
+<h3 class="section-h lv2" id="42-约束后的结构长什么样">3.2 热力图：乘积矩阵不再塌到单一方向</h3>
+
+<figure class="fig src">
+  <img src="figs/paper_fig8.png" alt="Paper Figure 8: learnable mappings visualization">
+  <figcaption><span class="attr">P6</span><b>mHC paper Figure 8</b>　学习到的 $H^{res}_l$ 单层与复合矩阵热力图。<b>左半</b> HC：单层矩阵看起来还算"分布合理"，但合成几层后某个分量瞬间统治整个矩阵（其余几乎是 0）——这就是 $\prod H^{res}$ 谱范数爆炸的具体形态。<b>右半</b> mHC：单层就接近 identity 的微扰，合成多层后仍是 identity 的微扰——一个"近 identity"的近 Birkhoff 流形。</figcaption>
+</figure>
+
+<figure class="fig src">
+  <img src="figs/blog_mhc_heatmap_light.png" alt="Heatmap of α_r matrices">
+  <figcaption><span class="attr">B10</span><b>Ivo Verhoeven · 改自 mHC paper Figure 8</b>　博客版重画：HC 单个 $\alpha_r$（红框）看起来分布合理，但乘积（红框 product）出现一个 dominant 主特征向量；mHC 同位置（绿框）就是接近 identity 的轻扰动，乘积仍稳定。<b>这是 Birkhoff polytope "乘法封闭"性质的<b>直接图像证据</b></b> 。</figcaption>
+</figure>
+
+<figure class="fig src">
+  <img src="figs/blog_mhc_loss_grad_light.png" alt="mHC loss and grad norm">
+  <figcaption><span class="attr">B11</span><b>Ivo Verhoeven · 改自 mHC paper Figure 5</b>　博客版重画的 loss + gradient norm 双面板：HC 的 gradient norm 在 surge 前已经出现剧烈毛刺；mHC（亮绿）始终是 baseline 风格的"平滑下降"。这意味着 mHC 不只是消除了 surge，还<b>整体改善了优化轨迹的连续性</b> 。</figcaption>
+</figure>
+
+<h3 class="section-h lv2" id="43-哪些连接最关键">3.3 消融：收益来自 pre/post，稳定来自 res 约束</h3>
+<p class="zh">论文 Table 1 做了"关掉某个矩阵换成固定值"的消融，看每个组件的贡献：</p>
+
+<div class="table-scroll"><table>
+  <tbody><tr><th>$H^{res}_l$</th><th>$H^{pre}_l$</th><th>$H^{post}_l$</th><th>Loss gap vs baseline</th></tr>
+  <tr><td>固定 identity</td><td>固定 uniform 1/n</td><td>固定 uniform ones</td><td>—（baseline）</td></tr>
+  <tr><td>固定 identity</td><td>✓ 学</td><td>固定 uniform ones</td><td>−0.022</td></tr>
+  <tr><td>固定 identity</td><td>✓ 学</td><td>✓ 学</td><td>−0.025</td></tr>
+  <tr><td>✓ 学（mHC）</td><td>✓ 学</td><td>✓ 学</td><td><b>−0.027</b></td></tr>
+</tbody></table></div>
+
+<p class="zh">读法：</p>
+<ul class="zh-list">
+  <li><b>$H^{pre}$ + $H^{post}$ 学起来 = −0.025</b> ，已经拿到大头收益。这两项是 1×n 的轻量门控，对应"每条残差流向 sublayer 多/少传一点"。</li>
+  <li><b>$H^{res}$ 再开起来 = 额外 −0.002</b> 。看起来不多，但<b>它才是把 HC 变成 mHC 的关键</b> ——没有 manifold 约束的 $H^{res}$（HC 原版）反而会损害训练。</li>
+</ul>
+
+<h3 class="section-h lv2" id="44-能力收益是否真实">3.4 下游能力：多步推理任务最受益</h3>
+<p class="zh">27B 模型的下游 benchmark 全量结果（论文 Table 4）：</p>
+
+<div class="table-scroll"><table>
+  <tbody><tr><th>Benchmark</th><th>Metric</th><th>Baseline</th><th>HC</th><th>mHC</th><th>mHC − HC</th><th>mHC − Baseline</th></tr>
+  <tr><td>BBH</td><td>EM</td><td>43.8</td><td>48.9</td><td><b>51.0</b></td><td style="color:#5fa55f">+2.1</td><td style="color:#5fa55f">+7.2</td></tr>
+  <tr><td>DROP</td><td>F1</td><td>47.0</td><td>51.6</td><td><b>53.9</b></td><td style="color:#5fa55f">+2.3</td><td style="color:#5fa55f">+6.9</td></tr>
+  <tr><td>GSM8K</td><td>EM</td><td>46.7</td><td>53.2</td><td><b>53.8</b></td><td style="color:#5fa55f">+0.6</td><td style="color:#5fa55f">+7.1</td></tr>
+  <tr><td>HellaSwag</td><td>Acc</td><td>73.7</td><td>74.3</td><td><b>74.7</b></td><td style="color:#5fa55f">+0.4</td><td style="color:#5fa55f">+1.0</td></tr>
+  <tr><td>MATH</td><td>EM</td><td>22.0</td><td><b>26.4</b></td><td>26.0</td><td style="color:#b85450">−0.4</td><td style="color:#5fa55f">+4.0</td></tr>
+  <tr><td>MMLU</td><td>Acc</td><td>59.0</td><td>63.0</td><td><b>63.4</b></td><td style="color:#5fa55f">+0.4</td><td style="color:#5fa55f">+4.4</td></tr>
+  <tr><td>PIQA</td><td>Acc</td><td>78.5</td><td>79.9</td><td><b>80.5</b></td><td style="color:#5fa55f">+0.6</td><td style="color:#5fa55f">+2.0</td></tr>
+  <tr><td>TriviaQA</td><td>EM</td><td>54.3</td><td>56.3</td><td><b>57.6</b></td><td style="color:#5fa55f">+1.3</td><td style="color:#5fa55f">+3.3</td></tr>
+</tbody></table></div>
+
+<p class="zh">三条规律：</p>
+<ul class="zh-list">
+  <li><b>HC 已经稳赢 baseline</b>（8/8 项），mHC 在 HC 之上再赢 <b>7/8 项</b>（仅 MATH 微输 0.4）；</li>
+  <li><b>BBH (+2.1) 与 DROP (+2.3) 是 mHC vs HC 最大的提升项</b> ——两者都是多步推理 benchmark，恰好对应 mHC 提供的"稳定深层 identity 通道"对长程信息流的保护；</li>
+  <li>HellaSwag/MMLU 增量小（+0.4），这两个 benchmark 主要测知识检索，对残差稳定性不敏感。</li>
+</ul>
+
+<h3 class="section-h lv2" id="45-训练配置与边界条件">3.5 训练配置：n=4 与 20 轮 Sinkhorn 是默认边界</h3>
+<p class="zh">论文 Table 5 的全部超参，从 3B 一路到 27B（含 3B × 1T tokens 的 token-scaling 对照）：</p>
+
+<div class="table-scroll"><table>
+  <tbody><tr><th>超参</th><th>3B</th><th>9B</th><th>27B</th><th>3B (1T)</th></tr>
+  <tr><td>层数 $L$</td><td>12</td><td>18</td><td>30</td><td>12</td></tr>
+  <tr><td>Hidden dim $C$</td><td>1280</td><td>1920</td><td>2560</td><td>1280</td></tr>
+  <tr><td>FFN dim</td><td>896</td><td>1280</td><td>1536</td><td>896</td></tr>
+  <tr><td>Routed experts</td><td>64</td><td>64</td><td>72</td><td>64</td></tr>
+  <tr><td>Active experts</td><td>6</td><td>6</td><td>—</td><td>6</td></tr>
+  <tr><td>Expansion rate $n$</td><td>4</td><td>4</td><td>4</td><td>4</td></tr>
+  <tr><td>Sinkhorn iter $t_{max}$</td><td>20</td><td>20</td><td>20</td><td>20</td></tr>
+  <tr><td>Batch size</td><td>320</td><td>512</td><td>1280</td><td>2560</td></tr>
+  <tr><td>Training tokens</td><td>39.3B</td><td>105B</td><td>262B</td><td>1.05T</td></tr>
+  <tr><td>Base LR</td><td>8.6e-4</td><td>5.9e-4</td><td>4.0e-4</td><td>9.0e-4</td></tr>
+  <tr><td>Gating init $\alpha$</td><td>0.01</td><td>0.01</td><td>0.01</td><td>0.01</td></tr>
+</tbody></table></div>
+
+<p class="zh">三个关键设计选择：</p>
+<ul class="zh-list">
+  <li><b>所有规模 $n=4$ 不变</b> ——表达力够用、I/O 不爆，是经验最佳的"sweet spot"。<b>潜在优化 ⑩</b> 会讨论"动态 $n$"是否能进一步压成本。</li>
+  <li><b>$t_{max}=20$ 不变</b> ——n=4 时 20 轮 Sinkhorn 足够收敛到 $10^{-7}$ 精度。<b>潜在优化 ②</b> 会讨论推理时早停到 5 轮。</li>
+  <li><b>$\alpha$ init = 0.01</b> ——让 mHC 在初期"近似标准残差"，identity 通道从一开始就是主导，逐渐学进 mixing。这是 LayerScale-style 的安全 init 策略。</li>
+</ul>
+
+<h3 class="section-h lv2" id="46-规模放大后是否仍有效">3.6 Scaling：参数和 token 变大后仍有效</h3>
+
+<figure class="fig src">
+  <img src="figs/paper_fig6.png" alt="Paper Figure 6: scaling curves">
+  <figcaption><span class="attr">P7</span><b>mHC paper Figure 6</b>　mHC vs baseline 的两条 scaling 曲线：(a) 算力 scaling（3B → 9B → 27B），(b) token scaling（3B 模型 39.3B → 1.05T tokens）。两条曲线 mHC 都稳定优于 baseline，且<b>差距在大规模下不会消失</b> ——这是论文最强力的"mHC 适用于生产规模"证据。</figcaption>
+</figure>
+
+
+<!-- ============================================================ -->
+<!-- LAYER 5 -->
+<!-- ============================================================ -->
+<div class="layer-banner" id="layer5">
+  <div class="tag">04</div>
+  <h2 class="section-h lv1" id="5-mHC代码如何实现">4 · 工程落地：TileKernels 如何把成本压下来</h2>
+  <div class="s">这一章先从代码反推实现契约，再解释 fused kernel、recompute 和 pipeline overlap 如何摊薄成本。</div>
+</div>
+
+<h3 class="section-h lv2" id="51-代码里有哪些关键模块">4.1 源码入口：9 个 kernel 文件各管哪一段</h3>
+
+<p class="zh">仓库 <a href="https://github.com/deepseek-ai/TileKernels">deepseek-ai/TileKernels</a>（MIT, 2026 公开，1.5k stars）依赖 Python 3.10+ / PyTorch 2.10+ / TileLang 0.1.9+ / CUDA 13.1+ / SM90 或 SM100 GPU。<code>mhc/</code> 子目录 9 个 kernel 文件：</p>
+
+<div class="table-scroll"><table>
+  <tbody><tr><th>文件</th><th>主要 kernel</th><th>功能</th><th>类似论文 Eq.</th></tr>
+  <tr><td><code>expand_kernel.py</code></td><td><code>expand_to_mhc_fwd_kernel</code></td><td>把 (T, C) hidden 广播为 (T, n, C) n 流；blk_n=32, blk_h=128</td><td>初始化阶段</td></tr>
+  <tr><td><code>norm_fn_kernel.py</code></td><td><code>_mhc_pre_norm_fn_fwd_mul</code> / <code>_norm</code> 等</td><td>融合 RMSNorm + W 投影（tf32 路径）；bf16 输入 → fp32 输出，split-K 累加</td><td>Eq. 14 prep</td></tr>
+  <tr><td><code>pre_big_fuse_kernel.py</code> ⭐</td><td><code>_mhc_pre_big_fuse</code></td><td>96 线程/block · 2-stage pipeline · 融合 RMSNorm aggregate + Sinkhorn 20 轮 + σ/2σ mixing + 残差应用</td><td>Eq. 14-15-19</td></tr>
+  <tr><td><code>pre_apply_mix_kernel.py</code></td><td><code>_mhc_pre_apply_mix</code></td><td>把 $H^{pre}_l$ 应用到 (T, n, C) 得到 (T, C) 的 layer_input</td><td>Eq. 14 final</td></tr>
+  <tr><td><code>pre_split_mixes_kernel.py</code></td><td>—</td><td>把 24 维 mix 输出切分为 $H^{pre}$/$H^{post}$/$H^{res}$ 三路</td><td>Eq. 8 split</td></tr>
+  <tr><td><code>head_compute_mix_kernel.py</code></td><td><code>_mhc_head_compute_mix_*</code></td><td>per-token 的 $\sigma(\cdot\,\text{scale}+\text{base})$ head 计算 + 反向 reducer</td><td>Eq. 8 σ</td></tr>
+  <tr><td><code>post_kernel.py</code></td><td><code>_mhc_post_fwd</code> / <code>_bwd</code></td><td>融合 $x = c\cdot d + \sum a\cdot b$ = $H^{post}\cdot F + H^{res}\cdot x_{res}$</td><td>Eq. 3 right half</td></tr>
+  <tr><td><code>multilayer_recompute_kernel.py</code></td><td><code>_mhc_multilayer_recompute_kernel</code></td><td>块化 selective recompute；pointer 数组传 6 类张量 × L 层</td><td>Eq. 20</td></tr>
+  <tr><td><code>sinkhorn_kernel.py</code></td><td><code>_mhc_sinkhorn_fwd</code> / <code>_bwd</code></td><td>独立 Sinkhorn-Knopp fwd/bwd 实现（fp32 · row-max stable · 反向 recompute）</td><td>Eq. 9</td></tr>
+</tbody></table></div>
+
+<h3 class="section-h lv2" id="52-一次前向的数据如何流动">4.2 主路径：norm → pre_big_fuse → F → post_kernel</h3>
+
+<div class="kbox">
+  <span class="k-label">WHY FEWER BOXES IN F8</span>
+  <b>为什么表里有 9 个 kernel 文件，F8 主图只剩几个框：</b>
+  <p class="zh"><b>因为“源码文件清单”不等于“稳态 forward 主路径”。</b> F8 画的是一个 transformer layer 里实际读写大张量的主 runtime 边界：<code>norm_fn</code> 产生 split-K workspace，<code>pre_big_fuse</code> 在一个 TileLang kernel 里吃掉大部分 pre 阶段小步骤，<code>Layer F</code> 是模型自己的 attention / FFN / MoE，<code>post_kernel</code> 融合写回下一层残差。</p>
+  <p class="zh"><code>pre_big_fuse_kernel.py</code> 的确是“少了很多框”的主要原因，但它不是在 Python 层顺序调用那些 kernel，而是把它们代表的<b>概念步骤</b> 内联到一个大 kernel：aggregate split-K partials → scale / RMSNorm 后处理 → 生成并拆分 $H^{pre}/H^{post}/H^{res}$ → 对 $H^{res}$ 做 Sinkhorn → 应用 $H^{pre}$ 得到 <code>layer_input</code>。中间的 <code>H*</code> 小张量尽量留在 register / shared memory，不单独落 HBM。</p>
+  <div class="table-scroll"><table>
+    <tbody><tr><th>表里的文件</th><th>为什么 F8 没单独画</th></tr>
+    <tr><td><code>expand_kernel.py</code></td><td>只负责进入 mHC 时把 <code>(T,C)</code> 扩成 <code>(T,n,C)</code>，不是每个 layer 内部的稳态主路径。</td></tr>
+    <tr><td><code>pre_split_mixes_kernel.py</code> / <code>head_compute_mix_kernel.py</code> / <code>pre_apply_mix_kernel.py</code></td><td>这些名字对应“拆分 H、算 σ/2σ、应用 Hpre”的概念步骤；优化 forward 里被 <code>pre_big_fuse</code> 吸收，不再作为独立大框读写 HBM。</td></tr>
+    <tr><td><code>sinkhorn_kernel.py</code></td><td>独立 Sinkhorn fwd/bwd 仍有用，尤其是 backward / fallback / 测试；但 F8 的 forward 主路径里 Sinkhorn 循环在 <code>pre_big_fuse</code> 内部完成。</td></tr>
+    <tr><td><code>multilayer_recompute_kernel.py</code></td><td>这是训练 backward 的 selective recompute 策略，不属于一次普通 forward 主图。</td></tr>
+  </tbody></table></div>
+</div>
+
+<p class="zh">下面这张图是 mHC 在 <b>一个 transformer layer 内的主 forward 数据流</b> ，每条连线都标出张量的 <code>(shape, dtype)</code>。这种 DSA / draw.io 风格"shape-annotated 流图"在工程对接时最有用——可以一眼看出哪一段是 split-K workspace、哪一段是 expanded n 流、哪一段是 sublayer 单流，以及精度跳变（bf16 ↔ fp32 ↔ tf32）发生在哪里。</p>
+
+<figure class="fig svg-wide">
+  <img src="figs/F8.svg" data-edit-src="figs/F8.drawio" alt="F8 DeepSeek TileKernels mHC forward：按 kernel 边界整理 norm_fn、pre_big_fuse、Layer F、post_kernel 的数据流，并标注关键 shape 与 dtype。">
+  <details class="legacy-svg-source" hidden>
+    <summary>Legacy inline SVG source for F8</summary>
+  <svg width="1100" height="920" viewBox="0 0 1100 920" xmlns="http://www.w3.org/2000/svg">
+    <style>
+      .ttl  { font: bold 14px -apple-system, sans-serif; fill: #1a1714; }
+      .lbl  { font: 600 13px -apple-system, sans-serif; fill: #1a1714; }
+      .stt  { font: 12px -apple-system, sans-serif; fill: #3a3530; }
+      .sub  { font: 11px -apple-system, sans-serif; fill: #6b6560; }
+      .mono { font: 11px "JetBrains Mono", "Fira Mono", monospace; fill: #1a1714; }
+      .sh-bf { font: bold 10.5px "JetBrains Mono", monospace; fill: #1d4f7c; }
+      .sh-tf { font: bold 10.5px "JetBrains Mono", monospace; fill: #7c3d8f; }
+      .sh-fp { font: bold 10.5px "JetBrains Mono", monospace; fill: #c06000; }
+      .m-sub, .m-sup { font-size: 9px; }
+      .kbox  { fill: #f5f3ed; stroke: #d8d2c8; stroke-width: 1; }
+      .ko-blu { fill: #dbeafe; stroke: #3b82f6; stroke-width: 1.2; }
+      .ko-grn { fill: #dcfce7; stroke: #22c55e; stroke-width: 1.2; }
+      .ko-ylw { fill: #fef9c3; stroke: #ca8a04; stroke-width: 1.2; }
+      .ko-prp { fill: #f3e8ff; stroke: #a855f7; stroke-width: 1.2; }
+      .ko-red { fill: #fee2e2; stroke: #ef4444; stroke-width: 1.2; }
+      .ko-gry { fill: #f3f4f6; stroke: #9ca3af; stroke-width: 1.2; }
+      .arr    { stroke: #6b6560; stroke-width: 1.5; fill: none; }
+      .arr-bf { stroke: #3b82f6; stroke-width: 1.5; fill: none; }
+      .arr-tf { stroke: #a855f7; stroke-width: 1.5; fill: none; }
+      .arr-fp { stroke: #d97706; stroke-width: 1.5; fill: none; }
+      .leg-b  { stroke: #3b82f6; stroke-width: 2; fill: none; }
+      .leg-p  { stroke: #a855f7; stroke-width: 2; fill: none; }
+      .leg-t  { stroke: #d97706; stroke-width: 2; fill: none; }
+    </style>
+    <defs>
+      <marker id="arX" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#444"></path>
+      </marker>
+      <marker id="arBf" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#4a6fd3"></path>
+      </marker>
+      <marker id="arFp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#a33ea1"></path>
+      </marker>
+    </defs>
+    
+    <rect width="1100" height="920" fill="#fff"></rect>
+
+    <text x="550" y="24" text-anchor="middle" class="ttl">F8 · mHC 单层 forward · 代码结构数据流图（每条边带 shape + dtype 标注）</text>
+
+    <!-- Legend -->
+    <g transform="translate(40,42)">
+      <text x="0" y="12" class="stt">输入参数：</text>
+      <text x="100" y="12" class="mono">T=token, n=mhc_mult=4, C=hidden=2560(27B) / 7168(V4-Pro)</text>
+      <line x1="0" y1="28" x2="20" y2="28" class="leg-b"></line><text x="26" y="32" class="sub">bf16 张量边</text>
+      <line x1="130" y1="28" x2="150" y2="28" class="leg-p"></line><text x="156" y="32" class="sub">fp32 张量边</text>
+      <line x1="260" y1="28" x2="280" y2="28" class="leg-t"></line><text x="286" y="32" class="sub">TF32 计算边</text>
+      <text x="380" y="32" class="sub">虚线=split-K workspace（HBM 中转）</text>
+    </g>
+
+    <!-- INPUT residual stream -->
+    <rect x="40" y="90" width="200" height="56" class="kbox ko-blu"></rect>
+    <text x="140" y="110" class="lbl" text-anchor="middle">x<tspan class="m-sub">l</tspan> · 上一层残差</text>
+    <text x="140" y="128" class="sh-bf" text-anchor="middle">(T, n, C) bf16</text>
+    <text x="140" y="142" class="sub" text-anchor="middle">expanded n-stream residual</text>
+
+    <!-- norm_fn_kernel -->
+    <rect x="300" y="90" width="220" height="56" class="kbox ko-grn"></rect>
+    <text x="410" y="108" class="stt" text-anchor="middle">norm_fn_kernel.py</text>
+    <text x="410" y="125" class="sub" text-anchor="middle">RMSNorm + W 投影（split-K, tf32 路径）</text>
+    <text x="410" y="142" class="mono" text-anchor="middle">_mhc_pre_norm_fn_fwd_mul/norm</text>
+
+    <!-- W param (tf32) -->
+    <rect x="300" y="160" width="220" height="42" class="kbox ko-ylw"></rect>
+    <text x="410" y="178" class="lbl" text-anchor="middle">φ_l 投影权重</text>
+    <text x="410" y="194" class="sh-tf" text-anchor="middle">(C, 2n+n²) = (C, 24) tf32</text>
+
+    <line x1="240" y1="118" x2="300" y2="118" class="arr-bf" marker-end="url(#arBf)"></line>
+    <text x="250" y="108" class="sub">x<tspan class="m-sub">l</tspan> (T,n,C) bf16</text>
+
+    <line x1="410" y1="160" x2="410" y2="148" class="arr-tf" marker-end="url(#arFp)"></line>
+
+    <!-- split-K workspace -->
+    <rect x="580" y="90" width="220" height="56" class="kbox ko-prp"></rect>
+    <text x="690" y="108" class="stt" text-anchor="middle">split-K workspace</text>
+    <text x="690" y="125" class="sh-fp" text-anchor="middle">gemm_out_mul: (16, T, 24) fp32</text>
+    <text x="690" y="142" class="sh-fp" text-anchor="middle">gemm_out_sqrsum: (16, T) fp32</text>
+
+    <line x1="520" y1="118" x2="580" y2="118" class="arr-fp" marker-end="url(#arFp)" stroke-dasharray="6 3"></line>
+    <text x="540" y="108" class="sub">写 HBM 中转</text>
+
+    <!-- pre_big_fuse_kernel (the BIG one) -->
+    <rect x="40" y="240" width="760" height="240" class="kbox ko-red" stroke-width="2.4"></rect>
+    <text x="420" y="260" class="ttl" text-anchor="middle">pre_big_fuse_kernel.py ⭐ · 96 threads/block · 2-stage pipeline · 单 kernel 完成 5 件事</text>
+
+    <line x1="690" y1="148" x2="690" y2="240" class="arr-fp" marker-end="url(#arFp)" stroke-dasharray="6 3"></line>
+    <text x="700" y="200" class="sub" style="fill:#a33ea1">读 workspace (fp32)</text>
+
+    <!-- Stage 1: aggregate + RMSNorm + α/β -->
+    <rect x="60" y="280" width="200" height="70" class="kbox ko-ylw"></rect>
+    <text x="160" y="298" class="stt" text-anchor="middle">① Aggregate + RMSNorm</text>
+    <text x="160" y="314" class="sub" text-anchor="middle">rsqrt(sq_sum/h + ε_rms)</text>
+    <text x="160" y="328" class="sub" text-anchor="middle">乘 mhc_scale + base</text>
+    <text x="160" y="345" class="mono" text-anchor="middle">→ raw (T, 24) fp32</text>
+
+    <!-- Stage 2: Sinkhorn -->
+    <rect x="280" y="280" width="160" height="70" class="kbox ko-red"></rect>
+    <text x="360" y="298" class="stt" text-anchor="middle">② Sinkhorn 20 轮</text>
+    <text x="360" y="314" class="sub" text-anchor="middle">row-max stable softmax</text>
+    <text x="360" y="328" class="sub" text-anchor="middle">+ row/col norm × 20</text>
+    <text x="360" y="345" class="mono" text-anchor="middle">仅 H<tspan class="m-sup">res</tspan> 子矩阵 (4×4)</text>
+
+    <!-- Stage 3: σ / 2σ -->
+    <rect x="460" y="280" width="160" height="70" class="kbox ko-grn"></rect>
+    <text x="540" y="298" class="stt" text-anchor="middle">③ σ / 2σ</text>
+    <text x="540" y="314" class="sub" text-anchor="middle">H<tspan class="m-sup">pre</tspan> = σ · 行 0..3</text>
+    <text x="540" y="328" class="sub" text-anchor="middle">H<tspan class="m-sup">post</tspan> = 2σ · 行 4..7</text>
+    <text x="540" y="345" class="sub" text-anchor="middle">输出 fp32</text>
+
+    <!-- Stage 4: apply H_pre to residual -->
+    <rect x="640" y="280" width="140" height="70" class="kbox ko-blu"></rect>
+    <text x="710" y="298" class="stt" text-anchor="middle">④ H<tspan class="m-sup">pre</tspan>·x<tspan class="m-sub">l</tspan></text>
+    <text x="710" y="314" class="sub" text-anchor="middle">沿 mhc 维加权和</text>
+    <text x="710" y="328" class="mono" text-anchor="middle">(T,4)·(T,4,h)</text>
+    <text x="710" y="345" class="sub" text-anchor="middle">→ (T, h) bf16</text>
+
+    <line x1="260" y1="315" x2="280" y2="315" class="arr"></line>
+    <line x1="440" y1="315" x2="460" y2="315" class="arr"></line>
+    <line x1="620" y1="315" x2="640" y2="315" class="arr"></line>
+
+    <!-- Outputs of pre_big_fuse -->
+    <text x="420" y="380" class="stt" text-anchor="middle" style="fill:#b85450">三类输出（写 HBM）：</text>
+
+    <rect x="60" y="395" width="200" height="68" class="kbox ko-grn"></rect>
+    <text x="160" y="412" class="lbl" text-anchor="middle">post_mix · H<tspan class="m-sup">post</tspan></text>
+    <text x="160" y="430" class="sh-fp" text-anchor="middle">(T, n) = (T, 4) fp32</text>
+    <text x="160" y="450" class="sub" text-anchor="middle">给 post_kernel 用</text>
+
+    <rect x="280" y="395" width="200" height="68" class="kbox ko-grn"></rect>
+    <text x="380" y="412" class="lbl" text-anchor="middle">comb_mix · H<tspan class="m-sup">res</tspan> 展平</text>
+    <text x="380" y="430" class="sh-fp" text-anchor="middle">(T, n²) = (T, 16) fp32</text>
+    <text x="380" y="450" class="sub" text-anchor="middle">双随机 · 给 post_kernel 用</text>
+
+    <rect x="500" y="395" width="280" height="68" class="kbox ko-blu"></rect>
+    <text x="640" y="412" class="lbl" text-anchor="middle">layer_input · sublayer F 的输入</text>
+    <text x="640" y="430" class="sh-bf" text-anchor="middle">(T, C) bf16</text>
+    <text x="640" y="450" class="sub" text-anchor="middle">从 4 路压回 1 路单流</text>
+
+    <line x1="160" y1="350" x2="160" y2="395" class="arr-fp" marker-end="url(#arFp)"></line>
+    <line x1="370" y1="350" x2="370" y2="395" class="arr-fp" marker-end="url(#arFp)"></line>
+    <line x1="710" y1="350" x2="640" y2="395" class="arr-bf" marker-end="url(#arBf)"></line>
+
+    <!-- F sublayer -->
+    <rect x="840" y="395" width="220" height="68" class="kbox ko-red"></rect>
+    <text x="950" y="412" class="stt" text-anchor="middle">F = attention / FFN / MoE</text>
+    <text x="950" y="430" class="sh-bf" text-anchor="middle">(T, C) bf16 → (T, C) bf16</text>
+    <text x="950" y="450" class="sub" text-anchor="middle">论文 black-box · 不在 mhc/ 内</text>
+
+    <line x1="780" y1="429" x2="840" y2="429" class="arr-bf" marker-end="url(#arBf)"></line>
+
+    <!-- post_kernel -->
+    <rect x="40" y="520" width="1020" height="180" class="kbox ko-red" stroke-width="2.4"></rect>
+    <text x="550" y="540" class="ttl" text-anchor="middle">post_kernel.py · forward 2-stage / backward 3-stage pipeline · 融合 H<tspan class="m-sup">post</tspan>·F + H<tspan class="m-sup">res</tspan>·x<tspan class="m-sub">l</tspan></text>
+
+    <!-- Inputs to post -->
+    <rect x="60" y="560" width="180" height="64" class="kbox ko-blu"></rect>
+    <text x="150" y="578" class="lbl" text-anchor="middle">b · 旧 n-流残差</text>
+    <text x="150" y="596" class="sh-bf" text-anchor="middle">(T, n, h) bf16</text>
+    <text x="150" y="614" class="sub" text-anchor="middle">= x<tspan class="m-sub">l</tspan> (直接复用)</text>
+
+    <rect x="260" y="560" width="180" height="64" class="kbox ko-blu"></rect>
+    <text x="350" y="578" class="lbl" text-anchor="middle">d · sublayer 输出</text>
+    <text x="350" y="596" class="sh-bf" text-anchor="middle">(T, h) bf16</text>
+    <text x="350" y="614" class="sub" text-anchor="middle">F(layer_input)</text>
+
+    <rect x="460" y="560" width="180" height="64" class="kbox ko-prp"></rect>
+    <text x="550" y="578" class="lbl" text-anchor="middle">a · H<tspan class="m-sup">res</tspan> 展开</text>
+    <text x="550" y="596" class="sh-fp" text-anchor="middle">(T, n, n) fp32</text>
+    <text x="550" y="614" class="sub" text-anchor="middle">comb_mix.reshape</text>
+
+    <rect x="660" y="560" width="180" height="64" class="kbox ko-prp"></rect>
+    <text x="750" y="578" class="lbl" text-anchor="middle">c · H<tspan class="m-sup">post</tspan></text>
+    <text x="750" y="596" class="sh-fp" text-anchor="middle">(T, n) fp32</text>
+    <text x="750" y="614" class="sub" text-anchor="middle">post_mix 直传</text>
+
+    <!-- Core formula -->
+    <rect x="860" y="555" width="180" height="74" class="kbox ko-ylw"></rect>
+    <text x="950" y="575" class="stt" text-anchor="middle">核心算式</text>
+    <text x="950" y="593" class="mono" text-anchor="middle">x[i,h] = c[i]·d[h]</text>
+    <text x="950" y="610" class="mono" text-anchor="middle">+ Σ_j a[j,i]·b[j,h]</text>
+    <text x="950" y="625" class="sub" text-anchor="middle">inner mhc 串行展开</text>
+
+    <line x1="150" y1="624" x2="450" y2="660" class="arr"></line>
+    <line x1="350" y1="624" x2="450" y2="660" class="arr"></line>
+    <line x1="550" y1="624" x2="500" y2="660" class="arr"></line>
+    <line x1="750" y1="624" x2="500" y2="660" class="arr"></line>
+    <line x1="950" y1="629" x2="550" y2="660" class="arr"></line>
+
+    <!-- Output to next layer -->
+    <rect x="380" y="660" width="240" height="36" class="kbox ko-blu"></rect>
+    <text x="500" y="682" class="stt" text-anchor="middle">x<tspan class="m-sub">l+1</tspan> · 新 n-流残差 (T, n, h) bf16 → 下一层</text>
+
+    <line x1="500" y1="700" x2="500" y2="730" class="arr-bf" marker-end="url(#arBf)"></line>
+    <text x="510" y="720" class="sub">下一层入口</text>
+
+    <!-- Side panel: peripheral kernels -->
+    <rect x="850" y="240" width="220" height="240" class="kbox ko-gry" stroke-dasharray="6 3"></rect>
+    <text x="960" y="260" class="stt" text-anchor="middle">外围 / 反向 kernel</text>
+    <text x="960" y="282" class="sub" text-anchor="middle" style="fill:#555">不在每 token 主路径上</text>
+
+    <rect x="870" y="295" width="180" height="40" class="kbox ko-gry"></rect>
+    <text x="960" y="311" class="lbl" text-anchor="middle">expand_kernel.py</text>
+    <text x="960" y="326" class="sub" text-anchor="middle">入口：(T,h) → (T,n,h)</text>
+
+    <rect x="870" y="340" width="180" height="40" class="kbox ko-gry"></rect>
+    <text x="960" y="356" class="lbl" text-anchor="middle">multilayer_recompute</text>
+    <text x="960" y="371" class="sub" text-anchor="middle">块化 selective recompute</text>
+
+    <rect x="870" y="385" width="180" height="40" class="kbox ko-gry"></rect>
+    <text x="960" y="401" class="lbl" text-anchor="middle">sinkhorn_kernel.py</text>
+    <text x="960" y="416" class="sub" text-anchor="middle">独立 fwd/bwd · fallback</text>
+
+    <rect x="870" y="430" width="180" height="40" class="kbox ko-gry"></rect>
+    <text x="960" y="446" class="lbl" text-anchor="middle">head_compute_mix</text>
+    <text x="960" y="461" class="sub" text-anchor="middle">bwd reducer (num_sms 持久)</text>
+
+    <!-- Bottom panel: shape budget summary -->
+    <rect x="40" y="740" width="1020" height="170" class="kbox ko-ylw"></rect>
+    <text x="550" y="760" class="ttl" text-anchor="middle">📊 单 token 显存预算（n=4, C=7168, V4-Pro 配置）· 主路径 bf16 ≈ 2B · fp32 ≈ 4B · tf32 ≈ 4B / 元素</text>
+
+    <text x="60" y="785" class="stt">输入 / 输出 张量：</text>
+    <text x="60" y="803" class="mono">x<tspan class="m-sub">l</tspan> (T,n,C) bf16 = T·4·7168·2B = 57.3KB/token (n 流入)</text>
+    <text x="60" y="820" class="mono">layer_input (T,C) bf16 = T·7168·2B = 14.3KB/token (给 F)</text>
+    <text x="60" y="837" class="mono">x<tspan class="m-sub">l+1</tspan> (T,n,C) bf16 = 57.3KB/token (n 流出)</text>
+
+    <text x="560" y="785" class="stt">控制张量（很小）：</text>
+    <text x="560" y="803" class="mono">H<tspan class="m-sup">pre</tspan> · post_mix (T,n) fp32 = 16B/token</text>
+    <text x="560" y="820" class="mono">H<tspan class="m-sup">post</tspan> · comb_mix (T,n²) fp32 = 64B/token</text>
+    <text x="560" y="837" class="mono">H<tspan class="m-sup">res</tspan> (T,n,n) fp32 = 64B/token（comb_mix reshape）</text>
+
+    <text x="60" y="868" class="sub" style="fill:#7a4500">⤷ 主带宽集中在 (T,n,C) 残差流的进出（n=4 倍开销）。pre_big_fuse 的最大功劳是把 H<tspan class="m-sup">pre</tspan>/H<tspan class="m-sup">post</tspan>/H<tspan class="m-sup">res</tspan> 三组中间态都留在 register / SHM，不往 HBM 写。</text>
+    <text x="60" y="888" class="sub" style="fill:#7a4500">⤷ 反向时由 multilayer_recompute 选择性丢弃 (T,n,C) 内层激活，块尾 checkpoint 重算——这就是重算策略章节推导的 L_r* ≈ √(nL/(n+2)) ≈ 5 层/块。</text>
+  </svg>
+  </details>
+  <figcaption><b>F8</b>　代码结构 DSA 流图：<b>每条数据边都同时标注 shape（如 <code>(T,n,C)</code>）与 dtype（<code>bf16</code> / <code>fp32</code> / <code>tf32</code>）</b> 。蓝色边 = bf16 主带宽路径；紫色边 = fp32 小张量；橙色 = $\varphi$ 投影的 TF32 Tensor Core 计算路径（TF32 是 matmul compute mode，不是 HBM 里的独立存储 dtype）；紫色虚线 = split-K HBM workspace（norm_fn 写 → pre_big_fuse 读）。读图顺序：<b>① 上方 norm_fn 切 split-K → ② pre_big_fuse 一个 kernel 完成 aggregate / Sinkhorn / σ / mixing 五连击 → ③ sublayer F 在单流上算 → ④ post_kernel 把 H^post·F + H^res·x_l 融合写回</b> 。底部黄板给出单 token 显存预算的精确数字。</figcaption>
+</figure>
+
+<div class="kbox">
+  <span class="k-label">READING GUIDE</span>
+  <b>三条 dtype 路径的工程含义：</b>
+  <p class="zh">读这张图时要把 <b>HBM 存储 dtype</b> 和 <b>Tensor Core 计算模式</b> 分开：bf16 / fp32 是张量实际存储与累加精度；TF32 通常表示 FP32 输入在 Tensor Core 上按 TF32 乘法近似执行、FP32 累加。</p>
+  <div class="table-scroll"><table class="shape-table dtype-table">
+    <tbody><tr><th>路径</th><th>主要张量 / 算式</th><th>shape 与 dtype</th><th>为什么这样分</th></tr>
+    <tr>
+      <td><span class="path-blue">蓝色 bf16 主带宽</span></td>
+      <td>$x_l,\ x_{l+1}$ 残差流；$u,\ F(u)$ 是普通 sublayer 的单流输入输出。</td>
+      <td>$x_l,x_{l+1}\in\mathbb{R}^{T\times n\times C}$（bf16）；$u,F(u)\in\mathbb{R}^{T\times C}$（bf16）。</td>
+      <td>这里搬的是 hidden activation，成本随 $nC$ 放大。n=4 时，残差流读/写是 baseline 的 4 条流，所以 multilayer recompute 主要压的是 backward 里这些大激活的保存。</td>
+    </tr>
+    <tr>
+      <td><span class="path-green">绿/紫 fp32 小张量</span></td>
+      <td>$H_l^{pre},H_l^{post}$ 负责读/写 branch；$H_l^{res}$ 负责 stream-to-stream mixing。</td>
+      <td>$H_l^{pre},H_l^{post}\in\mathbb{R}^{T\times n}$；$H_l^{res}\in\mathbb{R}^{T\times n\times n}$；在 fused kernel 内按 fp32 生成、归一化和应用。</td>
+      <td>每个 token 只有 $2n+n^2$ 个控制系数；n=4 时就是 24 个 fp32 值，约 96B/token。它们很小，但 Sinkhorn 行/列归一化、$\sigma$ 与 $2\sigma$ 门控对舍入误差敏感，降到 bf16 容易破坏双随机约束。</td>
+    </tr>
+    <tr>
+      <td><span class="path-orange">橙色 TF32 计算</span></td>
+      <td>$\varphi_l=[\varphi_l^{pre},\varphi_l^{post},\varphi_l^{res}]$，用于计算 $\bar{x}_l\varphi_l$。</td>
+      <td>$\varphi_l\in\mathbb{R}^{C\times(2n+n^2)}$；n=4 时是 $C\times24$。若 $C=7168$，共有 172,032 个权重；TF32 计算读入的是 FP32 权重，按 FP32 存储约 672 KiB。</td>
+      <td>$C\times24$ 是很窄的投影，不是主 HBM 瓶颈。用 TF32 Tensor Core 乘法是为了比纯 FP32 路径吞吐更高；精度低于 FP32，但 mantissa 通常高于 bf16，随后生成的 $H$ 仍在 fp32 路径里处理。</td>
+    </tr>
+  </tbody></table></div>
+</div>
+
+<h3 class="section-h lv2" id="53-前半段融合内核如何工作">4.3 pre_big_fuse：把五个小步骤留在一个 kernel</h3>
+
+<p class="zh">这是整个 mHC 性能的关键。它把 5 件事塞进<b>一个 96 线程 kernel</b> ，所有中间态留在 register / shared mem 里。完整签名：</p>
+
+<pre><code># tile_kernels/mhc/pre_big_fuse_kernel.py
+@tilelang.jit(
+    pass_configs={
+        tilelang.PassConfigKey.TL_DISABLE_WARP_SPECIALIZED: True,
+        tilelang.PassConfigKey.TL_PTXAS_REGISTER_USAGE_LEVEL: 10,
+        tilelang.PassConfigKey.TL_DISABLE_VECTORIZE_256: True,
+    },
+)
+def _mhc_pre_big_fuse(
+    hidden_size: int,
+    rms_eps: float,
+    mhc_pre_eps: float,
+    mhc_sinkhorn_eps: float,
+    mhc_post_mult_value: float,            # 默认 2.0 (Eq. 8 中 2σ)
+    sinkhorn_repeat: int,                   # 默认 20
+    n_splits: int = 16,                  # 与 norm_fn 的 split-K 数对应
+    mhc_mult: int = 4,                   # = n
+):
+    # Inputs:
+    #   gemm_out_mul:   (n_splits, num_tokens, mhc_mult3)   fp32  ← norm_fn 的 split-K 残部
+    #   gemm_out_sqrsum:(n_splits, num_tokens)              fp32  ← RMSNorm 平方和
+    #   mhc_scale:      (3,)                                fp32  ← α_pre/α_post/α_res
+    #   mhc_base:       (mhc_mult3,)                        fp32  ← b_pre/b_post/b_res 平铺
+    #   residual:       (num_tokens, mhc_mult, hidden_size) bf16  ← 上一层 x_l
+    # Outputs:
+    #   post_mix:       (num_tokens, mhc_mult)              fp32  ← H^post (后面给 post_kernel)
+    #   comb_mix:       (num_tokens, mhc_mult*mhc_mult)     fp32  ← H^res 展平 (后面给 post_kernel)
+    #   layer_input:    (num_tokens, hidden_size)           bf16  ← H^pre·x_l (给 F = attn/FFN)
+
+    # mhc_mult3 = mhc_mult * (2 + mhc_mult)
+    #          = n * (2 + n) = 4 * 6 = 24 (n=4 时)
+    #          = H^pre(n) + H^post(n) + H^res(n²)</code></pre>
+
+<p class="zh">三个 pass_configs 的含义都不简单：</p>
+<ul class="zh-list">
+  <li><code>TL_DISABLE_WARP_SPECIALIZED=True</code>：关掉 Hopper/Blackwell 的 warp specialization。原因：本 kernel 已经在 register pressure 上限附近，再让 producer/consumer warp 各占一份会 spill。<b>这是潜在优化 ⑥ 的来源</b> 。</li>
+  <li><code>TL_PTXAS_REGISTER_USAGE_LEVEL=10</code>：让 ptxas 把 register 用到最满（level 10 是最大值），允许更高 occupancy 牺牲一些寄存器优化。</li>
+  <li><code>TL_DISABLE_VECTORIZE_256=True</code>：关 256-bit 向量化。Sinkhorn 内的小矩阵（4×4=16 元素）不适合 256-bit 向量，强行向量化反而触发 padding。</li>
+</ul>
+
+<figure class="fig svg-wide">
+  <img src="figs/F3.svg" data-edit-src="figs/F3.drawio" alt="F3 pre_big_fuse_kernel 内部 5 阶段融合：聚合 split-K、RMSNorm、Sinkhorn、σ/2σ mixing、残差应用和 2-stage pipeline。">
+  <figcaption><b>F3</b>　<code>pre_big_fuse_kernel</code> 内部 5 阶段：聚合 split-K → RMSNorm scale → Sinkhorn 20 轮 → σ/2σ mixing → 残差线性组合输出 layer_input。把所有中间态留在 register 与 shared mem 里，避免来回 HBM。</figcaption>
+</figure>
+
+<h3 class="section-h lv2" id="54-后半段写回内核如何工作">4.4 post_kernel：把 $H^{post}\cdot F$ 和 $H^{res}\cdot x$ 融合写回</h3>
+
+<p class="zh">sublayer F 之后，需要把 F 的输出 + 旧残差一起更新成新残差。这是带宽密集的操作：read (n,mhc,h) 旧残差 + (n,h) F 输出 + (n,mhc) $H^{post}$ + (n,mhc,mhc) $H^{res}$，write (n,mhc,h) 新残差。源码核心循环：</p>
+
+<pre><code># tile_kernels/mhc/post_kernel.py 核心算式
+# a: (n, mhc, mhc) fp32     ← H^res，已 Sinkhorn 投影
+# b: (n, mhc, h)   bf16     ← 旧残差 x_res
+# c: (n, mhc)      fp32     ← H^post
+# d: (n, h)        bf16     ← F 输出
+# x: (n, mhc, h)   bf16     ← 新残差（输出）
+
+for h_block in pipelined(ceildiv(h, h_blk), stages=2):       # fwd 2-stage / bwd 3-stage
+    for i_mhc in range(mhc):
+        acc = c[i_mhc] * d[h_block]                          # H^post * F (per stream)
+        for i_mhci in T.serial(mhc):                        # H^res 4×4 内积 — serial 循环（n=4 不值得开 TC）
+            acc += a[i_mhci, i_mhc] * b[i_mhci, h_block]
+        x[i_mhc, h_block] = acc.to(bf16)</code></pre>
+
+<p class="zh">三个关键设计：</p>
+<ul class="zh-list">
+  <li><b>内层 mhc 循环 serial 展开</b> ：n=4 太小不值得开 tensor core；fp32 累加保证 Sinkhorn 投影后的精度不被 bf16 吃掉。</li>
+  <li><b>h_blk 流水线 2-stage（fwd）/ 3-stage（bwd）</b> ：bwd 需要多一份 grad，所以多一个 buffer stage。</li>
+  <li><b>fp32 输入 / bf16 输出</b> ：$H^{post}$ 和 $H^{res}$ 是 fp32（Sinkhorn 出来直接用），$b$ 与 $d$ 是 bf16（节省带宽），输出 bf16（下层残差也是 bf16 存储）。</li>
+</ul>
+
+<p class="zh">这个 kernel 就是 Megatron-LM 里的 <code>fused_h_post_bda</code>（"bda" 是 bias+dropout+add 的缩写），PR #3828 给出的实测 speedup <b>3.24×</b>（10.49ms → 3.23ms, s=8192/b=4/n=4/C=7168 on GB200）。</p>
+
+
+<!-- ============================================================ -->
+
+
+<!-- ENGINEERING COST -->
+<!-- ============================================================ -->
+<div class="kbox" id="layer6">
+  <span class="k-label">COST MODEL</span>
+  <b id="6-mHC工程实现优化点有哪些">把 11× I/O 压回可训练开销</b>
+  <p class="zh">这部分继续留在第 4 章里，把论文已经落地的优化拆成 baseline cost → optimized path → tradeoff。</p>
+</div>
+
+<h4 class="section-h lv3" id="61-朴素实现贵在哪里">朴素 mHC 贵在 HBM 读写，而不是矩阵太大</h4>
+<p class="zh">论文 Table 2 给出"每 token 在残差/HC/mHC 三种方案下的元素读写数"（不含 sublayer $F$ 内部）：</p>
+
+<div class="table-scroll"><table>
+  <tbody><tr><th>方案</th><th>Read elements / token</th><th>Write elements / token</th><th>n=4, C=2560 实例</th></tr>
+  <tr><td>Standard Residual</td><td>$2C$</td><td>$C$</td><td>read 5.12K · write 2.56K</td></tr>
+  <tr><td>HC (朴素)</td><td>$(5n+1)C + n^2 + 2n$</td><td>$(3n+1)C + n^2 + 2n$</td><td>read 53.78K · write 33.30K · <b>~11× baseline read</b></td></tr>
+  <tr><td>mHC (朴素)</td><td>HC + 20 轮 Sinkhorn 往返</td><td>HC + 20 轮 Sinkhorn 往返</td><td>朴素 ~12× baseline</td></tr>
+  <tr><td><b>mHC (fused)</b></td><td>~$(n+1)C$</td><td>~$nC$</td><td>read ~12.8K · write ~10.2K · <b>~2.5× baseline read</b></td></tr>
+</tbody></table></div>
+
+<p class="zh">论文原话："Memory access costs constitute one of primary bottlenecks ... widely referred to as the 'memory wall'." 也就是说，<b>mHC infra 优化的最大着力点不是 FLOPs，是 HBM bandwidth</b> 。下面三条优化都是围绕这个目标。</p>
+
+<h4 class="section-h lv3" id="62-融合内核减少了什么">融合内核减少 launch 和中间态落盘</h4>
+
+<p class="zh">论文明确点名<b>三个 specialized kernels</b> ：</p>
+<ol class="zh-list">
+  <li><b>K1 · $H^{pre}/H^{post}$ projection + RMSNorm + GEMM</b> ：对应 Eq. 14-15，"unified kernel that fuses two scans over the flattened input $\bar{x}_l\in\mathbb{R}^{1\times nC}$, leveraging matrix multiplication units"。反向也合并以避免重复加载。</li>
+  <li><b>K2 · 系数计算（轻量元素级）</b> ：对应 Eq. 16-18，"opportunistically fused into a single kernel, significantly reducing kernel launch overhead"。包括 $\sigma$、$2\sigma$、加 bias、乘 scale。</li>
+  <li><b>K3 · Sinkhorn-Knopp</b> ：对应 Eq. 19，"Sinkhorn-Knopp iteration within a single kernel"；反向 kernel "recomputes intermediate results on-chip and traverses the entire iteration"，<b>不写中间态到 HBM</b> 。</li>
+</ol>
+
+<p class="zh">K1+K2+K3 三者最后再被 <code>pre_big_fuse_kernel</code> 合并成<b>一个超级 fused kernel</b>（见 4.3 的 <code>pre_big_fuse_kernel</code>）。论文还提到一个不那么显眼的 trick：</p>
+
+<div class="kbox">
+<span class="k-label">KEY INSIGHT</span>
+<b>RMSNorm reordering</b> ：论文："RMSNorm reordering to follow matrix multiplication for efficiency"——把 RMSNorm 从"先归一化再乘 $\varphi$"改成"在 $\varphi$ 乘法的 split-K 累加里同时算平方和"。这样 RMSNorm 不需要单独读一遍输入，而是<b>白嫖</b> GEMM 已经在 register 里的 tile。这就是 cutile-examples <code>FusedRmsNormSplitKGemm_N32Stream4</code> kernel 的核心思路。
+</div>
+
+<h4 class="section-h lv3" id="63-重算策略节省了什么">Multilayer recompute 用计算换激活内存</h4>
+
+<p class="zh">这是论文最数学优雅的一段。<b>n×C 的残差流意味着每层激活内存比 baseline 高 n 倍</b> ；30 层 × 4 流 = <b>120× baseline 激活</b> ——直接 OOM。论文 Section 4.3.2 给出"块化 selective recompute"+ <b>闭式最优块大小</b> ：</p>
+
+<div class="formula-box sm-box">
+  <div class="formula-label">✅ Eq. 20 · L<sub>r</sub>* 推导（论文 Section 4.3.2）</div>
+  <p class="zh">设 $L_r$ 为一个 recompute 块的层数。每块只在块头保存输入 $x_{l_0}\in\mathbb{R}^{n\times C}$（resident memory），块内反向时从 $x_{l_0}$ 重新前向到任意中间层（transient memory）：</p>
+  $$ \text{Resident}(L_r) = nC \cdot \big\lceil L/L_r\big\rceil $$
+  $$ \text{Transient}(L_r) = (n+2)C \cdot L_r $$
+  <p class="zh">对总内存 = Resident + Transient 求 $L_r$ 的导数令为 0：</p>
+  $$ \frac{d}{dL_r}\Big(\frac{nCL}{L_r} + (n+2)CL_r\Big) = -\frac{nCL}{L_r^2} + (n+2)C = 0 $$
+  $$ \boxed{\;L_r^* \approx \sqrt{\frac{nL}{n+2}}\;} $$
+  <p class="zh">n=4, L=30 时 $L_r^* \approx \sqrt{120/6} = \sqrt{20} \approx 4.47$，论文取 $L_r=5$。<b>结论：每 5 层做一次 checkpoint，其余反向重算</b> 。总激活内存从 120× 降到约 $4.5\times$ baseline。
+</p></div>
+
+<figure class="fig svg-wide">
+<img src="figs/F2.svg" data-edit-src="figs/F2.drawio" alt="F2 Multilayer Recompute：上半部分说明前向每 5 层设一个 checkpoint；下半部分说明反向时按块 replay 并释放临时激活；右侧展示 resident memory 与 transient memory 的块大小权衡。">
+  <figcaption><b>F2</b>　Multilayer Recompute 的块化策略：上半部分先把 30 层拆成 6 个 5 层块，前向只保留块边界的 n-stream residual checkpoint；下半部分说明反向时从块头 checkpoint 重新前向，临时激活只在当前块内存在。右侧展示 resident checkpoint 与 transient block memory 的权衡，得到 $L_r^*\approx\sqrt{nL/(n+2)}$；实际还要和 pipeline stage 边界对齐。</figcaption>
+</figure>
+
+<p class="zh">对应实现是 <code>tile_kernels/mhc/multilayer_recompute_kernel.py</code>，签名：</p>
+
+<pre><code>def _mhc_multilayer_recompute_kernel(
+    mhc_mult: int,        # = n
+    hidden:   int,        # = C
+    num_layers: int,      # = L_r 一个块大小
+    num_post:   int,      # 保留 post 端激活的层数
+    n_thr: int = 64, h_blk: int = 2048):
+  def kernel(
+    initial_residual: T.Tensor[(n, mhc, h), T.bfloat16],   # 块头 checkpoint
+    pre_mix_ptrs:     T.Tensor[(L,), T.ptr],               # L 层指针数组
+    layer_output_ptrs:T.Tensor[(L_post,), T.ptr],
+    post_mix_ptrs:    T.Tensor[(L_post,), T.ptr],
+    comb_mix_ptrs:    T.Tensor[(L_post,), T.ptr],
+    layer_input_ptrs: T.Tensor[(L,), T.ptr],
+    residual_ptrs:    T.Tensor[(L_post,), T.ptr],
+  ) -&gt; None:
+    # 用 pointer 数组传递 L 个 layer 的 6 类张量 → 灵活配合 DualPipe 错位调度</code></pre>
+
+<p class="zh">注意 <b>pointer 数组</b> ：直接传 contiguous 张量也行，但 pointer 让一个 kernel 可以处理"任意 layer 的任意张量"——这对 DualPipe 微 batch 错位、TP/PP rank 错开非常关键。</p>
+
+<h4 class="section-h lv3" id="64-流水线调度隐藏了什么">DualPipe 把 post kernel 藏进通信窗口</h4>
+
+<figure class="fig src">
+  <img src="figs/paper_fig4.png" alt="Paper Figure 4: DualPipe overlap">
+  <figcaption><span class="attr">P8</span><b>mHC paper Figure 4</b>　DualPipe 通信-计算重叠示意。论文把 mHC 的 $\mathcal{F}_{post,res}$ kernel（MLP 部分）放在一条<b>高优先级 compute stream</b> 上，让它的计算窗口正好落进 PP send/recv 的通信窗口。Attention 层不用 persistent kernel（避免阻塞抢占），让 mHC 的 kernel 能在 attention 间隙抢上 SM。结果是：朴素串行的 "F → post_kernel → PP send" 被改写成 "F → (post_kernel ‖ PP send) → 下一 microbatch"，<b>把 mHC 引入的额外 latency 几乎完全藏在原本就要等的通信窗口里</b> 。</figcaption>
+</figure>
+
+<p class="zh">论文 4.3.3 一句话浓缩："$\mathcal{F}_{post,res}$ kernels of MLP ... executed on a dedicated high-priority compute stream"；"attention layers avoid persistent kernels to prevent extended stalls"；"recomputation decoupled from pipeline communication dependencies"。<b>三个 trick 缺一不可</b> 。</p>
+
+<h4 class="section-h lv3" id="65-端到端开销如何被压下来">6.7% 训练开销来自三层优化共同摊薄</h4>
+<p class="zh">论文 Section 4.3 总结句："In-house large-scale training indicates mHC supports training at scale and introduces only <b>6.7% additional time overhead when expansion rate n=4</b> ." 把这 6.7% 按来源大致拆开（论文没给细分，下表是基于 PR 公开 benchmark 的合理推断）：</p>
+
+<div class="table-scroll"><table>
+  <tbody><tr><th>开销来源</th><th>朴素实现</th><th>优化后</th><th>归功于</th></tr>
+  <tr><td>n×C 残差流的 HBM I/O</td><td>~11× baseline</td><td>~2.5× baseline</td><td>① pre_big_fuse + post_kernel</td></tr>
+  <tr><td>Sinkhorn 20 轮迭代</td><td>1.36 ms × 30 layer ≈ 41 ms</td><td>0.20 ms × 30 ≈ 6 ms</td><td>① fused_sinkhorn (6.89× speedup, Megatron #3828)</td></tr>
+  <tr><td>$H^{post}$·F + $H^{res}$·x_res</td><td>10.49 ms / layer</td><td>3.23 ms / layer</td><td>① fused_h_post_bda (3.24× speedup)</td></tr>
+  <tr><td>n-stream 激活存储</td><td>n·L·C = 120× baseline</td><td>~4.5× baseline</td><td>② L_r*=5 块化重算</td></tr>
+  <tr><td>PP 通信 + post kernel 串行</td><td>串行</td><td>大部分重叠</td><td>③ DualPipe 高优先级 stream</td></tr>
+</tbody></table></div>
+
+<!-- ============================================================ -->
+<!-- LAYER 7 -->
+<!-- ============================================================ -->
+<div class="layer-banner" id="layer7">
+  <div class="tag">05</div>
+  <h2 class="section-h lv1" id="7-读者应该带走什么">5 · 结论：什么时候值得用 mHC</h2>
+  <div class="s">最后把机制、证据和工程成本合成一个判断框架：什么时候 mHC 值得上，什么时候应该先保持普通残差。</div>
+</div>
+
+<div class="kbox">
+  <span class="k-label">ONE-SCREEN SUMMARY</span>
+  <b>mHC 的一句话定位：</b> 它把 transformer 的单条 residual stream 扩成 $n$ 条可学习残差流，同时用双随机约束保证深层传播仍像 soft permutation，而不是任意线性放大器。
+  <div class="table-scroll"><table>
+    <tbody><tr><th>读者问题</th><th>本文给出的答案</th></tr>
+    <tr><td>mHC 解决什么？</td><td>不是替换 attention/FFN/MoE，而是给深层 transformer 增加可学习的跨层 residual topology。</td></tr>
+    <tr><td>为什么 HC 不够？</td><td>HC 的 $H^{res}$ 无约束，多层后出现 $\prod_l H_l^{res}$；单层 Amax 正常，复合 Amax 可以飙到 3000。</td></tr>
+    <tr><td>Birkhoff 为什么有效？</td><td>双随机矩阵非扩张、乘法封闭、可解释成置换矩阵凸组合；连乘后仍在安全集合里。</td></tr>
+    <tr><td>为什么能训练？</td><td>fused kernel 压 HBM I/O，recompute 压激活，DualPipe overlap 藏 latency，最终 n=4 只多约 6.7% 训练时间。</td></tr>
+  </tbody></table></div>
+</div>
+
+<h3 class="section-h lv2" id="71-什么时候值得用-mHC">5.1 什么时候值得为 mHC 付出复杂度</h3>
+<p class="zh">mHC 不是“所有模型都该换”的默认组件。它更像一个面向大规模深层 transformer 的 residual-topology 选项：当模型已经靠 pre-norm 稳定训练，但你怀疑单条残差流限制了跨层信息复用，且系统侧有能力承接 n-stream 激活和 fused kernel 维护成本时，mHC 才真正有性价比。</p>
+
+<div class="table-scroll"><table>
+  <tbody><tr><th>场景</th><th>判断</th><th>原因</th></tr>
+  <tr><td>中小模型、训练预算有限</td><td>先不用</td><td>普通 pre-norm residual 已经足够稳；mHC 的 kernel 和调参复杂度未必换来足够收益。</td></tr>
+  <tr><td>深层 MoE / 大模型预训练</td><td>值得评估</td><td>论文 27B 和 scaling 曲线显示，mHC 能同时改善稳定性和最终 loss，且多步推理 benchmark 更受益。</td></tr>
+  <tr><td>推理部署优先</td><td>谨慎</td><td>n-stream residual 会增加 KV 之外的 activation / memory traffic；推理端需要单独评估 early-stop、低精度残差和 kernel fusion。</td></tr>
+  <tr><td>已有高质量 fused kernel 栈</td><td>更适合</td><td>mHC 的收益必须和 TileKernels / Megatron / TensorRT-LLM 这类 fused 路径一起看；朴素 PyTorch 版本只适合验证机制。</td></tr>
+</tbody></table></div>
+
+<h3 class="section-h lv2" id="72-哪些地方还需要谨慎">5.2 哪些地方还需要谨慎</h3>
+<ul class="zh-list">
+  <li><b>论文证据仍集中在特定模型族与硬件栈</b> ：mHC 对 DeepSeek-style MoE / GB200 / TileKernels 路径很有说服力，但不同深度、dense 模型、推理 batch、硬件代际都需要重新做 ablation。</li>
+  <li><b>稳定性保证只覆盖 residual mixing 链</b> ：$\|H^{res}\|_2\le 1$ 不能保证整个 transformer Jacobian 不爆；attention、MoE router、optimizer 和 loss scale 仍然可能引入独立不稳定源。</li>
+  <li><b>工程收益依赖周边系统</b> ：pre_big_fuse、post_kernel、selective recompute、high-priority stream 缺一块，最终 wall-clock 就可能从 6.7% 回到不可接受的范围。</li>
+</ul>
+
+<h3 class="section-h lv2" id="73-后续优化路线图">5.3 后续优化路线图</h3>
+<p class="zh">从本文结构看，后续优化不应该写成“技巧清单”，而应该继续保持同一个科普模板：瓶颈在哪里 → 原路径计算/搬运了什么 → 新机制删掉或隐藏了什么 → 代价和边界是什么。下面这张路线图把可验证假设分成算法、内核、系统三层：</p>
+
+<figure class="fig svg-wide">
+  <img src="figs/F4.svg" data-edit-src="figs/F4.drawio" alt="F4 潜在优化路线图：算法层、内核层、系统层三组 mHC 后续优化方向。">
+  <figcaption><b>F4</b>　后续优化路线图：算法层关注减少 Sinkhorn / residual stream 成本，内核层关注 launch、HBM 与 backward，系统层关注 pipeline stage、通信重叠和动态 expansion rate。读法不是“哪项最酷”，而是哪项能在当前瓶颈里移除真实成本。</figcaption>
+</figure>
+
+<div class="kbox">
+  <span class="k-label">FINAL TAKEAWAY</span>
+  <b>把 mHC 放回 residual connection 史来看：</b> ResNet 证明了 identity 通道能让深层网络可训练；HC 证明了多条 residual stream 能带来更强的跨层拓扑；mHC 的贡献，是给这条多流路径补上了一个可训练、可解释、可工程化的守恒约束。
+</div>
+
+
+<h3 class="section-h lv2" id="references">参考资料与溯源</h3>
+
+<div class="kbox">
+  <p class="zh no-indent"><b>Source list.</b>　这里保留论文、图源、官方实现和参考实现的入口，方便回溯本文每一处机制、公式和工程判断。</p>
+  <ol class="zh-list ref-list">
+    <li><a href="https://arxiv.org/html/2512.24880v2">DeepSeek-AI, “mHC: Manifold-Constrained Hyper-Connections”</a>，arXiv 2512.24880v2。</li>
+    <li><a href="https://www.ivoverhoeven.nl/blog/mhc/">Ivo Verhoeven, “mHC”</a>，包含 residual / HC / mHC 的可视化解读。</li>
+    <li><a href="https://github.com/deepseek-ai/TileKernels/tree/main/tile_kernels/mhc">deepseek-ai/TileKernels · tile_kernels/mhc</a>，DeepSeek 官方 TileKernels mHC 实现。</li>
+    <li><a href="https://github.com/ZhangZhiPku/cutile-examples/blob/main/_18_MHC.py">ZhangZhiPku/cutile-examples · _18_MHC.py</a>，cuTile 教学版 mHC kernel。</li>
+    <li><a href="https://github.com/NVIDIA/Megatron-LM/pull/3828">NVIDIA/Megatron-LM PR #3828</a>，Megatron-LM fused mHC kernels 集成。</li>
+    <li><a href="https://github.com/NVIDIA/TensorRT-LLM/pull/13710">NVIDIA/TensorRT-LLM PR #13710</a>，TensorRT-LLM mHC fused kernel 与推理路径。</li>
+    <li><a href="https://github.com/SemiAnalysisAI/InferenceX/pkgs/container/trtllm-deepseek-v4">SemiAnalysisAI/InferenceX · trtllm-deepseek-v4</a>，DeepSeek V4 推理容器。</li>
+    <li><a href="https://github.com/tokenbender/mHC-manifold-constrained-hyper-connections">tokenbender/mHC-manifold-constrained-hyper-connections</a>，PyTorch 参考实现与 ablation。</li>
+    <li><a href="https://medium.com/@sampan090611/deepseek-mhc-explained-how-manifold-constrained-hyper-connections-redefine-residual-connections-in-2902b6cdaea3">“DeepSeek mHC Explained”</a>，面向读者的 mHC 背景解释。</li>
+  </ol>
+</div>
+</div>
+</div>
+
+  <!-- Highlight.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <!-- KaTeX auto-render -->
+  <script defer="" src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer="" src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+  <!-- Shared reader script -->
+  <script src="/blog/readers/reader.js"></script>
+
+
+</body></html>
